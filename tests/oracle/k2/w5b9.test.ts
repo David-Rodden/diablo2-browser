@@ -399,7 +399,8 @@ describe('K2 Wave 5 Batch 9 (w5b9): 45 D2Game.dll functions (0x6FD06E00..0x6FD11
 
     const pClient = m.alloc(0x600)
     m.setU32(pClient + 0x1bc, m.alloc(0x800))
-    expect(NET_SendPacket5A_PartyRelationEvent_6FD10720_113c(m, 0x1234, pClient, 3)).toBe(1)
+    // D2Game.dll@0x6FCAA3E0 returns queued byte count (40 for S2C 0x5A via 0x6FD10720).
+    expect(NET_SendPacket5A_PartyRelationEvent_6FD10720_113c(m, 0x1234, pClient, 3)).toBe(40)
 
     PARTY_SyncMutualRelationState_6FD109E0_113c(m, pPlrA, pPlrB)
     expect(m.u32(pRelAB + 0x0c)).toBe(2)

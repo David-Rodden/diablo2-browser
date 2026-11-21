@@ -47,7 +47,7 @@ describe('Issue #1487: Single-player mapSeed derivation and difficulty switch pa
 
     // Enter game in difficulty 0 (same as initial activeDifficulty)
     const adapter = await lobby.enterGame({ charName: 'PaladinSp', difficulty: 0 })
-    expect(adapter.getGameInstance().mapSeed).toBe(initialSeed)
+    expect(adapter.mapSeed).toBe(initialSeed)
 
     const afterD2s = lobby.getCharacterD2s('PaladinSp')!
     const parsedAfter = readD2sSave113c(afterD2s)
@@ -65,7 +65,7 @@ describe('Issue #1487: Single-player mapSeed derivation and difficulty switch pa
 
     // Switch difficulty from Normal (0) to Nightmare (1)
     const adapterNm = await lobby.enterGame({ charName: 'SorcSp', difficulty: 1 })
-    const nmSeed = adapterNm.getGameInstance().mapSeed
+    const nmSeed = adapterNm.mapSeed
     expect(nmSeed).toBeGreaterThan(0)
     expect(nmSeed).not.toBe(initialSeed)
 
@@ -76,7 +76,7 @@ describe('Issue #1487: Single-player mapSeed derivation and difficulty switch pa
 
     // Switch difficulty from Nightmare (1) to Hell (2)
     const adapterHell = await lobby.enterGame({ charName: 'SorcSp', difficulty: 2 })
-    const hellSeed = adapterHell.getGameInstance().mapSeed
+    const hellSeed = adapterHell.mapSeed
     expect(hellSeed).toBeGreaterThan(0)
     expect(hellSeed).not.toBe(nmSeed)
     expect(hellSeed).not.toBe(initialSeed)
@@ -97,7 +97,7 @@ describe('Issue #1487: Single-player mapSeed derivation and difficulty switch pa
     view.setUint32(0xab, 0, true) // force mapSeed = 0
 
     const adapter = await lobby.enterGame({ charName: 'BarbSp', difficulty: 0 })
-    const effectiveSeed = adapter.getGameInstance().mapSeed
+    const effectiveSeed = adapter.mapSeed
     expect(effectiveSeed).toBeGreaterThan(0)
 
     const updatedD2s = lobby.getCharacterD2s('BarbSp')!
@@ -116,7 +116,7 @@ describe('Issue #1487: Single-player mapSeed derivation and difficulty switch pa
       mapSeed: customSeed,
     })
 
-    expect(adapter.getGameInstance().mapSeed).toBe(customSeed)
+    expect(adapter.mapSeed).toBe(customSeed)
   })
 
   it('seedGenerator option in LocalLobbyProviderOptions allows custom seed injection', async () => {
@@ -135,6 +135,6 @@ describe('Issue #1487: Single-player mapSeed derivation and difficulty switch pa
 
     // Switch difficulty to trigger seed generation
     const adapter = await lobby.enterGame({ charName: 'NecroSp', difficulty: 1 })
-    expect(adapter.getGameInstance().mapSeed).toBe(0x99887768)
+    expect(adapter.mapSeed).toBe(0x99887768)
   })
 })

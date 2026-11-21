@@ -87,7 +87,7 @@ import {
   UNITS_SetCollisionMaskAtCoords113c,
 } from '../common/unit.ts'
 import { UNITS_SetTargetUnitForDynamicUnit113c } from '../common/waypoint.ts'
-import type { Memory113c } from '../mem/sparse-memory.ts'
+import type { Memory113c, SparseMemory113c } from '../mem/sparse-memory.ts'
 import { SEED_InitLowSeed113c, SEED_InitSeed113c, seedRoll } from '../prng.ts'
 import { MONSTERS_IsDemonOrUndead113c } from '../tables/datatbls-113c.ts'
 import { SUNIT_CanPlayerTargetUnitWithSkill113c } from './a1c-post150-f786-f1040-113c.ts'
@@ -132,6 +132,30 @@ import {
   SUNIT_CanTargetOwnPetWithSkill113c,
   SUNIT_GetOwnerUnit113c,
 } from './k2-sunit-spawn-w1-113c.ts'
+import {
+  ACT1Q6_InitQuestData_6FC88060_113c,
+  ACT2Q3_InitQuestData_6FCE7480_113c,
+  ACT5Q4_InitQuestData_6FC7D5C0_113c,
+} from './k2-w10b1-113c.ts'
+import { ACT5Q5_InitQuestData_6FC7FB50_113c } from './k2-w11b1-113c.ts'
+import {
+  ACT1Q2_InitQuestData_6FC89130_113c,
+  ACT1Q4_InitQuestData_6FC887D0_113c,
+  ACT1Q5_InitQuestData_6FC87210_113c,
+  ACT4Q2_InitQuestData_6FCDAD40_113c,
+  ACT5Q2_InitQuestData_6FC7CC70_113c,
+  ACT5Q3_InitQuestData_6FC7FC20_113c,
+} from './k2-w15b1-113c.ts'
+import {
+  ACT2Q2_InitQuestTableRecord_6FCE7ED0_113c,
+  ACT2Q6_InitQuestTableRecord_6FCE9F60_113c,
+  ACT3Q1_InitQuestTableRecord_6FD092D0_113c,
+  ACT3Q2_InitQuestTableRecord_6FD09DC0_113c,
+  ACT3Q4_InitQuestTableRecord_6FD093C0_113c,
+  ACT3Q5_InitQuestTableRecord_6FD09200_113c,
+  ACT4Q3_InitQuestTableRecord_6FCDC5F0_113c,
+  ACT5Q6_InitQuestTableRecord_6FC80080_113c,
+} from './k2-w16b1-113c.ts'
 import { ACT1Q4_RecordInifussTreeObjectGuid_6FC81860_113c } from './k2-w2b2-113c.ts'
 import { NET_SendPacketBuffer6B_6FCAACD0_113c } from './k2-w2b3-113c.ts'
 import {
@@ -139,6 +163,40 @@ import {
   SKILLS_DispatchSrvDoFunc_6FCBE420_113c,
 } from './k2-w2b4-113c.ts'
 import { ACT2Q2_CanSpawnViperAmuletChest_6FCE1A60_113c } from './k2-w2b6-113c.ts'
+import { ACT5Q0_InitQuest2ADescriptor_6FC7A7C0_113c } from './k2-w4b2-113c.ts'
+import {
+  ACT1_InitAkaraIntroQuestDescriptor_6FC83CC0_113c,
+  ACT1_InitCainIntroQuestDescriptor_6FC82FA0_113c,
+  ACT1Q0_InitQuestDescriptor_6FC82D90_113c,
+} from './k2-w4b3-113c.ts'
+import {
+  ACT4Prologue_InitQuestDescriptor_6FCD9D80_113c,
+  ACT4Q2_InitHadrielQuestDescriptor_6FCD97D0_113c,
+} from './k2-w5b3-113c.ts'
+import {
+  ACT2Intro_InitQuestData_6FCE5730_113c,
+  ACT2Q0_InitQuestData_6FCE5690_113c,
+  ACT2Q7_InitQuestData_6FCE5790_113c,
+  ACT2Q8_InitQuestData_6FCE4880_113c,
+} from './k2-w6b2-113c.ts'
+import { ACT3Q0_InitQuestData_6FD05920_113c } from './k2-w6b3-113c.ts'
+import {
+  ACT3_InitKurastNpcIntroQuestTable_6FD06700_113c,
+  ACT3Q0_InitHratliIntroQuestTable_6FD06660_113c,
+} from './k2-w6b6-113c.ts'
+import { ACT2Q5_InitQuestData_6FCE7080_113c } from './k2-w8b3-113c.ts'
+import {
+  ACT1Q1_InitQuestData_6FC85990_113c,
+  ACT1Q5_InitQuestData_6FC89200_113c,
+  ACT4Q1_InitQuestData_6FCDAE40_113c,
+  ACT5Q1_InitQuestData_6FC7BEA0_113c,
+} from './k2-w9b1-113c.ts'
+import {
+  ACT2Q1_InitQuestData_6FCE7B40_113c,
+  ACT2Q4_InitQuestData_6FCE9400_113c,
+  ACT3Q3_InitQuestData_6FD07CE0_113c,
+  ACT3Q6_InitQuestData_6FD0A080_113c,
+} from './k2-w9b2-113c.ts'
 import { SUNIT_IsDeadOrDying113c, UNITS_ChangeAnimMode113c } from './monster-events.ts'
 import {
   D2GAME_IAT_SGPT_DATATABLES_VA_113C,
@@ -554,6 +612,138 @@ export function QUESTS_FindFreeSubtileInRoomRings_6FC54130_113c(
   }
 }
 
+function dispatchDefaultQuestInit113c(
+  m: D2KernMemory113c,
+  pfnInit: number,
+  pQuest: number,
+): void {
+  const sm = m as SparseMemory113c
+  switch (pfnInit >>> 0) {
+    case 0x6fc7a7c0:
+      ACT5Q0_InitQuest2ADescriptor_6FC7A7C0_113c(m, pQuest)
+      return
+    case 0x6fc7bea0:
+      ACT5Q1_InitQuestData_6FC7BEA0_113c(sm, pQuest)
+      return
+    case 0x6fc7cc70:
+      ACT5Q2_InitQuestData_6FC7CC70_113c(m, pQuest)
+      return
+    case 0x6fc7d5c0:
+      ACT5Q4_InitQuestData_6FC7D5C0_113c(sm, pQuest)
+      return
+    case 0x6fc7fb50:
+      ACT5Q5_InitQuestData_6FC7FB50_113c(sm, pQuest)
+      return
+    case 0x6fc7fc20:
+      ACT5Q3_InitQuestData_6FC7FC20_113c(m, pQuest)
+      return
+    case 0x6fc80080:
+      ACT5Q6_InitQuestTableRecord_6FC80080_113c(sm, pQuest)
+      return
+    case 0x6fc82d90:
+      ACT1Q0_InitQuestDescriptor_6FC82D90_113c(m, pQuest)
+      return
+    case 0x6fc82fa0:
+      ACT1_InitCainIntroQuestDescriptor_6FC82FA0_113c(m, pQuest)
+      return
+    case 0x6fc83cc0:
+      ACT1_InitAkaraIntroQuestDescriptor_6FC83CC0_113c(m, pQuest)
+      return
+    case 0x6fc85990:
+      ACT1Q1_InitQuestData_6FC85990_113c(sm, pQuest)
+      return
+    case 0x6fc87210:
+      ACT1Q5_InitQuestData_6FC87210_113c(m, pQuest)
+      return
+    case 0x6fc88060:
+      ACT1Q6_InitQuestData_6FC88060_113c(sm, pQuest)
+      return
+    case 0x6fc887d0:
+      ACT1Q4_InitQuestData_6FC887D0_113c(m, pQuest)
+      return
+    case 0x6fc89130:
+      ACT1Q2_InitQuestData_6FC89130_113c(m, pQuest)
+      return
+    case 0x6fc89200:
+      ACT1Q5_InitQuestData_6FC89200_113c(sm, pQuest)
+      return
+    case 0x6fcd97d0:
+      ACT4Q2_InitHadrielQuestDescriptor_6FCD97D0_113c(m, pQuest)
+      return
+    case 0x6fcd9d80:
+      ACT4Prologue_InitQuestDescriptor_6FCD9D80_113c(m, pQuest)
+      return
+    case 0x6fcdad40:
+      ACT4Q2_InitQuestData_6FCDAD40_113c(m, pQuest)
+      return
+    case 0x6fcdae40:
+      ACT4Q1_InitQuestData_6FCDAE40_113c(sm, pQuest)
+      return
+    case 0x6fcdc5f0:
+      ACT4Q3_InitQuestTableRecord_6FCDC5F0_113c(sm, pQuest)
+      return
+    case 0x6fce4880:
+      ACT2Q8_InitQuestData_6FCE4880_113c(m, pQuest)
+      return
+    case 0x6fce5690:
+      ACT2Q0_InitQuestData_6FCE5690_113c(m, pQuest)
+      return
+    case 0x6fce5730:
+      ACT2Intro_InitQuestData_6FCE5730_113c(m, pQuest)
+      return
+    case 0x6fce5790:
+      ACT2Q7_InitQuestData_6FCE5790_113c(m, pQuest)
+      return
+    case 0x6fce7080:
+      ACT2Q5_InitQuestData_6FCE7080_113c(sm, pQuest)
+      return
+    case 0x6fce7480:
+      ACT2Q3_InitQuestData_6FCE7480_113c(sm, pQuest)
+      return
+    case 0x6fce7b40:
+      ACT2Q1_InitQuestData_6FCE7B40_113c(sm, pQuest)
+      return
+    case 0x6fce7ed0:
+      ACT2Q2_InitQuestTableRecord_6FCE7ED0_113c(sm, pQuest)
+      return
+    case 0x6fce9400:
+      ACT2Q4_InitQuestData_6FCE9400_113c(sm, pQuest)
+      return
+    case 0x6fce9f60:
+      ACT2Q6_InitQuestTableRecord_6FCE9F60_113c(sm, pQuest)
+      return
+    case 0x6fd05920:
+      ACT3Q0_InitQuestData_6FD05920_113c(m, pQuest)
+      return
+    case 0x6fd06660:
+      ACT3Q0_InitHratliIntroQuestTable_6FD06660_113c(m, pQuest)
+      return
+    case 0x6fd06700:
+      ACT3_InitKurastNpcIntroQuestTable_6FD06700_113c(m, pQuest)
+      return
+    case 0x6fd07ce0:
+      ACT3Q3_InitQuestData_6FD07CE0_113c(sm, pQuest)
+      return
+    case 0x6fd09200:
+      ACT3Q5_InitQuestTableRecord_6FD09200_113c(sm, pQuest)
+      return
+    case 0x6fd092d0:
+      ACT3Q1_InitQuestTableRecord_6FD092D0_113c(sm, pQuest)
+      return
+    case 0x6fd093c0:
+      ACT3Q4_InitQuestTableRecord_6FD093C0_113c(sm, pQuest)
+      return
+    case 0x6fd09dc0:
+      ACT3Q2_InitQuestTableRecord_6FD09DC0_113c(sm, pQuest)
+      return
+    case 0x6fd0a080:
+      ACT3Q6_InitQuestData_6FD0A080_113c(sm, pQuest)
+      return
+    default:
+      return
+  }
+}
+
 /**
  * Allocates and initializes `pGame->pQuestControl (+0x10F4)` along with all regular quest nodes
  * (`0x6FD2DBF0`, count at `0x6FD2DF68`) and intro quest nodes (`0x6FD2DF6C`, count at `0x6FD2DF8C`),
@@ -597,6 +787,8 @@ export function QUESTS_AllocAndInitGameQuests_6FC548A0_113c(
         }
         if (hooks !== undefined && hooks.onQuestInit !== undefined) {
           hooks.onQuestInit(m, pfnInit, esi)
+        } else {
+          dispatchDefaultQuestInit113c(m, pfnInit, esi)
         }
       }
       edi = (edi + 0x18) >>> 0
@@ -625,6 +817,8 @@ export function QUESTS_AllocAndInitGameQuests_6FC548A0_113c(
         }
         if (hooks !== undefined && hooks.onQuestInit !== undefined) {
           hooks.onQuestInit(m, pfnInit, esi)
+        } else {
+          dispatchDefaultQuestInit113c(m, pfnInit, esi)
         }
       }
     }
@@ -846,6 +1040,17 @@ export function QUESTS_SendQuestLogPackets50And52_6FC55640_113c(
           if (hooks !== undefined && hooks.onQuestStatus !== undefined) {
             statusHandled =
               hooks.onQuestStatus(
+                m,
+                pfnStatus,
+                pQuest,
+                player,
+                pGameQuestFlags,
+                pPlayerQuestFlags,
+                pOutByte,
+              ) & 0xff
+          } else if (k4QuestStatusFilterDispatcher !== null) {
+            statusHandled =
+              k4QuestStatusFilterDispatcher(
                 m,
                 pfnStatus,
                 pQuest,

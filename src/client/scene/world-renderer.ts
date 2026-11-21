@@ -34,7 +34,12 @@ import {
 import {
   getGlobalCharacterSkinService,
   type CharacterSkinService,
+  type LoadedMeshSkinClip,
+  type LoadedMeshSkinUnit,
+  type MeshSkinRuntime,
 } from '../render/character-skin-cache.ts'
+import type { MeshSkinPlayMode } from '../render/mesh-skin-animator.ts'
+import { resolveMeshSkinOneShotTimeMs } from '../../common/units/mesh-skin-model.ts'
 import { getSharedClassLayerCompositor } from '../frontend/avatar-compositor.ts'
 import { dir64ToClipDirection } from '../../common/units/direction.ts'
 import { PLR_MODES } from '../../common/units/plr-mode.ts'
@@ -1056,6 +1061,313 @@ export function drawLoadingMonsterPlaceholder113c(
   }
 }
 
+/** How a mesh skin clip should be played this frame. */
+interface MeshSkinPlaySpec {
+  readonly entry: LoadedMeshSkinClip
+  readonly mode: MeshSkinPlayMode
+  readonly timeMs?: number | undefined
+  readonly rate?: number | undefined
+  /** Locomotion loops follow the unit's measured on-screen speed when the clip has a ground speed. */
+  readonly locomotion: boolean
+}
+
+/**
+ * Pose, render and draw one unit with a real-time mesh skin: the model is rendered into an
+ * offscreen impostor cell, which is then drawn like any RGBA sprite frame (shadow, tint, glow).
+ *
+ * @returns `false` when no impostor could be produced this frame (the caller draws vanilla art).
+ */
+function drawMeshSkinUnit(
+  renderer: SpriteRenderer,
+  unit: SceneUnitDrawable,
+  runtime: MeshSkinRuntime,
+  meshUnit: LoadedMeshSkinUnit,
+  unitKey: string,
+  play: MeshSkinPlaySpec,
+  nowMs: number,
+  glowTintRgb: readonly [number, number, number] | null,
+): boolean {
+  runtime.meshRenderer.beginFrame(nowMs)
+  runtime.animator.prune(nowMs)
+  const spec = meshUnit.spec
+  const moveSpeed = play.entry.meta.moveSpeed ?? 0
+  const posed = runtime.animator.play({
+    unitKey,
+    model: meshUnit.model,
+    clip: play.entry.clip,
+    mode: play.mode,
+    timeMs: play.timeMs,
+    rate: play.rate,
+    naturalSpeedPx: play.locomotion && moveSpeed > 0 ? moveSpeed * spec.pxPerUnit : 0,
+    nowMs,
+    dir64: unit.direction,
+    worldX: unit.worldX,
+    worldY: unit.worldY,
+  })
+  const impostor = runtime.meshRenderer.drawImpostor(meshUnit.gpu, posed.pose, posed.dir64, spec.pxPerUnit, spec.box)
+  if (impostor === null) return false
+
+  const frame = impostor.frame
+  const drawW = spec.box.width
+  const drawH = spec.box.height
+  const altitude = unit.altitude ?? 0
+  const drawX = unit.worldX - spec.box.footX
+  const groundDrawY = unit.worldY - spec.box.footY
+  const drawY = groundDrawY - altitude
+  const isFaded =
+    Boolean(unit.isFaded) ||
+    unit.blendMode === 'trans50' ||
+    unit.overlays.some((o) => o.token.toLowerCase() === 'fade')
+  const baseAlpha = isFaded ? 0.55 : 1.0
+
+  const rgbaRowTint = resolveRgbaPaletteRowTint(unit.paletteRow)
+  let rMul = 1.0
+  let gMul = 1.0
+  let bMul = 1.0
+  let hasRgbTint = false
+  if (rgbaRowTint !== null) {
+    rMul = rgbaRowTint[0]
+    gMul = rgbaRowTint[1]
+    bMul = rgbaRowTint[2]
+    hasRgbTint = true
+  } else if (unit.tintColor) {
+    rMul = unit.tintColor[0] / 255
+    gMul = unit.tintColor[1] / 255
+    bMul = unit.tintColor[2] / 255
+    hasRgbTint = true
+  }
+  const tint = hasRgbTint || isFaded ? ([rMul, gMul, bMul, baseAlpha] as const) : undefined
+
+  if (shouldDrawUnitShadow113c(unit) && meshUnit.shadowScale > 0) {
+    // The shadow is cast by the part of the impostor above the ground line; the box extends below
+    // the feet (room for sprawled death poses), which must not shift the shadow's ground contact.
+    const aboveGround = spec.box.footY / spec.box.height
+    const shadowFrame = { ...frame, height: Math.max(1, Math.round(frame.height * aboveGround)) }
+    const shW = Math.max(1, Math.round(drawW * meshUnit.shadowScale))
+    const shH = Math.max(1, Math.round(spec.box.footY * meshUnit.shadowScale))
+    const shX = Math.round(drawX + (drawW - shW) * 0.5)
+    const shY = Math.round(unit.worldY + meshUnit.shadowOffsetY - shH)
+    drawUnitPerspectiveShadow(renderer, shadowFrame, shX, shY, frame.atlas, shW, shH)
+  }
+
+  renderer.draw(frame, drawX, drawY, {
+    width: drawW,
+    height: drawH,
+    elevationY: Math.max(0, drawH - 16),
+    ...(tint ? { tint } : {}),
+    ...(isFaded ? { blendMode: 'trans50' } : {}),
+  })
+
+  if (impostor.glowFrame !== null) {
+    const glowTint: readonly [number, number, number, number] | undefined = glowTintRgb
+      ? [glowTintRgb[0], glowTintRgb[1], glowTintRgb[2], baseAlpha]
+      : isFaded
+        ? [1, 1, 1, baseAlpha]
+        : undefined
+    renderer.draw(impostor.glowFrame, drawX, drawY, {
+      width: drawW,
+      height: drawH,
+      blendMode: 'additive',
+      ...(glowTint ? { tint: glowTint } : {}),
+    })
+  }
+  return true
+}
+
+/**
+ * Draw a player with the selected real-time mesh skin. Clip choice and action timing mirror the
+ * sprite skin path (1.13c mode, step speed and action frame decide; the model only follows).
+ */
+function drawPlayerMeshSkin(
+  renderer: SpriteRenderer,
+  unit: SceneUnitDrawable,
+  skinService: CharacterSkinService,
+  classToken: PlayerClassToken,
+  nowMs: number,
+): boolean {
+  const meshUnit = skinService.getMeshSkinUnit(renderer, classToken, null)
+  if (meshUnit === null || meshUnit === 'loading') return false
+
+  const modeToken = PLR_MODES[unit.mode]?.token.toLowerCase() ?? 'nu'
+  const unitKey = `player:${unit.unitId}`
+  const isHeldCorpse = Boolean(unit.isCorpse) && modeToken !== 'dt'
+  let rawKey = isHeldCorpse ? 'dd' : modeToken
+  let sequenceProgress: number | null = null
+  if (!unit.isCorpse && modeToken === 'sq') {
+    const seqSkillId = unit.castState?.skillId ?? (unit.classId === 1 ? 49 : 0)
+    const seqWClass = unit.equipmentAppearance?.wclass ?? 'hth'
+    const seqStartedAtMs = resolveOneShotStartMs(
+      unitKey,
+      `sq:${seqSkillId}`,
+      unit.animStartedAtMs ?? unit.castState?.startedAtMs,
+      nowMs,
+    )
+    const resolvedSeq = resolveSkillSequenceFrame(
+      seqSkillId,
+      seqWClass,
+      Math.floor(Math.max(0, nowMs - seqStartedAtMs) / 40),
+      unit.animStepSpeed256 ?? unit.castState?.stepSpeed256 ?? 256,
+    )
+    rawKey = resolvedSeq?.clipKey ?? (unit.classId === 1 ? 's1' : 'a1')
+    if (resolvedSeq) {
+      const seqFrames = Math.max(1, getCharAnimClip113c(unit.classId, resolvedSeq.clipKey).frames)
+      sequenceProgress = Math.min(1, resolvedSeq.frameIndex / seqFrames)
+    }
+  }
+
+  const clipKey = resolveSkinClipKey(classToken, rawKey, meshUnit.clips)
+  const entry = clipKey ? meshUnit.clips[clipKey] : undefined
+  if (!entry) return false
+  const durationMs = entry.clip.durationMs
+
+  let play: MeshSkinPlaySpec
+  if (isHeldCorpse || rawKey === 'dd') {
+    oneShotStartMsByUnitKey.delete(unitKey)
+    play = { entry, mode: 'hold-end', locomotion: false }
+  } else if (sequenceProgress !== null) {
+    play = { entry, mode: 'oneshot', timeMs: sequenceProgress * durationMs, locomotion: false }
+  } else {
+    const canonicalClip = getCharAnimClip113c(unit.classId, rawKey)
+    const isLocomotion = rawKey === 'wl' || rawKey === 'tw' || rawKey === 'rn'
+    const loops = !unit.isCorpse && rawKey !== 'dt' && (isLocomotion || rawKey === 'nu' || rawKey === 'tn')
+    if (loops) {
+      oneShotStartMsByUnitKey.delete(unitKey)
+      let rate = 1
+      if (isLocomotion) {
+        const baseSpeed = resolvePlayerLocomotionBaseSpeed256(rawKey, canonicalClip.speed > 0 ? canonicalClip.speed : 256)
+        const stepSpeed256 =
+          unit.animStepSpeed256 ??
+          unit.castState?.stepSpeed256 ??
+          computeLocomotionStepSpeed256(
+            baseSpeed > 0 ? baseSpeed : 213,
+            computeMoveVelocityPercent113c({ stat67: unit.velocityPercent, running: rawKey === 'rn' }),
+          )
+        if (baseSpeed > 0 && stepSpeed256 > 0) rate = stepSpeed256 / baseSpeed
+      }
+      play = { entry, mode: 'loop', rate, locomotion: isLocomotion }
+    } else {
+      const baseSpeed = canonicalClip.speed > 0 ? canonicalClip.speed : 256
+      const stepSpeed256 =
+        unit.animStepSpeed256 ??
+        unit.castState?.stepSpeed256 ??
+        computeStepSpeed256(baseSpeed, unit.animEffRate ?? unit.castState?.effRate ?? 0)
+      const startedAtMs = resolveOneShotStartMs(
+        unitKey,
+        rawKey,
+        unit.animStartedAtMs ?? unit.castState?.startedAtMs,
+        nowMs,
+      )
+      // 1.13c advances `stepSpeed256 / 256` animation frames per 40 ms tick over `frames` frames.
+      const frames = Math.max(1, canonicalClip.frames)
+      const framesElapsed = ((Math.max(0, nowMs - startedAtMs) / 40) * Math.max(32, stepSpeed256)) / 256
+      const gameActionAt =
+        canonicalClip.actionFrame > 0 && canonicalClip.actionFrame < frames
+          ? canonicalClip.actionFrame / frames
+          : undefined
+      play = {
+        entry,
+        mode: 'oneshot',
+        timeMs: resolveMeshSkinOneShotTimeMs(durationMs, framesElapsed / frames, gameActionAt, entry.meta.actionAt),
+        locomotion: false,
+      }
+    }
+  }
+
+  return drawMeshSkinUnit(renderer, unit, skinService.getMeshSkinRuntime(renderer), meshUnit, unitKey, play, nowMs, null)
+}
+
+/** Draw a player-owned summon with its owner's real-time mesh skin (same timing rules as the sprite path). */
+function drawMinionMeshSkin(
+  renderer: SpriteRenderer,
+  unit: SceneUnitDrawable,
+  skinService: CharacterSkinService,
+  ownerClassToken: PlayerClassToken,
+  minionKey: string,
+  nowMs: number,
+): boolean {
+  const meshUnit = skinService.getMeshSkinUnit(renderer, ownerClassToken, minionKey)
+  if (meshUnit === null || meshUnit === 'loading') return false
+
+  const unitKey = `monster:${unit.unitId}`
+  const isMoving = unit.mode === 2 || unit.mode === 15
+  const skillId = unit.castState?.skillId ?? unit.lastSkillId
+  let sequenceStep: ResolvedMonsterSequenceFrame113c | undefined
+  if (!unit.isCorpse && unit.mode === 14) {
+    const seqStartedAtMs = resolveOneShotStartMs(
+      unitKey,
+      'sq',
+      unit.animStartedAtMs ?? unit.castState?.startedAtMs,
+      nowMs,
+    )
+    sequenceStep = resolveMonsterSequenceFrame113c(
+      unit.classId,
+      Math.max(0, nowMs - seqStartedAtMs),
+      unit.animStepSpeed256 ?? unit.castState?.stepSpeed256 ?? 256,
+      skillId,
+    )
+  }
+  const rawKey = unit.isCorpse
+    ? unit.mode === 0
+      ? 'dt'
+      : 'dd'
+    : (sequenceStep?.clipKey ?? MONSTER_MODE_TO_CLIP[unit.mode] ?? (isMoving ? 'wl' : 'nu'))
+  const clipKey = resolveMinionClipKey(rawKey, meshUnit.clips)
+  const entry = clipKey ? meshUnit.clips[clipKey] : undefined
+  if (!entry || clipKey === null) return false
+  const durationMs = entry.clip.durationMs
+
+  let play: MeshSkinPlaySpec
+  if ((unit.isCorpse && rawKey !== 'dt') || rawKey === 'dd' || clipKey === 'dd') {
+    oneShotStartMsByUnitKey.delete(unitKey)
+    play = { entry, mode: 'hold-end', locomotion: false }
+  } else if (sequenceStep !== undefined) {
+    const baseCount = Math.max(1, getMonsterModeBaseFrameCount113c(unit.classId, 14, skillId))
+    play = {
+      entry,
+      mode: 'oneshot',
+      timeMs: Math.min(1, sequenceStep.frameIndex / baseCount) * durationMs,
+      locomotion: false,
+    }
+  } else if (!unit.isCorpse && rawKey !== 'dt' && entry.meta.loop) {
+    oneShotStartMsByUnitKey.delete(unitKey)
+    play = { entry, mode: 'loop', locomotion: clipKey === 'wl' || clipKey === 'rn' }
+  } else {
+    const unitStepSpeed256 = unit.animStepSpeed256 ?? unit.castState?.stepSpeed256
+    const startedAtMs = resolveOneShotStartMs(
+      unitKey,
+      clipKey,
+      unit.animStartedAtMs ?? unit.castState?.startedAtMs,
+      nowMs,
+    )
+    const elapsedMs = Math.max(0, nowMs - startedAtMs)
+    // With a known 1.13c step speed the clip is fitted to the gameplay duration; otherwise it
+    // plays at its own natural length.
+    const progress =
+      unitStepSpeed256 !== undefined
+        ? ((elapsedMs / 40) * Math.max(1, unitStepSpeed256)) /
+          256 /
+          Math.max(1, getMonsterModeBaseFrameCount113c(unit.classId, unit.mode, skillId))
+        : elapsedMs / durationMs
+    play = {
+      entry,
+      mode: 'oneshot',
+      timeMs: resolveMeshSkinOneShotTimeMs(durationMs, progress),
+      locomotion: false,
+    }
+  }
+
+  return drawMeshSkinUnit(
+    renderer,
+    unit,
+    skinService.getMeshSkinRuntime(renderer),
+    meshUnit,
+    unitKey,
+    play,
+    nowMs,
+    minionKey === 'necromage' ? resolveNecromageElementGlowTint(unit.compVariants) : null,
+  )
+}
+
 export function drawSceneUnitDrawable(
   renderer: SpriteRenderer,
   unit: SceneUnitDrawable,
@@ -1081,7 +1393,20 @@ export function drawSceneUnitDrawable(
         ? resolvePlayerClassTokenForUnit(unit.classId, unit.token)
         : null
       if (skinClassToken !== null && skinService.getSelectedSkinId(skinClassToken) !== null) {
-        const skinArt = skinService.getCharacterSkinArt(renderer, skinClassToken)
+        const selectedManifest = skinService.peekSelectedManifest(skinClassToken)
+        const isMeshSkin =
+          selectedManifest !== null && selectedManifest !== 'loading' && selectedManifest.format === 'mesh'
+        if (
+          isMeshSkin &&
+          (!isTransformedMorph || shouldSkinOverrideMorph(selectedManifest, skinCfg.morphPolicy)) &&
+          drawPlayerMeshSkin(renderer, unit, skinService, skinClassToken, nowMs)
+        ) {
+          return
+        }
+        const skinArt =
+          isMeshSkin || selectedManifest === 'loading'
+            ? null
+            : skinService.getCharacterSkinArt(renderer, skinClassToken)
         if (
           skinArt !== null &&
           skinArt !== 'loading' &&
@@ -1859,11 +2184,19 @@ export function drawSceneUnitDrawable(
         isRevive: hasReviveState,
       })
       if (minionMatch !== null) {
-        const minionArt = skinService.getMinionSkinArt(
-          renderer,
-          minionMatch.ownerClassToken,
-          minionMatch.minionKey,
-        )
+        const ownerManifest = skinService.peekSelectedManifest(minionMatch.ownerClassToken)
+        const minionIsMesh =
+          ownerManifest !== null && ownerManifest !== 'loading' && ownerManifest.format === 'mesh'
+        if (
+          minionIsMesh &&
+          drawMinionMeshSkin(renderer, unit, skinService, minionMatch.ownerClassToken, minionMatch.minionKey, nowMs)
+        ) {
+          return
+        }
+        const minionArt =
+          minionIsMesh || ownerManifest === 'loading'
+            ? null
+            : skinService.getMinionSkinArt(renderer, minionMatch.ownerClassToken, minionMatch.minionKey)
         if (minionArt !== null && minionArt !== 'loading') {
           const unitKey = `monster:${unit.unitId}`
           const isMoving = unit.mode === 2 || unit.mode === 15

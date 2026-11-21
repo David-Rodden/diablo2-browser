@@ -65,7 +65,6 @@ import {
   UNITS_HasCollisionBetweenUnits113c,
   UNITS_IsDoor113c,
   UNITS_IsUnitInObjRectRange113c,
-  UNITS_UpdateAnimFrame113c,
   UNIT_GetAlignment113c,
 } from '../common/unit.ts';
 import type { Memory113c } from '../mem/sparse-memory.ts';
@@ -129,6 +128,18 @@ function zeroMem(m: Memory113c, p: number, len: number): void {
 
 function freeMem(_m: Memory113c, _p: number): void {
   // Arena bump allocator on Memory113c
+}
+
+let townRuntimeGapStackPtr = 0x7e140000;
+
+function withTownRuntimeGapStack<T>(size: number, fn: (sp: number) => T): T {
+  const sp = townRuntimeGapStackPtr >>> 0;
+  townRuntimeGapStackPtr = (sp + ((size + 15) & ~15)) >>> 0;
+  try {
+    return fn(sp);
+  } finally {
+    townRuntimeGapStackPtr = sp;
+  }
 }
 
 const QUEST_BIT_STATE_OFFSETS = new Int32Array([0x00, 0x04, 0x06, 0x0c, 0x0e, 0x10]);
@@ -447,12 +458,12 @@ export function AI_TryOpenNearbyClosedDoor113c(
   if ((PATH_GetOrCheckLastCollisionMask113c(m, pPath) & 0x800) === 0) {
     return 0;
   }
-  const ctx = m.alloc(8);
-  m.setU32(ctx, 0);
-  m.setU32(ctx + 4, 9);
-  AITARGET_ScanUnitsByModeTable113c(m, 8, ctx, pGame, pUnit, 0);
-  const pDoor = m.u32(ctx);
-  freeMem(m, ctx);
+  const pDoor = withTownRuntimeGapStack(8, (ctx) => {
+    m.setU32(ctx, 0);
+    m.setU32(ctx + 4, 9);
+    AITARGET_ScanUnitsByModeTable113c(m, 8, ctx, pGame, pUnit, 0);
+    return m.u32(ctx);
+  });
   if (pDoor === 0) {
     return 0;
   }
@@ -491,10 +502,10 @@ export function AI_HandleStunDoorOrLeaderFollow113c(
   if (pAiTickArgs !== 0 && m.u32(pAiTickArgs >>> 0) !== 0) {
     return AI_FollowPackLeaderOrAttack113c(m, pAiTickArgs, pUnit, pGame) !== 0 ? 1 : 0;
   }
-  const pAiTickArgsPtr = m.alloc(4);
-  m.setU32(pAiTickArgsPtr, pAiTickArgs);
-  const res = AI_FollowPackLeaderOrAttack113c(m, pAiTickArgsPtr, pUnit, pGame);
-  freeMem(m, pAiTickArgsPtr);
+  const res = withTownRuntimeGapStack(4, (pAiTickArgsPtr) => {
+    m.setU32(pAiTickArgsPtr, pAiTickArgs);
+    return AI_FollowPackLeaderOrAttack113c(m, pAiTickArgsPtr, pUnit, pGame);
+  });
   return res !== 0 ? 1 : 0;
 }
 
@@ -540,14 +551,15 @@ export function AI_AcquireOrValidateCombatTarget113c(
   if (checkObstacleClearanceBetweenUnits(m, pCurTarget, pUnit) !== 0) {
     return 0;
   }
-  const ctx = m.alloc(12);
-  m.setU32(ctx, 0);
-  m.setU32(ctx + 4, 0x7fffffff);
-  m.setU32(ctx + 8, pCurTarget);
-  AITARGET_ScanUnitsByModeTable113c(m, 0x0b, ctx, pGame, pUnit, 0);
-  const pNewTarget = m.u32(ctx);
-  const newDist = m.u32(ctx + 4);
-  freeMem(m, ctx);
+  const scanRes = withTownRuntimeGapStack(12, (ctx) => {
+    m.setU32(ctx, 0);
+    m.setU32(ctx + 4, 0x7fffffff);
+    m.setU32(ctx + 8, pCurTarget);
+    AITARGET_ScanUnitsByModeTable113c(m, 0x0b, ctx, pGame, pUnit, 0);
+    return [m.u32(ctx), m.u32(ctx + 4)] as const;
+  });
+  const pNewTarget = scanRes[0];
+  const newDist = scanRes[1];
   if (pNewTarget === 0) {
     AI_IdleWander113c(m, pGame, pUnit);
     return 1;
@@ -670,13 +682,13 @@ export function QUESTS_CheckNpcQuestInteractAlert113c(
         throw new D2CommonAssertError('QUESTS_CheckNpcQuestInteractAlert113c: null quest flags', 0x805);
       }
       if ((dispatchQuestNpcAlertCallback(m, pfnCheck, pQuest, pPlayer, npcClassId, pQuestFlags, pNpc) & 0xff) !== 0) {
-        const pkt = m.alloc(6);
-        m.setU8(pkt, 0x8a);
-        m.setU8(pkt + 1, 1);
-        m.setU32(pkt + 2, m.u32(pNpc + 0xc));
-        const sendClient = m.u32(pPlayer) === 0 ? m.u32(UNITS_GetPlayerData113c(m, pPlayer) + 0x9c) : 0;
-        D2NET_SendPacket0x06BytesToClient113c(m, pkt, sendClient);
-        freeMem(m, pkt);
+        withTownRuntimeGapStack(8, (pkt) => {
+          m.setU8(pkt, 0x8a);
+          m.setU8(pkt + 1, 1);
+          m.setU32(pkt + 2, m.u32(pNpc + 0xc));
+          const sendClient = m.u32(pPlayer) === 0 ? m.u32(UNITS_GetPlayerData113c(m, pPlayer) + 0x9c) : 0;
+          D2NET_SendPacket0x06BytesToClient113c(m, pkt, sendClient);
+        });
         return 1;
       }
     }
@@ -1109,11 +1121,15 @@ export function PLAYER_RecalcTargetUnitPath113c(
 // @va D2Game:0x6FCAA770
 export function D2NET_SendPacket0x06BytesToClient113c(m: Memory113c, pPacket6: number, pClient: number): void {
   hitD2GameVa113c(0x6FCAA770);
-  const buf = m.alloc(8);
-  m.setU32(buf, m.u32(pPacket6));
-  m.setU16(buf + 4, m.u16(pPacket6 + 4));
-  appendClientNetPacketNode(m, pClient, buf, 6);
-  freeMem(m, buf);
+  const buf = townRuntimeGapStackPtr >>> 0;
+  townRuntimeGapStackPtr = (buf + 0x10) >>> 0;
+  try {
+    m.setU32(buf, m.u32(pPacket6));
+    m.setU16(buf + 4, m.u16(pPacket6 + 4));
+    appendClientNetPacketNode(m, pClient, buf, 6);
+  } finally {
+    townRuntimeGapStackPtr = buf;
+  }
 }
 
 // @va D2Game:0x6FCADB00
@@ -1173,20 +1189,20 @@ export function D2NET_SendUnitPosSync0x15ToClient113c(
       : pPath !== 0
         ? (PATH_GetMaxDistance113c(m, pPath) & 0xff)
         : 0;
-  const pkt = m.alloc(0x10);
-  zeroMem(m, pkt, 0x10);
-  m.setU8(pkt, nUnitType & 0xff);
-  m.setU32(pkt + 1, dwUnitId >>> 0);
-  m.setU8(pkt + 5, bRealign & 0xff);
-  m.setU16(pkt + 6, outX & 0xffff);
-  m.setU16(pkt + 8, outY & 0xffff);
-  m.setU8(pkt + 0x0a, outStep & 0xff);
-  m.setU8(pkt + 0x0b, bExtra11 & 0xff);
-  m.setU8(pkt + 0x0c, rawPt & 0xff);
-  m.setU16(pkt + 0x0d, velPct & 0xffff);
-  m.setU8(pkt + 0x0f, maxDist & 0xff);
-  appendClientNetPacketNode(m, pClient, pkt, 0x10);
-  freeMem(m, pkt);
+  withTownRuntimeGapStack(0x10, (pkt) => {
+    zeroMem(m, pkt, 0x10);
+    m.setU8(pkt, nUnitType & 0xff);
+    m.setU32(pkt + 1, dwUnitId >>> 0);
+    m.setU8(pkt + 5, bRealign & 0xff);
+    m.setU16(pkt + 6, outX & 0xffff);
+    m.setU16(pkt + 8, outY & 0xffff);
+    m.setU8(pkt + 0x0a, outStep & 0xff);
+    m.setU8(pkt + 0x0b, bExtra11 & 0xff);
+    m.setU8(pkt + 0x0c, rawPt & 0xff);
+    m.setU16(pkt + 0x0d, velPct & 0xffff);
+    m.setU8(pkt + 0x0f, maxDist & 0xff);
+    appendClientNetPacketNode(m, pClient, pkt, 0x10);
+  });
 }
 
 // @va D2Game:0x6FCD11A0
@@ -1202,12 +1218,11 @@ export function AITARGET_IterateRoomActiveClients113c(
   if (pRoom === 0) {
     return 0;
   }
-  const ppRoomsPtr = m.alloc(8);
-  const pNumRoomsPtr = (ppRoomsPtr + 4) >>> 0;
-  DUNGEON_GetAdjacentRoomsListFromRoom113c(m, pRoom, ppRoomsPtr, pNumRoomsPtr);
-  const numRooms = m.u32(pNumRoomsPtr);
-  const ppRooms = m.u32(ppRoomsPtr);
-  freeMem(m, ppRoomsPtr);
+  const [ppRooms, numRooms] = withTownRuntimeGapStack(8, (ppRoomsPtr) => {
+    const pNumRoomsPtr = (ppRoomsPtr + 4) >>> 0;
+    DUNGEON_GetAdjacentRoomsListFromRoom113c(m, pRoom, ppRoomsPtr, pNumRoomsPtr);
+    return [m.u32(ppRoomsPtr), m.u32(pNumRoomsPtr)] as const;
+  });
   for (let i = 0; i < numRooms; i++) {
     const pAdjRoom = m.u32(ppRooms + i * 4);
     const numClients = m.u32(pAdjRoom + 0x78);
@@ -1380,12 +1395,11 @@ export function AITARGET_ScanUnitsByModeTable113c(
     if (pRoom === 0) {
       return 0;
     }
-    const ppRoomsPtr = m.alloc(8);
-    const pNumRoomsPtr = (ppRoomsPtr + 4) >>> 0;
-    DUNGEON_GetAdjacentRoomsListFromRoom113c(m, pRoom, ppRoomsPtr, pNumRoomsPtr);
-    const numRooms = m.u32(pNumRoomsPtr);
-    const ppRooms = m.u32(ppRoomsPtr);
-    freeMem(m, ppRoomsPtr);
+    const [ppRooms, numRooms] = withTownRuntimeGapStack(8, (ppRoomsPtr) => {
+      const pNumRoomsPtr = (ppRoomsPtr + 4) >>> 0;
+      DUNGEON_GetAdjacentRoomsListFromRoom113c(m, pRoom, ppRoomsPtr, pNumRoomsPtr);
+      return [m.u32(ppRoomsPtr), m.u32(pNumRoomsPtr)] as const;
+    });
     for (let i = 0; i < numRooms; i++) {
       const pAdjRoom = m.u32(ppRooms + i * 4);
       if (DUNGEON_CheckRoomIsTownMemPort113c(m, pAdjRoom) === 0 && m.u32(pAdjRoom + 0x78) !== 0) {
@@ -1412,12 +1426,11 @@ export function AITARGET_ScanUnitsByModeTable113c(
   if (pRoom === 0) {
     return 0;
   }
-  const ppRoomsPtr = m.alloc(8);
-  const pNumRoomsPtr = (ppRoomsPtr + 4) >>> 0;
-  DUNGEON_GetAdjacentRoomsListFromRoom113c(m, pRoom, ppRoomsPtr, pNumRoomsPtr);
-  const numRooms = m.u32(pNumRoomsPtr);
-  const ppRooms = m.u32(ppRoomsPtr);
-  freeMem(m, ppRoomsPtr);
+  const [ppRooms, numRooms] = withTownRuntimeGapStack(8, (ppRoomsPtr) => {
+    const pNumRoomsPtr = (ppRoomsPtr + 4) >>> 0;
+    DUNGEON_GetAdjacentRoomsListFromRoom113c(m, pRoom, ppRoomsPtr, pNumRoomsPtr);
+    return [m.u32(ppRoomsPtr), m.u32(pNumRoomsPtr)] as const;
+  });
   for (let i = 0; i < numRooms; i++) {
     const pAdjRoom = m.u32(ppRooms + i * 4);
     let pUnit = m.u32(pAdjRoom + 0x74);
@@ -1640,11 +1653,7 @@ export function PLAYER_StartWalkOrRunMode113c(
     return;
   }
   SUNITDMG_FreeAttackerCombatList113c(m, pUnit, pGame);
-  const prevMode = m.u32(pUnit + 0x10);
   UNITS_ChangeAnimMode113c(m, pUnit, resolvedMode);
-  if (prevMode !== (resolvedMode >>> 0) && m.u32(0x6fde9e1c) !== 0 && m.u32(m.u32(0x6fde9e1c) + 0x0bc4) !== 0) {
-    UNITS_UpdateAnimFrame113c(m, pUnit);
-  }
   MONSTER_ClearModeEvents113c(m, pGame, pUnit);
   MONSTER_RegisterContinuousModeEvent113c(m, pGame, pUnit);
 }
@@ -1803,18 +1812,18 @@ export function SPLAYER_BroadcastUnitMovementToClient113c(
           const curY = UNIT_GetPosY113c(m, pUnit);
           const curX = UNIT_GetPosX113c(m, pUnit);
           const row = MODE_DISPATCH_POST_TABLE[nModeIdx & 7]!;
-          const pkt = m.alloc(0x10);
-          zeroMem(m, pkt, 0x10);
-          m.setU8(pkt, 0x10);
-          m.setU8(pkt + 1, 0);
-          m.setU32(pkt + 2, unitGuid);
-          m.setU8(pkt + 6, row[1]);
-          m.setU8(pkt + 7, targetType & 0xff);
-          m.setU32(pkt + 8, targetGuid);
-          m.setU16(pkt + 0x0c, curX & 0xffff);
-          m.setU16(pkt + 0x0e, curY & 0xffff);
-          appendClientNetPacketNode(m, pClient, pkt, 0x10);
-          freeMem(m, pkt);
+          withTownRuntimeGapStack(0x10, (pkt) => {
+            zeroMem(m, pkt, 0x10);
+            m.setU8(pkt, 0x10);
+            m.setU8(pkt + 1, 0);
+            m.setU32(pkt + 2, unitGuid);
+            m.setU8(pkt + 6, row[1]);
+            m.setU8(pkt + 7, targetType & 0xff);
+            m.setU32(pkt + 8, targetGuid);
+            m.setU16(pkt + 0x0c, curX & 0xffff);
+            m.setU16(pkt + 0x0e, curY & 0xffff);
+            appendClientNetPacketNode(m, pClient, pkt, 0x10);
+          });
           return 1;
         }
       }
@@ -1826,19 +1835,19 @@ export function SPLAYER_BroadcastUnitMovementToClient113c(
   const lastY = pPath !== 0 ? PATH_GetLastPointY113c(m, pPath) : 0;
   const lastX = pPath !== 0 ? PATH_GetLastPointX113c(m, pPath) : 0;
   const row = MODE_DISPATCH_POST_TABLE[nModeIdx & 7]!;
-  const pkt = m.alloc(0x10);
-  zeroMem(m, pkt, 0x10);
-  m.setU8(pkt, 0x0f);
-  m.setU8(pkt + 1, 0);
-  m.setU32(pkt + 2, m.u32(pUnit + 0xc));
-  m.setU8(pkt + 6, row[0]);
-  m.setU16(pkt + 7, lastX & 0xffff);
-  m.setU16(pkt + 9, lastY & 0xffff);
-  m.setU8(pkt + 0x0b, 0);
-  m.setU16(pkt + 0x0c, curX & 0xffff);
-  m.setU16(pkt + 0x0e, curY & 0xffff);
-  appendClientNetPacketNode(m, pClient, pkt, 0x10);
-  freeMem(m, pkt);
+  withTownRuntimeGapStack(0x10, (pkt) => {
+    zeroMem(m, pkt, 0x10);
+    m.setU8(pkt, 0x0f);
+    m.setU8(pkt + 1, 0);
+    m.setU32(pkt + 2, m.u32(pUnit + 0xc));
+    m.setU8(pkt + 6, row[0]);
+    m.setU16(pkt + 7, lastX & 0xffff);
+    m.setU16(pkt + 9, lastY & 0xffff);
+    m.setU8(pkt + 0x0b, 0);
+    m.setU16(pkt + 0x0c, curX & 0xffff);
+    m.setU16(pkt + 0x0e, curY & 0xffff);
+    appendClientNetPacketNode(m, pClient, pkt, 0x10);
+  });
   return 1;
 }
 
@@ -2000,12 +2009,12 @@ export function SUNIT_UpdateUnitPositionAndRoom113c(
         }
       }
       if (pUnit !== pPlayerNew && m.u8(pUnit) !== 3) {
-        const pkt = m.alloc(6);
-        m.setU8(pkt, 0x0a);
-        m.setU8(pkt + 1, m.u8(pUnit));
-        m.setU32(pkt + 2, m.u32(pUnit + 0xc));
-        appendClientNetPacketNode(m, pClientNew, pkt, 6);
-        freeMem(m, pkt);
+        withTownRuntimeGapStack(8, (pkt) => {
+          m.setU8(pkt, 0x0a);
+          m.setU8(pkt + 1, m.u8(pUnit));
+          m.setU32(pkt + 2, m.u32(pUnit + 0xc));
+          appendClientNetPacketNode(m, pClientNew, pkt, 6);
+        });
       }
       idxNew++;
     } else {
@@ -2042,12 +2051,12 @@ export function SUNIT_UpdateUnitPositionAndRoom113c(
       }
     }
     if (pUnit !== pPlayerNew && m.u8(pUnit) !== 3) {
-      const pkt = m.alloc(6);
-      m.setU8(pkt, 0x0a);
-      m.setU8(pkt + 1, m.u8(pUnit));
-      m.setU32(pkt + 2, m.u32(pUnit + 0xc));
-      appendClientNetPacketNode(m, pClientNew, pkt, 6);
-      freeMem(m, pkt);
+      withTownRuntimeGapStack(8, (pkt) => {
+        m.setU8(pkt, 0x0a);
+        m.setU8(pkt + 1, m.u8(pUnit));
+        m.setU32(pkt + 2, m.u32(pUnit + 0xc));
+        appendClientNetPacketNode(m, pClientNew, pkt, 6);
+      });
     }
     idxNew++;
   }
@@ -2070,17 +2079,21 @@ export function D2NET_SendUnitMovePacket0x10BytesToClient113c(
   wCurrentY: number,
 ): void {
   hitD2GameVa113c(0x6FCAC010);
-  const pkt = m.alloc(0x10);
-  zeroMem(m, pkt, 0x10);
-  m.setU8(pkt, nPacketHeader & 0xff);
-  m.setU32(pkt + 1, dwUnitId >>> 0);
-  m.setU8(pkt + 5, bMoveType & 0xff);
-  m.setU16(pkt + 6, wTargetX & 0xffff);
-  m.setU16(pkt + 8, wTargetY & 0xffff);
-  m.setU8(pkt + 0x0a, bUnk10 & 0xff);
-  m.setU8(pkt + 0x0b, bUnk11 & 0xff);
-  m.setU16(pkt + 0x0c, wCurrentX & 0xffff);
-  m.setU16(pkt + 0x0e, wCurrentY & 0xffff);
-  appendClientNetPacketNode(m, pClient, pkt, 0x10);
-  freeMem(m, pkt);
+  const pkt = townRuntimeGapStackPtr >>> 0;
+  townRuntimeGapStackPtr = (pkt + 0x10) >>> 0;
+  try {
+    zeroMem(m, pkt, 0x10);
+    m.setU8(pkt, nPacketHeader & 0xff);
+    m.setU32(pkt + 1, dwUnitId >>> 0);
+    m.setU8(pkt + 5, bMoveType & 0xff);
+    m.setU16(pkt + 6, wTargetX & 0xffff);
+    m.setU16(pkt + 8, wTargetY & 0xffff);
+    m.setU8(pkt + 0x0a, bUnk10 & 0xff);
+    m.setU8(pkt + 0x0b, bUnk11 & 0xff);
+    m.setU16(pkt + 0x0c, wCurrentX & 0xffff);
+    m.setU16(pkt + 0x0e, wCurrentY & 0xffff);
+    appendClientNetPacketNode(m, pClient, pkt, 0x10);
+  } finally {
+    townRuntimeGapStackPtr = pkt;
+  }
 }

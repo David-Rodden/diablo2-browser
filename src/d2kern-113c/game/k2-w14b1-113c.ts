@@ -4091,7 +4091,7 @@ export function ACT4Q3_OnDiabloDeathPortalWarpToAct5_6FCDB550_113c(
     QUESTRECORD_GetQuestState113c(m, pQuestFlags, 0x1a, 0) === 0 &&
     QUESTRECORD_GetQuestState113c(m, pQuestFlags, 0x1a, 0x0d) === 0
   ) {
-    SUNIT_SetUnitEventSound113c(m, pPlayer, 0x13, 0)
+    SUNIT_SetUnitEventSound113c(m, pPlayer, 0x13, pPlayer)
     return 0
   }
   const pRoom = UNITS_GetRoom113c(m, pPlayer) >>> 0
@@ -5240,7 +5240,7 @@ export function ACT3Q2_OperateGidbinnAltar_6FD09C80_113c(
     DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 0x13, 7) !== 0 ||
     DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 0x13, 8) !== 0
   ) {
-    SUNIT_SetUnitEventSound113c(m, pPlayer, 0x13, 0);
+    SUNIT_SetUnitEventSound113c(m, pPlayer, 0x13, pPlayer);
     return 0;
   }
   const pQuestControl = m.u32((pGame + 0x10f4) >>> 0);

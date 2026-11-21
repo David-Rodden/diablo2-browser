@@ -62,7 +62,7 @@ const K6_SCENARIO_SPECS_113C: readonly K6ScenarioSpec113c[] = [
     totalHits: 726,
     d2CommonExecuted: 397,
     d2GameExecuted: 329,
-    minStrictHorizon: 41,
+    minStrictHorizon: 140,
     minPosHorizon: 140,
   },
   {
@@ -71,8 +71,8 @@ const K6_SCENARIO_SPECS_113C: readonly K6ScenarioSpec113c[] = [
     totalHits: 1248,
     d2CommonExecuted: 719,
     d2GameExecuted: 529,
-    minStrictHorizon: 10,
-    minPosHorizon: 37,
+    minStrictHorizon: 130,
+    minPosHorizon: 231,
   },
   {
     name: 'k6-assassin-skills',
@@ -80,8 +80,8 @@ const K6_SCENARIO_SPECS_113C: readonly K6ScenarioSpec113c[] = [
     totalHits: 1327,
     d2CommonExecuted: 745,
     d2GameExecuted: 582,
-    minStrictHorizon: 10,
-    minPosHorizon: 58,
+    minStrictHorizon: 58,
+    minPosHorizon: 78,
   },
   {
     name: 'k6-items-potions-belt-combat',
@@ -89,8 +89,8 @@ const K6_SCENARIO_SPECS_113C: readonly K6ScenarioSpec113c[] = [
     totalHits: 1284,
     d2CommonExecuted: 716,
     d2GameExecuted: 568,
-    minStrictHorizon: 5,
-    minPosHorizon: 7,
+    minStrictHorizon: 214,
+    minPosHorizon: 291,
   },
   {
     name: 'k6-town-npc-gamble-waypoint',
@@ -98,8 +98,8 @@ const K6_SCENARIO_SPECS_113C: readonly K6ScenarioSpec113c[] = [
     totalHits: 991,
     d2CommonExecuted: 578,
     d2GameExecuted: 413,
-    minStrictHorizon: 3,
-    minPosHorizon: 10,
+    minStrictHorizon: 47,
+    minPosHorizon: 120,
   },
   {
     name: 'k6-nightmare-bloodmoor-combat',
@@ -107,8 +107,8 @@ const K6_SCENARIO_SPECS_113C: readonly K6ScenarioSpec113c[] = [
     totalHits: 1070,
     d2CommonExecuted: 577,
     d2GameExecuted: 493,
-    minStrictHorizon: 10,
-    minPosHorizon: 104,
+    minStrictHorizon: 168,
+    minPosHorizon: 168,
   },
 ]
 
@@ -206,6 +206,42 @@ describe('[K6] Wave 1 full-horizon zero-divergence multi-subsystem gate (k6-bloo
     const dS2c = diffFrame113c(f6Gold, tamperedS2c, golden.header, 'strict')
     expect(dS2c).not.toBeNull()
     expect(dS2c!.key).toBe('s2c')
+  })
+})
+
+describe('[K6] Wave 1 full-horizon zero-divergence multi-subsystem gate (k6-act3-consumables-quest)', () => {
+  it('replays all 140 frames with zero divergence across units, t4 items, gs, and s2c packets', () => {
+    const name: K6ReplayScenarioName113c = 'k6-act3-consumables-quest'
+    const r = getReplay(name)
+    const cov = loadK6Coverage113c(name)
+    const exec = computeK6RuntimeExecSummary113c(cov, r.tsExecutedVas)
+
+    expect(r.bootCheck).toBeNull()
+    expect(r.lastGoldenFrame).toBe(140)
+    expect(r.strictHorizon).toBe(140)
+    expect(r.posHorizon).toBe(140)
+    expect(r.firstStrictDivergence).toBeNull()
+    expect(r.firstPosDivergence).toBeNull()
+    expect(r.unportedHit).toBeNull()
+
+    expect(exec.d2CommonDll).toBe(397)
+    expect(exec.d2GameDll).toBe(329)
+
+    // Verify genuine Act 3 Kurast Docks quest & item lifecycle outcomes across F2..F140:
+    // Jade Figurine (#9, cls 546) consumed at Meshif -> Golden Bird (#13, cls 547, quality 7, flags 0x82010) auto-placed
+    const golden = loadK6Golden113c(name)
+    const f2 = golden.frames.get(2)!
+    const f42 = golden.frames.get(42)!
+    const f140 = golden.frames.get(140)!
+    expect(f2.t4!.some((it) => it[0] === 9 && it[1] === 546)).toBe(true)
+    expect(f140.t4!.some((it) => it[0] === 9)).toBe(false)
+    const bird = f42.t4!.find((it) => it[0] === 13)!
+    expect(bird[1]).toBe(547)
+    expect(bird[11]).toBe(7)
+    expect(bird[13]).toBe(0x82010)
+    expect(f140.t4!.some((it) => it[0] === 13 && it[1] === 547 && it[2] === 0)).toBe(true)
+    expect(f140.t0![0]![3]).toBe(5125)
+    expect(f140.t0![0]![4]).toBe(5172)
   })
 })
 

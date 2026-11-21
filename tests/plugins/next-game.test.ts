@@ -397,7 +397,7 @@ describe('next-game plugin (+1 seamless room switcher)', () => {
   })
 
   it('Issue #1703: +1 next-game inherits /players N and scales monster HP, XP, combat StatList, and drop monsterPlayerCount in the new room', async () => {
-    const lobby = registerDefaultLocalServerHooks({ seed: 0x1703 })
+    const lobby = registerDefaultLocalServerHooks({ seed: 0x1703, backend: 'legacy' })
     await lobby.createCharacter({ name: 'P8Runner', classId: 1 })
 
     const createdSpecs: GameCreateSpec[] = []
@@ -410,6 +410,7 @@ describe('next-game plugin (+1 seamless room switcher)', () => {
     ): Promise<LocalLoopbackAdapter> => {
       const adapter = await lobby.enterGame({
         mode: 'create',
+        backend: 'legacy',
         charName: 'P8Runner',
         gameName,
         name: gameName,
@@ -633,10 +634,11 @@ describe('next-game plugin (+1 seamless room switcher)', () => {
 
     await host.destroy()
     session.destroy()
+    registerDefaultLocalServerHooks()
   })
 
   it('Issue #1703: Single Player standalone session supports +1 next-game and preserves /players N monster scaling', async () => {
-    const lobby = registerDefaultLocalServerHooks({ seed: 0x2703 })
+    const lobby = registerDefaultLocalServerHooks({ seed: 0x2703, backend: 'legacy' })
     await lobby.createCharacter({ name: 'SoloP8', classId: 1 })
     const characters = await lobby.listCharacters()
 
@@ -699,5 +701,6 @@ describe('next-game plugin (+1 seamless room switcher)', () => {
 
     await host.destroy()
     session.destroy()
+    registerDefaultLocalServerHooks()
   })
 })

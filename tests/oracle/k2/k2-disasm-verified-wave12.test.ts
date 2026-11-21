@@ -1190,7 +1190,8 @@ describe('D2Game.dll v1.13c Disassembly Verification Wave 12 (+141 VAs across w3
     m.setU32((pPetNode + 0x04) >>> 0, 0x160)
     m.setU32((pPetNode + 0x0c) >>> 0, 0x44556677)
     beginFrameS2CTrace113c()
-    expect(PETS_SendPacket7A_UnsummonPet_6FCB6810_113c(m, pPlr, pPetNode)).toBe(1)
+    // D2Game.dll@0x6FCAA3E0 returns queued byte count (13 for S2C 0x7A).
+    expect(PETS_SendPacket7A_UnsummonPet_6FCB6810_113c(m, pPlr, pPetNode)).toBe(13)
     const pkts7A = endFrameS2CTrace113c()
     expect(pkts7A.length).toBe(1)
     const b7A = Buffer.from(pkts7A[0]!, 'hex')

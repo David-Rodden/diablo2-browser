@@ -1172,8 +1172,8 @@ export function PLAYERSAVE_WritePlayerItemsSection_6FD0C0E0_113c(
   const nWritten = PLAYERSAVE_WriteInventoryOrCachedSaveBuffer_6FC73B40_113c(
     m,
     pPlayerUnit >>> 0,
-    pCur,
     pGame >>> 0,
+    pCur,
     ((pEndPos >>> 0) - pCur) | 0,
     bUseCached5C,
     arg4,
@@ -1803,18 +1803,18 @@ export function NET_SendPacket5A_PartyRelationEvent_6FD10720_113c(
     switch (act) {
       case 1:
       case 2:
-        m.setU8((sp + 0x06) >>> 0, 0x04)
+        m.setU8((sp + 0x02) >>> 0, 0x04)
         break
       case 3:
-        m.setU8((sp + 0x06) >>> 0, 0x08)
+        m.setU8((sp + 0x02) >>> 0, 0x08)
         break
       case 4:
-        m.setU8((sp + 0x06) >>> 0, 0x00)
+        m.setU8((sp + 0x02) >>> 0, 0x00)
         break
       case 5:
       case 7:
       case 8:
-        m.setU8((sp + 0x06) >>> 0, 0x02)
+        m.setU8((sp + 0x02) >>> 0, 0x02)
         break
       case 6:
       case 9:

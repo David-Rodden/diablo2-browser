@@ -822,7 +822,7 @@ describe('Tier 2 — Boundary & Corner Cases (F1–F12, 60 tests)', () => {
     })
 
     it('F8.B5: switching Normal -> Nightmare -> Hell -> Hell generates new mapSeeds on difficulty change and retains Hell mapSeed on Hell re-entry', async () => {
-      const lobby = new Server.LocalLobbyProvider()
+      const lobby = new Server.LocalLobbyProvider({ backend: 'legacy' })
       const initialD2s = Server.writeD2s(
         createSampleD2sCharacterData({
           name: 'HellWalker',

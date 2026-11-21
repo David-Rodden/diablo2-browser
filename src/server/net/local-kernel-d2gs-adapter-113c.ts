@@ -175,7 +175,7 @@ export class LocalKernelD2gsAdapter113c implements GameServerAdapter {
   private readonly charName: string
   private readonly charClass: CharClassId
   private readonly difficulty: 0 | 1 | 2
-  private readonly mapSeed: number
+  readonly mapSeed: number
   private activeAct: 0 | 1 | 2 | 3 | 4
 
   private closed = false
@@ -400,6 +400,13 @@ export class LocalKernelD2gsAdapter113c implements GameServerAdapter {
       },
       initialLeftSkill: leftSkill,
       initialRightSkill: rightSkill,
+      ...(parsedD2s !== null
+        ? {
+            initialWeaponSet: parsedD2s.activeWeapon === 1 ? (1 as const) : (0 as const),
+            initialAltLeftSkill: parsedD2s.altLeftSkill ?? 0,
+            initialAltRightSkill: parsedD2s.altRightSkill ?? 0,
+          }
+        : {}),
       tables: options.tables !== undefined ? options.tables : getServerItemDataTables(),
     })
 
@@ -469,6 +476,14 @@ export class LocalKernelD2gsAdapter113c implements GameServerAdapter {
 
   get playerId(): number {
     return this.playerUnitId
+  }
+
+  get tickCount(): number {
+    return this.bridge.frame
+  }
+
+  connect(): void {
+    // Handshake already completed during construction; early S2C events flush on first onEvent().
   }
 
   get state(): 'loading' | 'ingame' | 'inGame' | 'closed' {
@@ -689,6 +704,14 @@ export class LocalKernelD2gsAdapter113c implements GameServerAdapter {
       liveDifficultyLocation[this.difficulty] = 0x80 | (liveAct & 0x07)
     }
 
+    const swapState = this.bridge.getPlayerWeaponSwapState(this.handle.clientId)
+    const liveItems =
+      pPlayer !== 0
+        ? this.bridge.getPlayerOwnedItems(this.handle.clientId)
+        : base !== null
+          ? base.items
+          : []
+
     const bytes = writeD2sSave113c(
       {
         name: this.charName,
@@ -696,15 +719,25 @@ export class LocalKernelD2gsAdapter113c implements GameServerAdapter {
         level: Math.max(1, readStat(12, base !== null ? base.level : 1)),
         statusFlags: base !== null ? base.statusFlags : 0x20,
         progression: base !== null ? base.progression : 0,
-        activeWeapon: base !== null ? base.activeWeapon : 0,
+        activeWeapon: pPlayer !== 0 ? swapState.activeWeapon : (base !== null ? base.activeWeapon : 0),
         timestampSec: base !== null ? base.timestampSec : 0,
         ...(base !== null ? { createdTimestamp: base.createdTimestamp } : {}),
         ...(base !== null ? { lastPlayedTimestamp: base.lastPlayedTimestamp } : {}),
         hotkeys: liveHotkeys,
         leftSkill: liveLeftSkill,
         rightSkill: liveRightSkill,
-        altLeftSkill: base !== null && base.altLeftSkill !== undefined ? base.altLeftSkill : 0,
-        altRightSkill: base !== null && base.altRightSkill !== undefined ? base.altRightSkill : 0,
+        altLeftSkill:
+          pPlayer !== 0
+            ? swapState.altLeftSkill
+            : base !== null && base.altLeftSkill !== undefined
+              ? base.altLeftSkill
+              : 0,
+        altRightSkill:
+          pPlayer !== 0
+            ? swapState.altRightSkill
+            : base !== null && base.altRightSkill !== undefined
+              ? base.altRightSkill
+              : 0,
         ...(base !== null ? { appearance: base.appearance } : {}),
         ...(liveDifficultyLocation !== undefined ? { difficultyLocation: liveDifficultyLocation } : {}),
         activeDifficulty: this.difficulty,
@@ -748,7 +781,7 @@ export class LocalKernelD2gsAdapter113c implements GameServerAdapter {
           goldBank: Math.max(0, readStat(15, 0)),
         },
         skills: liveSkills,
-        items: base !== null ? base.items : [],
+        items: liveItems,
         corpseItems: base !== null && base.corpseItems !== undefined ? base.corpseItems : [],
         ...(base !== null && base.corpseX !== undefined ? { corpseX: base.corpseX } : {}),
         ...(base !== null && base.corpseY !== undefined ? { corpseY: base.corpseY } : {}),

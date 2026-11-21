@@ -1687,11 +1687,7 @@ export function ACT3Q0_InitHratliIntroQuestTable_6FD06660_113c(
   m.setU32((pQuestData + 0xd4) >>> 0, 0x6fd05450)
   m.setU32((pQuestData + 0xdc) >>> 0, 0x6fd1fe38)
   m.setU8((pQuestData + 0x0a) >>> 0, 1)
-  let pExt = m.u32((pQuestData + 0x18) >>> 0) >>> 0
-  if (pExt === 0) {
-    pExt = k2W6B6QuestHeapPtr >>> 0
-    k2W6B6QuestHeapPtr = (pExt + 0x20) >>> 0
-  }
+  const pExt = m.alloc(0x1c) >>> 0
   m.setU32((pQuestData + 0x18) >>> 0, pExt)
   for (let i = 0; i < 7; i = (i + 1) | 0) {
     m.setU32((pExt + i * 4) >>> 0, 0)

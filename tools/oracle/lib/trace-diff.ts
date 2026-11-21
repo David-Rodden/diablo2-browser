@@ -154,6 +154,17 @@ export function diffItemFrameRows(
 /**
  * Pure frame-level `s2c` uncompressed packet list comparator reusable by `replay-113c` (`diffFrame113c`) and tests.
  */
+function normalizeS2cUninitPadBytes(hex: string | null): string | null {
+  if (hex === null) return null
+  // D2Game.dll@0x6FCAD5F0..0x6FCAD661 (NET_SendPacket21_UpdateUnitSkill) writes only
+  // bytes [0..10] of the 12-byte stack buffer before queueing 0x0C bytes via 0x6FCAA3E0;
+  // byte [11] (chars 22..23) is an uninitialized MSVC stack-frame padding byte.
+  if (hex.length === 24 && hex.startsWith('21')) {
+    return `${hex.slice(0, 22)}00`
+  }
+  return hex
+}
+
 export function diffS2cFramePackets(
   goldenPkts: readonly string[] | undefined,
   actualPkts: readonly string[] | undefined,
@@ -164,8 +175,8 @@ export function diffS2cFramePackets(
   }
   const maxLen = Math.max(goldenPkts.length, actualPkts.length)
   for (let i = 0; i < maxLen; i++) {
-    const gp = goldenPkts[i]?.toLowerCase() ?? null
-    const ap = actualPkts[i]?.toLowerCase() ?? null
+    const gp = normalizeS2cUninitPadBytes(goldenPkts[i]?.toLowerCase() ?? null)
+    const ap = normalizeS2cUninitPadBytes(actualPkts[i]?.toLowerCase() ?? null)
     if (gp !== ap) {
       return { key: 's2c', id: null, field: `s2c[${i}]`, expected: goldenPkts[i] ?? null, actual: actualPkts[i] ?? null }
     }

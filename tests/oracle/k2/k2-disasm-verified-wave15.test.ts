@@ -1006,7 +1006,7 @@ describe('D2Game.dll 1.13c Disassembly Verification — Wave 15 (+122 VAs across
       D2CommonAssertError,
     )
     beginFrameS2CTrace113c()
-    expect(w11b1.OBJ_TeleportPlayerToRoomPad_6FC8BD60_113c(m, pPadObj, pPlr, pRoom)).toBe(1)
+    expect(w11b1.OBJ_TeleportPlayerToRoomPad_6FC8BD60_113c(m, pPadObj, pPlr, pRoom)).toBe(pRoom)
     const s2c07 = endFrameS2CTrace113c()
     expect(s2c07.some((hex) => hex.startsWith('07') && hex.length === 12)).toBe(true)
 

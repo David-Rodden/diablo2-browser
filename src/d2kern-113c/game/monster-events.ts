@@ -18,7 +18,12 @@ import {
   STATLIST_ExpireStateListsOnModeChange113c,
   STATES_CheckState113c,
 } from '../common/statlist.ts'
-import { UNIT_MONSTER, UNIT_PLAYER, UNITROOM_RefreshUnit113c } from '../common/unit.ts'
+import {
+  UNIT_MONSTER,
+  UNIT_PLAYER,
+  UNITROOM_RefreshUnit113c,
+  UNITS_UpdateAnimFrame113c,
+} from '../common/unit.ts'
 import { SKILLS_SetUsedSkillMemPort113c } from '../common/k0-d2common-memports.ts'
 import {
   EVENT_DeleteEventByArg14_113c,
@@ -30,7 +35,6 @@ import {
   EVENT_SetPersistentEventFull113c,
   type EventDispatchCallback113c,
 } from './timer-wheel.ts'
-import { getMonStatsRowByClassId113c } from './tables-bootstrap-113c.ts'
 import { hitD2CommonVa113c, hitD2GameVa113c } from '../va-trace-113c.ts'
 
 export const MON_EVENT_MODE_STEP = 0
@@ -417,10 +421,59 @@ export function SKILLS_SetUsedSkill113c(m: Memory113c, pUnit: number, pSkill: nu
 
 export const SKILLS_SetSkillMode113c = SKILLS_SetUsedSkill113c
 
+function safeReadU32MonEvt113c(m: Memory113c, addr: number): number {
+  try {
+    return m.u32(addr >>> 0) >>> 0
+  } catch {
+    return 0
+  }
+}
+
+function isAddrLoadedMonEvt113c(m: Memory113c, addr: number): boolean {
+  try {
+    m.u32(addr >>> 0)
+    return true
+  } catch {
+    return false
+  }
+}
+
+function shouldRunUpdateAnimFrame113c(m: Memory113c, pUnit: number, uType: number, nextMode: number): boolean {
+  if (uType === 4) return true
+  if (uType === 2) {
+    if (nextMode >= 8) return true
+    const pObjBase = safeReadU32MonEvt113c(m, 0x6fdf0b94)
+    const nObjCnt = safeReadU32MonEvt113c(m, 0x6fdf0b98) | 0
+    const cls = m.u32((pUnit + 4) >>> 0) | 0
+    return pObjBase !== 0 && cls >= 0 && cls < nObjCnt
+  }
+  const pTbl = safeReadU32MonEvt113c(m, 0x6fde9e1c)
+  if (pTbl === 0) return false
+  if (uType === 3) {
+    return safeReadU32MonEvt113c(m, (pTbl + 0xb68) >>> 0) !== 0
+  }
+  if (uType === 0 || uType === 1) {
+    if (
+      safeReadU32MonEvt113c(m, 0x6fdf0b4c) === 0 ||
+      safeReadU32MonEvt113c(m, 0x6fde461c) === 0 ||
+      safeReadU32MonEvt113c(m, 0x6fdef020) === 0 ||
+      !isAddrLoadedMonEvt113c(m, 0x6fddc7a0)
+    ) {
+      return false
+    }
+    if (uType === 0) {
+      return safeReadU32MonEvt113c(m, 0x6fdf13c4) !== 0
+    }
+    return safeReadU32MonEvt113c(m, 0x6fdf13a4) !== 0
+  }
+  return false
+}
+
 /**
  * `@va D2Common:0x6FD83920` (`D2Common.#11090` `UNITS_ChangeAnimMode`):
  * Sets `pUnit->dwAnimMode (+0x10) = nMode`, refreshes the unit in its room (`D2Common.#10158` `0x6FDB65C0`),
- * and expires mode-bound statlists (`0x6FD8AE60` with `bIsClient = 0`).
+ * expires mode-bound statlists (`0x6FD8AE60` with `bIsClient = 0`), and updates animation frame/speed/path
+ * velocity via `UNITS_UpdateAnimFrame113c` (`0x6FD835F0`).
  */
 export function UNITS_ChangeAnimMode113c(m: Memory113c, pUnit: number, nMode: number): number {
   hitD2CommonVa113c(0x6FD83920)
@@ -440,21 +493,46 @@ export function UNITS_ChangeAnimMode113c(m: Memory113c, pUnit: number, nMode: nu
   m.setU32((pUnit + 0xc4) >>> 0, (m.u32((pUnit + 0xc4) >>> 0) | 0x01) >>> 0)
   m.set(pUnit, D2UnitStrc.dwAnimMode, nextMode)
   STATLIST_ExpireStateListsOnModeChange113c(m, pUnit, 0)
+  if (shouldRunUpdateAnimFrame113c(m, pUnit, uType, nextMode)) {
+    UNITS_UpdateAnimFrame113c(m, pUnit)
+  }
   return 1
 }
 
 /**
  * `@va D2Game:0x6FC94E60` (`MONSTER_StartNeutral`, `ecx = pGame`, `edx = pModeChange { eMode=1, pUnit }`):
- * Forces `pUnit` into `MONMODE_NEUTRAL (1)` via `D2Common.#11090` (`0x6FD83920`) and, if no future
- * `Event 2` (`AI_THINK`) is scheduled past `dwGameFrame`, schedules `Event 2` at `dwGameFrame + 45`
- * (when `STATE_STUNNED = 0x15` is active) or `dwGameFrame + (aidel > 0 ? aidel : 15)`.
+ * Frees attacker combat list (`0x6FCFA750`), forces `pUnit` into `MONMODE_NEUTRAL (1)` via `D2Common.#11090`
+ * (`0x6FD83920`) and, if no future `Event 2` (`AI_THINK`) is scheduled past `dwGameFrame`, schedules `Event 2`
+ * at `dwGameFrame + 45` (when `STATE_STUNNED = 0x15` is active) or `dwGameFrame + (aidel > 0 ? aidel : 15)`
+ * using `pUnit->pMonsterData->pMonStatsTxt (+0x4F + diff)` (returning `1` without scheduling if null).
  */
 export function MONSTER_StartNeutral113c(m: Memory113c, pGame: number, pUnit: number): number {
   hitD2GameVa113c(0x6FC94E60)
   if (pGame === 0 || pUnit === 0) return 0
-  if (m.get(pUnit, D2UnitStrc.dwAnimMode) !== 1) {
-    UNITS_ChangeAnimMode113c(m, pUnit, 1)
+  if (registeredFreeAttackerCombatListFn !== undefined) {
+    registeredFreeAttackerCombatListFn(m, pUnit, pGame)
+  } else {
+    let pCur = m.u32((pUnit + 0xac) >>> 0)
+    if (pCur !== 0) {
+      const selfType = m.u32(pUnit) | 0
+      const selfGuid = m.u32((pUnit + 0x0c) >>> 0) >>> 0
+      let pPrev = 0
+      while (pCur !== 0) {
+        const pNext = m.u32((pCur + 0x84) >>> 0)
+        if (
+          (m.u32((pCur + 0x04) >>> 0) | 0) === selfType &&
+          (m.u32((pCur + 0x08) >>> 0) >>> 0) === selfGuid
+        ) {
+          if (pPrev === 0) m.setU32((pUnit + 0xac) >>> 0, pNext)
+          else m.setU32((pPrev + 0x84) >>> 0, pNext)
+        } else {
+          pPrev = pCur
+        }
+        pCur = pNext
+      }
+    }
   }
+  UNITS_ChangeAnimMode113c(m, pUnit, 1)
   const gameFrame = m.get(pGame, D2GameStrc.dwGameFrame) | 0
   const nextAiFrame = EVENT_GetNextEventFrame113c(m, pUnit, MON_EVENT_AI_THINK) | 0
   if (nextAiFrame > gameFrame) {
@@ -465,20 +543,16 @@ export function MONSTER_StartNeutral113c(m: Memory113c, pGame: number, pUnit: nu
     return 1
   }
   if (m.get(pUnit, D2UnitStrc.dwUnitType) === UNIT_MONSTER) {
-    const classId = m.get(pUnit, D2UnitStrc.dwClassId) >>> 0
-    const row = getMonStatsRowByClassId113c(classId)
-    if (row !== undefined) {
-      // 0x6FC94ED3..0x6FC94EDF: `cmp byte ptr [ebx+0x6A], 0; jnz exp; cmp dword ptr [ebx+0x74], 0; jz classic`
-      const isExp =
-        m.u8(pGame + 0x6a) !== 0 ||
-        m.u32(pGame + 0x74) !== 0 ||
-        m.get(pGame, D2GameStrc.bExpansion) !== 0
-      const rawDiff = m.get(pGame, D2GameStrc.nDifficulty) & 0xff
-      const diff: 0 | 1 | 2 = isExp ? (rawDiff >= 2 ? 2 : rawDiff === 1 ? 1 : 0) : 0
-      const rawAidel = row.aidel[diff]
-      const delay = rawAidel > 0 ? rawAidel : 15
-      EVENT_SetEventFull113c(m, pGame, pUnit, MON_EVENT_AI_THINK, (gameFrame + delay) >>> 0, 0, 0, 0)
-    }
+    const pMonData = m.get(pUnit, D2UnitStrc.pUnitData) >>> 0
+    if (pMonData === 0) return 1
+    const pMonStatsTxt = m.get(pMonData, D2MonsterDataStrc.pMonStatsTxt) >>> 0
+    if (pMonStatsTxt === 0) return 1
+    // 0x6FC94ED3..0x6FC94EF4: `cmp byte ptr [ebx+0x6A], 0; jnz exp; cmp dword ptr [ebx+0x74], 0; jz classic`
+    const isExp = m.u8((pGame + 0x6a) >>> 0) !== 0 || m.u32((pGame + 0x74) >>> 0) !== 0
+    const diff = isExp ? (m.u8((pGame + 0x6d) >>> 0) & 0xff) : 0
+    const rawAidel = m.u8((pMonStatsTxt + 0x4f + diff) >>> 0)
+    const delay = rawAidel > 0 ? rawAidel : 15
+    EVENT_SetEventFull113c(m, pGame, pUnit, MON_EVENT_AI_THINK, (gameFrame + delay) >>> 0, 0, 0, 0)
   }
   return 1
 }
@@ -824,4 +898,34 @@ export function getRegisteredAiTargetModeCallback113c(
   cbId: number,
 ): AiTargetModeCallback113c | undefined {
   return registeredAiTargetModeCallbacks.get(cbId >>> 0)
+}
+
+export type MonsterAiThinkVaHandler113c = (
+  m: Memory113c,
+  pGame: number,
+  pUnit: number,
+  pAiParam: number,
+) => void
+
+const registeredMonsterAiThinkVaHandlers = new Map<number, MonsterAiThinkVaHandler113c>()
+
+export function registerMonsterAiThinkVaHandler113c(
+  va: number,
+  fn: MonsterAiThinkVaHandler113c,
+): void {
+  registeredMonsterAiThinkVaHandlers.set(va >>> 0, fn)
+}
+
+export function getRegisteredMonsterAiThinkVaHandler113c(
+  va: number,
+): MonsterAiThinkVaHandler113c | undefined {
+  return registeredMonsterAiThinkVaHandlers.get(va >>> 0)
+}
+
+export type FreeAttackerCombatListFn113c = (m: Memory113c, pUnit: number, pGame: number) => void
+
+let registeredFreeAttackerCombatListFn: FreeAttackerCombatListFn113c | undefined
+
+export function registerFreeAttackerCombatList113c(fn: FreeAttackerCombatListFn113c): void {
+  registeredFreeAttackerCombatListFn = fn
 }

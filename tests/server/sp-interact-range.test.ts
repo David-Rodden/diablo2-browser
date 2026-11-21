@@ -5,9 +5,13 @@ import { testCharacterSaves } from '../../tools/test-characters.ts'
 
 describe('Single Player NPC range', () => {
   it('talks to an NPC from the in-between position a walk leaves the player at', async () => {
-    const lobby = new LocalLobbyProvider({ seed: 7 })
+    const lobby = new LocalLobbyProvider({ seed: 7, backend: 'legacy' })
     await lobby.importCharacterD2s(testCharacterSaves().get('TestFireSorc')!)
-    const adapter: LocalLoopbackAdapter = await lobby.enterGame({ charName: 'TestFireSorc', difficulty: 0 })
+    const adapter: LocalLoopbackAdapter = await lobby.enterGame({
+      charName: 'TestFireSorc',
+      difficulty: 0,
+      backend: 'legacy',
+    })
     const events: ServerEvent[] = []
     adapter.onEvent((event) => events.push(event))
     const player = (adapter.game as unknown as { players: Map<number, { x: number; y: number; areaId: number }> }).players.get(adapter.playerUnitId)!

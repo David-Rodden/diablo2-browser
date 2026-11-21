@@ -13,6 +13,7 @@
  */
 
 import { DRLG_ResolveMonsterSubClassIdForRoom113c } from '../common/drlg/drlg-ver.ts'
+import { D2CommonAssertError } from '../common/inline-helpers.ts'
 import { DRLG_GetActNoFromLevelId113c } from '../common/drlg/drlg.ts'
 import { DRLGPRESET_FreeSaveHeaderBlock113c } from '../common/drlg/preset.ts'
 import {
@@ -264,7 +265,7 @@ function executeMonsterModeTransition(
     if (world !== undefined) {
       return MONSTER_StartModeWorld113c(world, pMonster, mode, pTarget, 0, 0) ? 1 : 0
     }
-    return MONSTER_StartMode113c(m, pGame, pMonster, mode, pTarget, 0, 0) | 0
+    return MONSTER_StartMode113c(m, pGame, pMonster, mode, pTarget, 0, 0, byte15 & 0xff, 1) | 0
   } finally {
     k2LaneIStackPtr = savedSp
   }
@@ -632,12 +633,12 @@ export function ITEMS_GetVendorManaPotionCode_6FC2E310_113c(
   const unit = pUnit >>> 0
   const pRoom = UNITS_GetRoom113c(m, unit) >>> 0
   if (pRoom === 0) {
-    throw new Error('ITEMS_GetVendorManaPotionCode: UNITS_GetRoom == NULL (line 3424)')
+    throw new D2CommonAssertError('Items.cpp', 3424)
   }
   const nLevelId = DUNGEON_GetLevelIdFromRoom113c(m, pRoom) | 0
   let actIdx = DRLG_GetActNoFromLevelId113c(m, nLevelId) & 0xff
   if (unit === 0) {
-    throw new Error('ITEMS_GetVendorManaPotionCode: pUnit == NULL (line 2602)')
+    throw new D2CommonAssertError('Items.cpp', 2602)
   }
   const pGame = m.u32((unit + 0x80) >>> 0) >>> 0
   if (pGame !== 0) {
@@ -666,12 +667,12 @@ export function ITEMS_GetVendorHealthPotionCode_6FC2E390_113c(
   const unit = pUnit >>> 0
   const pRoom = UNITS_GetRoom113c(m, unit) >>> 0
   if (pRoom === 0) {
-    throw new Error('ITEMS_GetVendorHealthPotionCode: UNITS_GetRoom == NULL (line 3393)')
+    throw new D2CommonAssertError('Items.cpp', 3393)
   }
   const nLevelId = DUNGEON_GetLevelIdFromRoom113c(m, pRoom) | 0
   let actIdx = DRLG_GetActNoFromLevelId113c(m, nLevelId) & 0xff
   if (unit === 0) {
-    throw new Error('ITEMS_GetVendorHealthPotionCode: pUnit == NULL (line 2602)')
+    throw new D2CommonAssertError('Items.cpp', 2602)
   }
   const pGame = m.u32((unit + 0x80) >>> 0) >>> 0
   if (pGame !== 0) {
@@ -1623,13 +1624,13 @@ export function MONREG_IsMonsterDeadAtCoords_6FC3EE50_113c(
   const x = nX | 0
   const y = nY | 0
   if (game === 0) {
-    throw new Error('MONREG_IsMonsterDeadAtCoords: pGame == NULL (line 1755)')
+    throw new D2CommonAssertError('0x6fd19ff9', 0x6db)
   }
   if (originRoom === 0) {
-    throw new Error('MONREG_IsMonsterDeadAtCoords: pOriginRoom == NULL (line 1756)')
+    throw new D2CommonAssertError('0x6fd19ff9', 0x6dc)
   }
   if (x === 0 || y === 0) {
-    throw new Error('MONREG_IsMonsterDeadAtCoords: nX == 0 || nY == 0 (line 1757)')
+    throw new D2CommonAssertError('0x6fd19ff9', 0x6dd)
   }
 
   let pRoom = ROOM_FindRoomContainingSubtile113c(m, originRoom, x, y) >>> 0

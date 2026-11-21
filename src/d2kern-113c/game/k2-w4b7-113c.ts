@@ -91,6 +91,7 @@ import {
   EVENT_FreeNode113c,
   EVENT_SetEventFull113c,
 } from './timer-wheel.ts'
+import { registerMonsterAiThinkVaHandler113c } from './monster-events.ts'
 import {
   ANIMSEQ_GetUnitSeqFrameCountFp8_113c,
   ANIMSEQ_GetUnitSeqRecordPtr113c,
@@ -363,10 +364,18 @@ export function MONAI_NestOrMeleeWanderThink_6FCC5B30_113c(
     }
     if (!blockedByFlag && MONSTATS2_CheckModeBit113c(m, nClassId, 4) !== 0) {
       SKILLS_SetUsedSkillMemPort113c(m, pUnit >>> 0, 0)
+      let pathTypeArg = 0x64
       if (pUnit !== 0) {
-        MONSTATS2_GetRecordPtr113c(m, m.u32((pUnit + 0x04) >>> 0) | 0)
+        const pMon2 = MONSTATS2_GetRecordPtr113c(m, m.u32((pUnit + 0x04) >>> 0) | 0) >>> 0
+        if (pMon2 !== 0) {
+          const pMasks = m.u32(D2GAME_IAT_GDW_BITMASKS_VA_113C) >>> 0
+          const mask4 = pMasks !== 0 ? m.u32((pMasks + 0x10) >>> 0) : 0x10
+          if ((m.u8((pMon2 + 0x104) >>> 0) & mask4) !== 0) {
+            pathTypeArg = 0x65
+          }
+        }
       }
-      MONSTER_StartMode113c(m, pGame >>> 0, pUnit >>> 0, 4, pTarget, 0, 0)
+      MONSTER_StartMode113c(m, pGame >>> 0, pUnit >>> 0, 4, pTarget, 0, 0, pathTypeArg)
       return
     }
   }
@@ -1320,7 +1329,7 @@ export function ITEMMODS_ApplyAttackerTakesFireDamage_6FCCD7B0_113c(
     m.setU16((sp + 0x04) >>> 0, (m.u16((sp + 0x04) >>> 0) | 0x4021) & 0xffff);
     m.setU32((sp + 0x10) >>> 0, (fireVal << 8) >>> 0);
     m.setU32((sp + 0x60) >>> 0, 0x2d);
-    SUNITDMG_ApplyDamage113c(m, pGame, pUnit, pAttacker, sp);
+    SUNITDMG_ApplyDamage113c(m, pGame, pUnit, pAttacker, sp, 1, undefined, 1);
     SUNITDMG_ApplySideEffectsAndKill113c(m, pGame, pUnit, pAttacker, sp);
     return 1;
   } finally {
@@ -1360,7 +1369,7 @@ export function ITEMMODS_ApplyAttackerTakesLightningDamage_6FCCD860_113c(
     m.setU16((sp + 0x04) >>> 0, (m.u16((sp + 0x04) >>> 0) | 0x4021) & 0xffff);
     m.setU32((sp + 0x1c) >>> 0, (ltngVal << 8) >>> 0);
     m.setU32((sp + 0x60) >>> 0, 0x4d);
-    SUNITDMG_ApplyDamage113c(m, pGame, pUnit, pAttacker, sp);
+    SUNITDMG_ApplyDamage113c(m, pGame, pUnit, pAttacker, sp, 1, undefined, 1);
     SUNITDMG_ApplySideEffectsAndKill113c(m, pGame, pUnit, pAttacker, sp);
     return 1;
   } finally {
@@ -2494,3 +2503,5 @@ export function MONSTER_LockTargetUnitIntoSkillParamsAndSetPathPos_6FCD36A0_113c
   PATH_SetTargetPos113c(m, m.u32((pUnit + 0x2c) >>> 0), targetX, targetY);
   return 1;
 }
+
+registerMonsterAiThinkVaHandler113c(0x6fcc5b30, MONAI_NestOrMeleeWanderThink_6FCC5B30_113c);

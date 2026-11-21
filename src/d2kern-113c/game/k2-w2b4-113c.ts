@@ -75,17 +75,17 @@ import { hitD2GameVa113c } from '../va-trace-113c.ts'
 /** `D2Game.dll` `.data` `0x6FD274A8`: `gpSrvDoFuncTable[0..0xBE]` (`uint32[191]`). */
 export const D2GAME_SRVDOFUNC_TABLE_VA_113C = 0x6fd274a8
 
-/** `D2Game.dll` `.data` `0x6FD2F0EC`: count of item command flags cleared by `0x6FCBB340`. */
-export const D2GAME_ITEM_CLEAR_CMD_FLAGS_COUNT_VA_113C = 0x6fd2f0ec
+/** `D2Game.dll` `.data` `0x6FD2F0C8`: count of item command flags cleared by `0x6FCBB340` (`0x6FC2A65E`). */
+export const D2GAME_ITEM_CLEAR_CMD_FLAGS_COUNT_VA_113C = 0x6fd2f0c8
 
-/** `D2Game.dll` `.data` `0x6FD2F0F0`: array of item command flags cleared by `0x6FCBB340`. */
-export const D2GAME_ITEM_CLEAR_CMD_FLAGS_ARRAY_VA_113C = 0x6fd2f0f0
+/** `D2Game.dll` `.data` `0x6FD2F0CC`: array of item command flags cleared by `0x6FCBB340` (`0x6FC2A65E`). */
+export const D2GAME_ITEM_CLEAR_CMD_FLAGS_ARRAY_VA_113C = 0x6fd2f0cc
 
-/** `D2Game.dll` `.data` `0x6FD2F0C8`: count of item flags cleared by `0x6FCBB340`. */
-export const D2GAME_ITEM_CLEAR_FLAGS_COUNT_VA_113C = 0x6fd2f0c8
+/** `D2Game.dll` `.data` `0x6FD2F0EC`: count of item flags cleared by `0x6FCBB340` (`0x6FC2A916`). */
+export const D2GAME_ITEM_CLEAR_FLAGS_COUNT_VA_113C = 0x6fd2f0ec
 
-/** `D2Game.dll` `.data` `0x6FD2F0CC`: array of item flags cleared by `0x6FCBB340`. */
-export const D2GAME_ITEM_CLEAR_FLAGS_ARRAY_VA_113C = 0x6fd2f0cc
+/** `D2Game.dll` `.data` `0x6FD2F0F0`: array of item flags cleared by `0x6FCBB340` (`0x6FC2A916`). */
+export const D2GAME_ITEM_CLEAR_FLAGS_ARRAY_VA_113C = 0x6fd2f0f0
 
 /** Optional host callbacks for pool allocation/deallocation and indirect `SrvDoFunc` dispatch. */
 export interface K2W2B4Hooks113c {
@@ -895,17 +895,17 @@ export function ITEMS_ClearAllDupeAndCommandFlags_6FCBB340_113c(
   if (pItem !== 0) {
     m.setU32((pItem + 0xc8) >>> 0, (m.u32((pItem + 0xc8) >>> 0) & 0xffffffeb) >>> 0)
   }
-  let nCmdFlagsCount = m.u32(D2GAME_ITEM_CLEAR_CMD_FLAGS_COUNT_VA_113C) >>> 0
-  for (let i = 0; (i >>> 0) < nCmdFlagsCount; i = (i + 1) | 0) {
-    const dwCmdFlag = m.u32((D2GAME_ITEM_CLEAR_CMD_FLAGS_ARRAY_VA_113C + (i << 2)) >>> 0)
-    ITEMS_SetOrClearCommandFlags113c(m, pItem >>> 0, dwCmdFlag, 0)
-    nCmdFlagsCount = m.u32(D2GAME_ITEM_CLEAR_CMD_FLAGS_COUNT_VA_113C) >>> 0
-  }
   let nItemFlagsCount = m.u32(D2GAME_ITEM_CLEAR_FLAGS_COUNT_VA_113C) >>> 0
   for (let i = 0; (i >>> 0) < nItemFlagsCount; i = (i + 1) | 0) {
     const dwItemFlag = m.u32((D2GAME_ITEM_CLEAR_FLAGS_ARRAY_VA_113C + (i << 2)) >>> 0)
     ITEMS_SetItemFlag113c(m, pItem >>> 0, dwItemFlag, 0)
     nItemFlagsCount = m.u32(D2GAME_ITEM_CLEAR_FLAGS_COUNT_VA_113C) >>> 0
+  }
+  let nCmdFlagsCount = m.u32(D2GAME_ITEM_CLEAR_CMD_FLAGS_COUNT_VA_113C) >>> 0
+  for (let i = 0; (i >>> 0) < nCmdFlagsCount; i = (i + 1) | 0) {
+    const dwCmdFlag = m.u32((D2GAME_ITEM_CLEAR_CMD_FLAGS_ARRAY_VA_113C + (i << 2)) >>> 0)
+    ITEMS_SetOrClearCommandFlags113c(m, pItem >>> 0, dwCmdFlag, 0)
+    nCmdFlagsCount = m.u32(D2GAME_ITEM_CLEAR_CMD_FLAGS_COUNT_VA_113C) >>> 0
   }
 }
 

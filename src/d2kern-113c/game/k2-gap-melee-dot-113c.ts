@@ -238,6 +238,7 @@ export const D2GAME_MISSILE_COLLIDE_MODES_113C: readonly { pfn: number; mask: nu
   { pfn: 0x6fc5add0, mask: 0x104 },
   { pfn: 0x00000000, mask: 0x004 },
   { pfn: 0x6fc59510, mask: 0x040 },
+  { pfn: 0x6fc5ad30, mask: 0x185 },
 ]
 
 /** Scratch buffer base inside deterministic scratch page space for stack-local structs (`D2DamageStrc`, extended stats, bitstreams). */
@@ -2023,7 +2024,7 @@ export function MISSILE_SrvDo01_LinearProjectile113c(
   if ((MISSILE_GetRemainingFrames113c(m, ebx) | 0) > actFrame) return 1
   if ((lastColMask & 0xffff) === 0) return 1
 
-  const modeEntry = colMode >= 0 && colMode < 8 ? D2GAME_MISSILE_COLLIDE_MODES_113C[colMode]! : { pfn: 0, mask: 0 }
+  const modeEntry = colMode >= 0 && colMode < 9 ? D2GAME_MISSILE_COLLIDE_MODES_113C[colMode]! : { pfn: 0, mask: 0 }
   if (modeEntry.pfn === 0) return 2
 
   const pOwner = SUNIT_GetOwnerUnit113c(m, ebx, ediGame)
@@ -2463,7 +2464,7 @@ export function MISSILE_CreateServerProjectile113c(
   PATH_SetCollisionMask113c(m, ediPath, colMask)
 
   const moveTestMask =
-    nCollideType < 8 ? D2GAME_MISSILE_COLLIDE_MODES_113C[nCollideType]!.mask : 0
+    nCollideType < 9 ? D2GAME_MISSILE_COLLIDE_MODES_113C[nCollideType]!.mask : 0
   PATH_SetMoveTestCollisionMask113c(m, ediPath, moveTestMask)
 
   if ((readGdwBitMaskU8_113c(m, 0x10) & m.u8((pMisTxt + 0x04) >>> 0)) !== 0) {

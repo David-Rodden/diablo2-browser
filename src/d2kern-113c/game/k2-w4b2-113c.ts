@@ -4,6 +4,7 @@
  */
 
 import { UNITS_GetPlayerData113c } from '../common/composit.ts'
+import { D2CommonAssertError } from '../common/inline-helpers.ts'
 import { DRLG_GetActNoFromLevelId113c } from '../common/drlg/drlg.ts'
 import { MONSTER_CheckMonTypeFlag0x20_113c } from '../common/drlg/drlg-ver.ts'
 import { DRLGPRESET_MovePointerAndClear113c } from '../common/drlg/preset.ts'
@@ -988,15 +989,6 @@ export function MISSILE_SrvDo_LinearWithTrailingCalc80SubMissile_6FC61B80_113c(
   return MISSILE_SrvDo01_LinearProjectile113c(m, pMissile, pGame)
 }
 
-let k2W4B2HeapPtr = 0x7ef88000
-
-function allocHeapW4B2(nBytes: number): number {
-  const size = Math.max(4, (nBytes + 3) & ~3)
-  const ptr = k2W4B2HeapPtr
-  k2W4B2HeapPtr = (ptr + size) >>> 0
-  return ptr >>> 0
-}
-
 /**
  * @va D2Game:0x6FC61C30
  */
@@ -1239,14 +1231,14 @@ export function CLIENTS_AppendSaveDataChunk_6FC6A190_113c(
       const curLen = m.u32((pClient + 0x180) >>> 0)
       let pDst = 0
       if (curLen === 0) {
-        pDst = allocHeapW4B2(nTotalSize >>> 0)
+        pDst = m.alloc(nTotalSize >>> 0) >>> 0
         m.setU32((pClient + 0x17c) >>> 0, pDst >>> 0)
       } else {
         pDst = (m.u32((pClient + 0x17c) >>> 0) + curLen) >>> 0
       }
       const newLen = (curLen + nChunkSize) >>> 0
       if ((newLen | 0) > (nTotalSize | 0)) {
-        throw new Error('D2Game_6FC6A190: save buffer overflow')
+        throw new D2CommonAssertError('0x6fd19ff9', 0xb1b)
       }
       for (let i = 0; i < (nChunkSize >>> 0); i++) {
         m.setU8((pDst + i) >>> 0, m.u8((pChunkData + i) >>> 0))
@@ -1283,7 +1275,7 @@ export function CLIENTS_CollectAndRecordNearbyPlayerPositions_6FC6AD80_113c(
   hitD2GameVa113c(0x6FC6AD80)
   const pRoom = m.u32((pClient + 0x1b4) >>> 0);
   if (pRoom === 0) {
-    throw new Error('D2Game_6FC6AD80: pRoom is null');
+    throw new D2CommonAssertError('0x6fd19ff9', 0x6f7);
   }
   const sp = k2W4B2StackPtr;
   k2W4B2StackPtr = (sp + 0x2b0) >>> 0;
@@ -1295,7 +1287,7 @@ export function CLIENTS_CollectAndRecordNearbyPlayerPositions_6FC6AD80_113c(
     DUNGEON_GetAdjacentRoomsListFromRoom113c(m, pRoom, pppRooms, pCount);
     const ppRooms = m.u32(pppRooms);
     if (ppRooms === 0) {
-      throw new Error('D2Game_6FC6AD80: ppRooms is null');
+      throw new D2CommonAssertError('0x6fd19ff9', 0x6f9);
     }
     const pPlayer = CLIENTS_GetPlayerUnit113c(m, pClient, 0);
     if (pPlayer === 0) {
@@ -1478,8 +1470,8 @@ export function SKILLS_SrvDo_CorpseRing16SubMissiles_6FC70190_113c(
 export function PLAYERSAVE_WriteInventoryOrCachedSaveBuffer_6FC73B40_113c(
   m: D2KernMemory113c,
   pPlayerUnit: number,
+  pGame: number,
   pBuffer: number,
-  pOutCurEnd: number,
   nMaxBytes: number,
   bUseCached5C: number,
   arg4: number,
@@ -1509,7 +1501,7 @@ export function PLAYERSAVE_WriteInventoryOrCachedSaveBuffer_6FC73B40_113c(
     m,
     pBuffer,
     m.u32((pPlayerUnit + 0x60) >>> 0),
-    pOutCurEnd,
+    pGame,
     pPlayerUnit,
     nMaxBytes,
     bUseCached5C,
@@ -2041,7 +2033,7 @@ export function ACT5Q3_FindQuest21AndThawFrozenAnya_6FC7DEF0_113c(
   const dwMonsterId = m.u32((pQuestData + 0x9c) >>> 0);
   const pQuestGame = m.u32((pQuest + 0x04) >>> 0);
   if (pQuestGame === 0) {
-    throw new Error('D2Game_6FC7DEF0: pQuestGame is null');
+    throw new D2CommonAssertError('0x6fd19ff9', 0x2d3);
   }
   let pMonster = m.u32((pQuestGame + 0x1320 + (dwMonsterId & 0x7f) * 4) >>> 0);
   while (pMonster !== 0) {

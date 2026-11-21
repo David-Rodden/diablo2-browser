@@ -1881,6 +1881,10 @@ export function ACT4Q2_InitQuestData_6FCDAD40_113c(
   for (let i = 0; i < 15; i++) {
     m.setU32(pQuest + 0xa0 + i * 4, 0);
   }
+  m.setU32(pQuest + 0x18, 0);
+  m.setU8(pQuest + 0x0b, 0);
+  m.setU8(pQuest + 0x0c, 0);
+  m.setU32(pQuest + 0xe8, 0);
   m.setU32(pQuest + 0xa0, 0x6fcd8ce0);
   m.setU32(pQuest + 0xec, 0x6fcd8810);
   m.setU32(pQuest + 0xdc, 0x6fd26b38);
@@ -1899,14 +1903,10 @@ export function ACT4Q2_InitQuestData_6FCDAD40_113c(
   m.setU32(pQuest + 0xe0, 0x1b);
   m.setU8(pQuest + 0x0d, 4);
 
-  let pState = m.u32(pQuest + 0x18);
-  if (pState === 0) {
-    pState = allocHeapW15B1_113c(m, 0x20);
-    m.setU32(pQuest + 0x18, pState);
-  } else {
-    for (let i = 0; i < 8; i++) {
-      m.setU32(pState + i * 4, 0);
-    }
+  const pState = allocHeapW15B1_113c(m, 0x20);
+  m.setU32(pQuest + 0x18, pState);
+  for (let i = 0; i < 8; i++) {
+    m.setU32(pState + i * 4, 0);
   }
 }
 
@@ -2414,7 +2414,7 @@ export function ACT2Q2_OnHoradricStaffOrificeActivate_6FCE9CB0_113c(
     const pMissilesTxt = m.u32(pDataTables + 0xb64);
     if (pMissilesTxt !== 0) {
       const nRange = ((m.u16((pMissilesTxt + 0x22a88 + 0x96) >>> 0) << 16) >> 16);
-      nTimerDelay = Math.trunc((nRange - 0x4b) / 25);
+      nTimerDelay = Math.trunc((nRange - 0x4b) / 20);
     }
   }
 

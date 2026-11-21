@@ -23,6 +23,7 @@ import {
   DUNGEON_SetRoomFlag2_113c,
 } from '../common/dungeon.ts'
 import { imul32 } from '../common/int-math.ts'
+import { D2CommonAssertError } from '../common/inline-helpers.ts'
 import { DRLGWARP_TestRoomTileBit113c } from '../common/items.ts'
 import {
   DUNGEON_CheckRoomIsTownMemPort113c,
@@ -956,11 +957,11 @@ export function GAME_LeaveGameCriticalSection_6FC49BA0_113c(
   hitD2GameVa113c(0x6FC49BA0)
   const game = pGame >>> 0
   if (game === 0) {
-    throw new Error('GAME_LeaveGameCriticalSection_6FC49BA0_113c: pGame == NULL (line 4110)')
+    throw new D2CommonAssertError('Game.cpp', 4110)
   }
   const pLock = m.u32((game + 0x18) >>> 0) >>> 0
   if (pLock === 0) {
-    throw new Error('GAME_LeaveGameCriticalSection_6FC49BA0_113c: pLock == NULL (line 4111)')
+    throw new D2CommonAssertError('Game.cpp', 4111)
   }
   if (hooks !== undefined && hooks.onLeaveCriticalSection !== undefined) {
     hooks.onLeaveCriticalSection(m, pLock)
@@ -1035,7 +1036,7 @@ export function GAME_CommitGlobalGameSlot_6FC4A2D0_113c(
   const slot = wSlotIndex & 0xffff
   const addr = (D2GAME_GLOBAL_GAME_SLOTS_VA_113C + slot * 4) >>> 0
   if (m.u32(addr) !== 0xffffffff) {
-    throw new Error('GAME_CommitGlobalGameSlot_6FC4A2D0_113c: slot != -1 (line 389)')
+    throw new D2CommonAssertError('Game.cpp', 389)
   }
   m.setU32(addr, dwGameValue >>> 0)
   if (hooks !== undefined && hooks.onLeaveCriticalSection !== undefined) {
@@ -1058,7 +1059,7 @@ export function CLIENT_SelectFlag20ClientCallback_6FC4A700_113c(
   hitD2GameVa113c(0x6FC4A700)
   const client = pClient >>> 0
   if (client === 0) {
-    throw new Error('CLIENT_SelectFlag20ClientCallback_6FC4A700_113c: pClient == NULL (line 2982)')
+    throw new D2CommonAssertError('Clients.cpp', 2982)
   }
   if ((m.u8((client + 0x3d4) >>> 0) & 0x20) !== 0) {
     m.setU32(ppOutClient >>> 0, client)
@@ -1085,9 +1086,7 @@ export function CLIENT_SendUnitRemoveIfInNearRoom_6FC4A9F0_113c(
   const pUnitRoom = UNITS_GetRoom113c(m, unit) >>> 0
   const pClientRoom = m.u32((client + 0x1b4) >>> 0) >>> 0
   if (pClientRoom === 0) {
-    throw new Error(
-      'CLIENT_SendUnitRemoveIfInNearRoom_6FC4A9F0_113c: pClient->pRoom == NULL (line 5483)',
-    )
+    throw new D2CommonAssertError('Clients.cpp', 5483)
   }
 
   const savedSp = k2LaneJStackPtr
@@ -1104,9 +1103,7 @@ export function CLIENT_SendUnitRemoveIfInNearRoom_6FC4A9F0_113c(
     for (let i = 0; i < nNear; i++) {
       const pAdj = m.u32((pRoomsArr + i * 4) >>> 0) >>> 0
       if (pAdj === 0) {
-        throw new Error(
-          'CLIENT_SendUnitRemoveIfInNearRoom_6FC4A9F0_113c: ppRoomsNear[i] == NULL (line 5488)',
-        )
+        throw new D2CommonAssertError('Clients.cpp', 5488)
       }
       if (pUnitRoom === pAdj) {
         found = true
@@ -1144,9 +1141,7 @@ export function CLIENT_BroadcastPlayerLeftPacket5C_6FC4BED0_113c(
   hitD2GameVa113c(0x6FC4BED0)
   const client = pLeavingClient >>> 0
   if (client === 0) {
-    throw new Error(
-      'CLIENT_BroadcastPlayerLeftPacket5C_6FC4BED0_113c: pLeavingClient == NULL (line 251)',
-    )
+    throw new D2CommonAssertError('Clients.cpp', 251)
   }
   let pPlayerUnit = 0
   if ((m.u8((client + 0x3d4) >>> 0) & 1) !== 0) {
@@ -1405,7 +1400,7 @@ export function OBJECTS_InitFn57_InitSpecialChest_6FC4EF50_113c(
   OBJECTS_InitChestLockAndSeed113c(m, initPtr)
   const pObject = m.u32((initPtr + 0x04) >>> 0) >>> 0
   if (pObject === 0) {
-    throw new Error('OBJECTS_InitFn57_InitSpecialChest_6FC4EF50_113c: pObject == NULL (line 2632)')
+    throw new D2CommonAssertError('ObjMode.cpp', 2632)
   }
   m.setU8((pObject + 0x78) >>> 0, 1)
 }
@@ -1432,9 +1427,7 @@ export function OBJECTS_SpawnSingleDensityObjectInRoom_6FC52BC0_113c(
   hitD2GameVa113c(0x6FC52BC0)
   const densByte = nDensity & 0xff
   if (densByte > 0x80) {
-    throw new Error(
-      'OBJECTS_SpawnSingleDensityObjectInRoom_6FC52BC0_113c: nDensity > 128 (line 2195)',
-    )
+    throw new D2CommonAssertError('ObjMode.cpp', 2195)
   }
   const game = pGame >>> 0
   const room = pRoom >>> 0
@@ -1547,7 +1540,7 @@ export function OBJECTS_InitFn11_InitTownPortal_6FC53330_113c(
   const actNo = DRLG_GetActNoFromLevelId113c(m, levelId) & 0xff
   const townLevelId = DUNGEON_GetActLevelId113c(m, actNo) | 0
   if (townLevelId > 0xff) {
-    throw new Error('OBJECTS_InitFn11_InitTownPortal_6FC53330_113c: townLevelId > 255 (line 1135)')
+    throw new D2CommonAssertError('ObjMode.cpp', 1135)
   }
   const pObject0 = m.u32((initPtr + 0x04) >>> 0) >>> 0
   const pObjData = m.u32((pObject0 + 0x14) >>> 0) >>> 0
@@ -1715,7 +1708,7 @@ export function QUESTS_CheckGlobalQuestState_6FC538D0_113c(
   hitD2GameVa113c(0x6FC538D0)
   const pQuestCtrl = m.u32(((pGame >>> 0) + 0x10f4) >>> 0) >>> 0
   if (m.u32((pQuestCtrl + 0x08) >>> 0) === 0) {
-    throw new Error('QUESTS_CheckGlobalQuestState_6FC538D0_113c: bInitialized == 0 (line 2092)')
+    throw new D2CommonAssertError('Quests.cpp', 2092)
   }
   const pQuestFlags = m.u32((pQuestCtrl + 0x0c) >>> 0) >>> 0
   return DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, nQuestId | 0, nState | 0)
@@ -1736,7 +1729,7 @@ export function QUESTS_SetGlobalQuestState_6FC53920_113c(
   hitD2GameVa113c(0x6FC53920)
   const pQuestCtrl = m.u32(((pGame >>> 0) + 0x10f4) >>> 0) >>> 0
   if (m.u32((pQuestCtrl + 0x08) >>> 0) === 0) {
-    throw new Error('QUESTS_SetGlobalQuestState_6FC53920_113c: bInitialized == 0 (line 2080)')
+    throw new D2CommonAssertError('Quests.cpp', 2080)
   }
   const pQuestFlags = m.u32((pQuestCtrl + 0x0c) >>> 0) >>> 0
   QUESTRECORD_SetQuestState113c(m, pQuestFlags, nQuestId | 0, nState | 0)
@@ -1757,11 +1750,11 @@ export function QUESTS_CheckNotIntro_6FC53970_113c(
   hitD2GameVa113c(0x6FC53970)
   const game = pGame >>> 0
   if (game === 0) {
-    throw new Error('QUESTS_CheckNotIntro_6FC53970_113c: pGame == NULL (line 1987)')
+    throw new D2CommonAssertError('Quests.cpp', 1987)
   }
   const pQuestCtrl = m.u32((game + 0x10f4) >>> 0) >>> 0
   if (m.u32((pQuestCtrl + 0x08) >>> 0) === 0) {
-    throw new Error('QUESTS_CheckNotIntro_6FC53970_113c: bInitialized == 0 (line 1989)')
+    throw new D2CommonAssertError('Quests.cpp', 1989)
   }
   let pQuest = m.u32(pQuestCtrl) >>> 0
   const target = nQuestNo >>> 0
@@ -1818,7 +1811,7 @@ export function QUESTS_ResolveDefaultStatusByte_6FC53A30_113c(
   const hasState0D = DRLGWARP_TestRoomTileBit113c(m, qFlags, seqId1, 0x0d)
   if (hasState0D === 1) {
     if ((m.u32((quest + 0xe0) >>> 0) | 0) >= 0x29) {
-      throw new Error('QUESTS_ResolveDefaultStatusByte_6FC53A30_113c: nQuestNo >= 41 (line 1109)')
+      throw new D2CommonAssertError('Quests.cpp', 1109)
     }
     m.setU8(outPtr, m.u8((quest + 0x0b) >>> 0))
     return
@@ -1863,7 +1856,7 @@ export function QUESTS_AppendQuestTimer_6FC53AF0_113c(
   const pQuestCtrl = m.u32((pGame + 0x10f4) >>> 0) >>> 0
   if (pQuestCtrl === 0) return
   if (m.u32((pQuestCtrl + 0x04) >>> 0) !== 0) {
-    throw new Error('QUESTS_AppendQuestTimer_6FC53AF0_113c: bExecuting != 0 (line 1047)')
+    throw new D2CommonAssertError('Quests.cpp', 1047)
   }
   m.u32((pGame + 0x1c) >>> 0)
   const oldHead = m.u32((pQuestCtrl + 0x10) >>> 0) >>> 0
@@ -1905,9 +1898,7 @@ export function QUESTS_DispatchUnitChainCallbacks_6FC53C70_113c(
     if (pfn !== 0) {
       if (m.u8((pQuest + 0x0a) >>> 0) === 1 || force !== 0) {
         if (checkIsBadCodePtr113c(pfn, hooks) !== 0) {
-          throw new Error(
-            'QUESTS_DispatchUnitChainCallbacks_6FC53C70_113c: IsBadCodePtr (line 574)',
-          )
+          throw new D2CommonAssertError('Quests.cpp', 574)
         }
         const pQuestCall = m.u32(pNode) >>> 0
         const cbIdxCall = m.u32((argPtr + 0x04) >>> 0) >>> 0
@@ -1932,7 +1923,7 @@ export function QUESTS_GetQuestSeedPtr_6FC53D90_113c(
   hitD2GameVa113c(0x6FC53D90)
   const pQuestCtrl = m.u32(((pGame >>> 0) + 0x10f4) >>> 0) >>> 0
   if (pQuestCtrl === 0) {
-    throw new Error('QUESTS_GetQuestSeedPtr_6FC53D90_113c: pQuestControl == NULL (line 507)')
+    throw new D2CommonAssertError('Quests.cpp', 507)
   }
   return (pQuestCtrl + 0x18) >>> 0
 }
@@ -1952,7 +1943,7 @@ export function QUESTS_GetQuestData_6FC53F30_113c(
   hitD2GameVa113c(0x6FC53F30)
   const pQuestCtrl = m.u32(((pGame >>> 0) + 0x10f4) >>> 0) >>> 0
   if ((nQuestId | 0) < 0) {
-    throw new Error('QUESTS_GetQuestData_6FC53F30_113c: nQuestId < 0 (line 119)')
+    throw new D2CommonAssertError('Quests.cpp', 119)
   }
   if (pQuestCtrl === 0) return 0
   let pQuest = m.u32(pQuestCtrl) >>> 0
@@ -1985,7 +1976,7 @@ export function QUESTS_AttachQuestToUnit_6FC53F80_113c(
   const unit = pUnit >>> 0
   let pCur = m.u32((unit + 0x74) >>> 0) >>> 0
   if (quest === 0) {
-    throw new Error('QUESTS_AttachQuestToUnit_6FC53F80_113c: pQuest == NULL (line 93)')
+    throw new D2CommonAssertError('Quests.cpp', 93)
   }
   while (pCur !== 0) {
     const curQuest = m.u32(pCur) >>> 0
@@ -2048,9 +2039,7 @@ export function OBJECTS_InitFn23_SyncQuest0FObjectAnimMode_6FC54370_113c(
     pQuest = m.u32((pQuest + 0xf4) >>> 0) >>> 0
   }
   if (pQuest === 0) {
-    throw new Error(
-      'OBJECTS_InitFn23_SyncQuest0FObjectAnimMode_6FC54370_113c: quest 15 not found (line 2435)',
-    )
+    throw new D2CommonAssertError('ObjMode.cpp', 2435)
   }
   const bNotIntro = m.u8((pQuest + 0x09) >>> 0)
   const pObject = m.u32((initPtr + 0x04) >>> 0) >>> 0
@@ -2095,10 +2084,10 @@ export function QUESTS_TriggerItemPickedUp_6FC54510_113c(
     while (pNode !== 0) {
       const pQuest = m.u32(pNode) >>> 0
       const cbIdx = m.u32((pQuestArg + 0x04) >>> 0) >>> 0
-      const pfn = m.u32((pQuest + cbIdx * 4 + 0xa0) >>> 0) >>> 0
+      const pfn = pQuest !== 0 ? (m.u32((pQuest + cbIdx * 4 + 0xa0) >>> 0) >>> 0) : 0
       if (pfn !== 0 && m.u8((pQuest + 0x0a) >>> 0) === 1) {
         if (checkIsBadCodePtr113c(pfn, hooks) !== 0) {
-          throw new Error('QUESTS_TriggerItemPickedUp_6FC54510_113c: IsBadCodePtr (line 574)')
+          throw new D2CommonAssertError('Quests.cpp', 574)
         }
         const pQuestCall = m.u32(pNode) >>> 0
         const cbIdxCall = m.u32((pQuestArg + 0x04) >>> 0) >>> 0
@@ -2145,10 +2134,10 @@ export function QUESTS_TriggerItemDropped_6FC545A0_113c(
     while (pNode !== 0) {
       const pQuest = m.u32(pNode) >>> 0
       const cbIdx = m.u32((pQuestArg + 0x04) >>> 0) >>> 0
-      const pfn = m.u32((pQuest + cbIdx * 4 + 0xa0) >>> 0) >>> 0
+      const pfn = pQuest !== 0 ? (m.u32((pQuest + cbIdx * 4 + 0xa0) >>> 0) >>> 0) : 0
       if (pfn !== 0 && m.u8((pQuest + 0x0a) >>> 0) === 1) {
         if (checkIsBadCodePtr113c(pfn, hooks) !== 0) {
-          throw new Error('QUESTS_TriggerItemDropped_6FC545A0_113c: IsBadCodePtr (line 574)')
+          throw new D2CommonAssertError('Quests.cpp', 574)
         }
         const pQuestCall = m.u32(pNode) >>> 0
         const cbIdxCall = m.u32((pQuestArg + 0x04) >>> 0) >>> 0

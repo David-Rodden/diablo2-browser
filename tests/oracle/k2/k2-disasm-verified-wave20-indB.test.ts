@@ -629,12 +629,12 @@ describe('K2 Wave 20 (indirectUnknown Batch B): 11 D2Game.dll v1.13c PE32 verifi
     }
   })
 
-  it('2. 0x6FC3BDF0 regression: preserves mode 12 (DEAD) after AI_Stall113c and dispatches Anya vs Cain targets', () => {
+  it('2. 0x6FC3BDF0 regression: kills to mode 12 (DEAD) then transitions via AI_Stall113c (0x6FD122C0) and dispatches Anya vs Cain targets', () => {
     const { m, pGame, pRoom } = createWave20World()
     const { pMon: pAnya } = allocMonsterUnit(m, pGame, pRoom, 0x20f, 101, 110, 112)
     STATLIST_SetUnitStat113c(m, pAnya, 6, 500, 0)
 
-    // Pre-mark Anya quest position unrecorded so ACT5Q3_RecordAnyaPosition returns 0 -> triggers spawn & mode 12
+    // Pre-mark Anya quest position unrecorded so ACT5Q3_RecordAnyaPosition returns 0 -> triggers spawn, mode 12, then AI_Stall(1)
     beginVaTrace113c()
     const res = AI_HandleSpecialQuestNpcCmd3_6FC3BDF0_113c(m, pAnya, pGame)
     const hits = endVaTrace113c()
@@ -645,9 +645,11 @@ describe('K2 Wave 20 (indirectUnknown Batch B): 11 D2Game.dll v1.13c PE32 verifi
     expect(hits.has('D2Game:0x6FC7CC30')).toBe(true)
     expect(hits.has('D2Game:0x6FD121E0')).toBe(true)
     expect(hits.has('D2Game:0x6FD122C0')).toBe(true)
-    // HP zeroed and mode 12 NOT clobbered back to mode 1 by AI_Stall113c
+    // Per real D2Game.dll (0x6FD122C0 -> 0x6FC95E10 -> 0x6FC94E60 -> D2Common.#11090):
+    // HP is zeroed and mode 12 is followed by AI_Stall(1), which checks `dwAnimMode != 1`
+    // and transitions dwAnimMode to 1 (MONMODE_NEUTRAL).
     expect(STATLIST_GetUnitStat113c(m, pAnya, 6, 0)).toBe(0)
-    expect(m.u32((pAnya + 0x10) >>> 0)).toBe(12)
+    expect(m.u32((pAnya + 0x10) >>> 0)).toBe(1)
 
     // Non-Anya (Cain) branch dispatches 0x6FC80400 + 0x6FC863A0
     const { pMon: pCain } = allocMonsterUnit(m, pGame, pRoom, 0x109, 102, 115, 118)
@@ -658,7 +660,7 @@ describe('K2 Wave 20 (indirectUnknown Batch B): 11 D2Game.dll v1.13c PE32 verifi
     expect(resCain).toBe(1)
     expect(hitsCain.has('D2Game:0x6FC80400')).toBe(true)
     expect(hitsCain.has('D2Game:0x6FC863A0')).toBe(true)
-    expect(m.u32((pCain + 0x10) >>> 0)).toBe(12)
+    expect(m.u32((pCain + 0x10) >>> 0)).toBe(1)
   })
 
   it('3. 0x6FC448A0 regression: dispatches all 19 UMod table entries to boss & minions and skips NULL slots cleanly', () => {

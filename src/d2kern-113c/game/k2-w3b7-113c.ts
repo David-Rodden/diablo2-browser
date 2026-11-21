@@ -3650,31 +3650,8 @@ function startMonsterMode8WithTargetValidation113c(
     const pEffectiveTarget = pTarget === mon ? 0 : pTarget
     m.setU32((sp + 0x08) >>> 0, pEffectiveTarget)
 
-    if (mon !== 0 && m.u32(mon) === 1) {
-      const pMonData = m.u32((mon + 0x14) >>> 0) >>> 0
-      const pMonPlan = pMonData !== 0 ? m.u32((pMonData + 0x2c) >>> 0) >>> 0 : 0
-      let effPathMode = blPathMode
-      let stepNum = m.u8((sp + 0x1c) >>> 0)
-      if (pMonPlan !== 0) {
-        const plan18 = m.u32((pMonPlan + 0x18) >>> 0) | 0
-        if (plan18 !== 0) effPathMode = plan18
-        const plan20 = m.u8((pMonPlan + 0x20) >>> 0)
-        if (plan20 !== 0) stepNum = plan20
-        m.setU32((pMonPlan + 0x18) >>> 0, 0)
-        m.setU32((pMonPlan + 0x1c) >>> 0, 0)
-        m.setU8((pMonPlan + 0x20) >>> 0, 0)
-      }
-      if (effPathMode !== 0x64 && pPath !== 0) {
-        if (stepNum === 0) stepNum = 5
-        const nPathType = effPathMode === 0x65 ? 0x0d : effPathMode
-        PATH_SetStepNum113c(m, pPath, stepNum)
-        PATH_SetType113c(m, pPath, nPathType)
-        PATH_Compute113c(m, pPath, mon, 0)
-      }
-    }
-
     hitD2GameVa113c(0x6FC95E10)
-    MONSTER_StartModeReal113c(m, game, mon, 8, pEffectiveTarget, 0, 0)
+    MONSTER_StartModeReal113c(m, game, mon, 8, pEffectiveTarget, 0, 0, blPathMode, 1)
 
     const bHasState1 = STATES_CheckState113c(m, mon, 1) | 0
     if (bHasState1 === 0 || (SUNIT_IsDeadOrDying113c(m, mon) | 0) !== 0) {

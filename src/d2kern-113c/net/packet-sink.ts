@@ -1096,13 +1096,14 @@ export function NET_QueuePacketToClient113c(
         m.setU8((pTail + 0x04 + used + i) >>> 0, pktBytes[i]!)
       }
       m.setU32(pTail, (used + nLen) >>> 0)
-      return 1
+      return nLen
     }
   }
 
   let pNode = m.u32((pClient + 0x1c0) >>> 0) >>> 0
   if (pNode !== 0) {
     m.setU32((pClient + 0x1c0) >>> 0, m.u32((pNode + 0x204) >>> 0) >>> 0)
+    m.fill(pNode, 0x208, 0)
   } else {
     pNode = m.alloc(0x208) >>> 0
   }
@@ -1120,7 +1121,7 @@ export function NET_QueuePacketToClient113c(
     m.setU32((pClient + 0x1b8) >>> 0, pNode)
     m.setU32((pClient + 0x1bc) >>> 0, pNode)
   }
-  return 1
+  return nLen
 }
 
 /**

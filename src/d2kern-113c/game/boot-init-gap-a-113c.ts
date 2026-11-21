@@ -82,7 +82,7 @@ import {
   SKILLS_Event08_AuraPulseTick113c,
 } from './k2-gap-itemdef-113c.ts'
 import { MISSILE_DispatchFrameTick113c } from './k2-gap-melee-dot-113c.ts'
-import { D2COMMON_SGPT_DATATABLES_VA_113C } from '../common/inline-helpers.ts'
+import { D2CommonAssertError, D2COMMON_SGPT_DATATABLES_VA_113C } from '../common/inline-helpers.ts'
 import {
   NET_SendPacket47_UnitRelator1_6FCAAEC0_113c,
   NET_SendPacket48_UnitRequestStatus_6FCAAE60_113c,
@@ -2412,11 +2412,12 @@ export function UNIT_SyncStateAndStatsToClient113c(
       callees !== undefined && callees.onStatModifiedNotify !== undefined
         ? callees.onStatModifiedNotify
         : undefined
-    STATLIST_NotifyIfStatModified113c(m, pUnit, pClientPlayer, 0x43, 0, cb)
-    STATLIST_NotifyIfStatModified113c(m, pUnit, pClientPlayer, 0x44, 0, cb)
-    STATLIST_NotifyIfStatModified113c(m, pUnit, pClientPlayer, 0x0c, 0, cb)
-    STATLIST_NotifyIfStatModified113c(m, pUnit, pClientPlayer, 0, 0, cb)
-    STATLIST_NotifyIfStatModified113c(m, pUnit, pClientPlayer, 2, 0, cb)
+    const pfnCb = cb !== undefined ? 0x6fcec2f0 : 0
+    STATLIST_NotifyIfStatModified113c(m, pUnit, pClientPlayer, 0x43, pfnCb, cb)
+    STATLIST_NotifyIfStatModified113c(m, pUnit, pClientPlayer, 0x44, pfnCb, cb)
+    STATLIST_NotifyIfStatModified113c(m, pUnit, pClientPlayer, 0x0c, pfnCb, cb)
+    STATLIST_NotifyIfStatModified113c(m, pUnit, pClientPlayer, 0, pfnCb, cb)
+    STATLIST_NotifyIfStatModified113c(m, pUnit, pClientPlayer, 2, pfnCb, cb)
 
     if ((m.u8((pUnit + 0xc6) >>> 0) & 1) !== 0 || (m.u8((pUnit + 0xc4) >>> 0) & 0x80) !== 0) {
       if (callees !== undefined && callees.sendUnitUpdateFlagsPacket !== undefined) {
@@ -2878,11 +2879,19 @@ export function NET_SendFixed40BytePacketToClient113c(
   pSrcPacket40: number,
 ): number {
   hitD2GameVa113c(0x6FCAB400)
+  const src = pSrcPacket40 >>> 0
+  let nameLen = 0
+  while (m.u8((src + 0x08 + nameLen) >>> 0) !== 0) {
+    nameLen++
+    if (nameLen >= 0x10) {
+      throw new D2CommonAssertError('SUnitNet.cpp', 0x5da)
+    }
+  }
   const sp = bootInitGapStackPtr
   bootInitGapStackPtr = (sp + 0x30) >>> 0
   try {
     for (let i = 0; i < 10; i++) {
-      m.setU32((sp + i * 4) >>> 0, m.u32((pSrcPacket40 + i * 4) >>> 0))
+      m.setU32((sp + i * 4) >>> 0, m.u32((src + i * 4) >>> 0))
     }
     return NET_QueuePacketToClientBuffer113c(m, pClient, 1, sp, 0x28)
   } finally {

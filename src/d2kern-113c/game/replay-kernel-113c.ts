@@ -45,8 +45,10 @@ import { seedNext, seedRoll, type D2SeedStrc } from '../prng.ts'
 import { mulDiv113c } from '../common/int-math.ts'
 import {
   SKILLS_AddSkillToUnit113c,
+  SKILLS_GetCharges113c,
   SKILLS_GetHighestLevelSkillFromUnitAndIdFastcall113c,
   SKILLS_GetSkillById113c,
+  SKILLS_SetCharges113c,
   SKILLS_SetRightSkill113c,
   SKILLS_SetSkillLevelOnUnit113c,
 } from '../common/skills.ts'
@@ -110,7 +112,10 @@ import {
   INVENTORY_UpdateWeaponGuidOnRemoval113c,
   registerInventoryCheckNotBrokenHook113c,
 } from '../common/inventory.ts'
-import { ITEMS_CanUseCharmInInventory113c } from '../common/items.ts'
+import {
+  ITEMS_CanUseCharmInInventory113c,
+  ITEMS_GetInvPage113c,
+} from '../common/items.ts'
 import {
   DATATBLS_GetObjectsTxtRecord113c,
   UNIT_ITEM,
@@ -197,8 +202,15 @@ import {
   C2S_Packet02_WalkToUnit113c,
   C2S_Packet03_RunToLocation113c,
   C2S_Packet04_RunToUnit113c,
+  C2S_Packet05_LeftSkillOnLocation113c,
   C2S_Packet06_LeftSkillOnUnit113c,
+  C2S_Packet07_ShiftLeftSkillOnUnit113c,
+  C2S_Packet08_RepeatLeftSkillOnLocation113c,
+  C2S_Packet09_RepeatLeftSkillOnUnit113c,
+  C2S_Packet0A_RepeatShiftLeftSkillOnUnit113c,
+  C2S_Packet0B_Noop1Byte113c,
   C2S_Packet3C_SelectSkill113c,
+  C2S_Packet5F_UpdatePlayerPos113c,
   type C2SPacketCallees113c,
 } from './c2s-packet-113c.ts'
 import { SUNIT_HASH_OFFSET_BY_TYPE_113C } from './game-strc.ts'
@@ -299,6 +311,7 @@ import {
   ITEMEVENT_ChanceToCastSkill113c,
   ITEMEVENT_ManaAfterKill113c,
   ITEMS_DeactivateEquippedItemStats113c,
+  ITEMS_GetScrollOrTomeSkillId113c,
   MONSTER_SetLastHitModeField54_113c,
   NET_SendUnitTargetedSkillAction113c,
   SKILLS_Event08_AuraPulseTick113c,
@@ -318,6 +331,7 @@ import {
   COLLISION_SetMaskWithSizeXY113c,
 } from '../common/collision.ts'
 import {
+  ensureK3SkillsSrvStRegistered113c,
   MISSILE_BuildK3Hooks113c,
   PLAYER_HandleC2SRightSkillK3_113c,
   PLAYER_IsNonMeleeSequenceSkillK3_113c,
@@ -2093,17 +2107,18 @@ export function applyPlayerPacket113c(
     if (pGame !== 0) {
       m.set(pPlayer, D2UnitStrc.pGame, pGame)
     }
-    if (dwItemGuid === -1 && SKILLS_GetSkillById113c(m, pPlayer, wSkillId, -1) === 0) {
+    const hydrated = isSgptDataTablesLoaded113c(m)
+    if (!hydrated && dwItemGuid === -1 && SKILLS_GetSkillById113c(m, pPlayer, wSkillId, -1) === 0) {
       SKILLS_AddSkillToUnit113c(m, pPlayer, wSkillId)
     }
     const pPkt = writeC2SPacketScratch113c(m, packetBytes)
     const rc = C2S_Packet3C_SelectSkill113c(m, pGame, pPlayer, pPkt, 9)
-    if (rc !== 0) {
+    if (!hydrated && rc !== 0) {
       SKILLS_AssignHandSkillAndSyncAura113c(m, pPlayer, bLeft, wSkillId, dwItemGuid)
     }
     return
   }
-  if (op === 0x0c || op === 0x0d) {
+  if (op >= 0x0c && op <= 0x11) {
     ensureSliceWorldPathMemory113c(world)
     PLAYER_HandleC2SRightSkillK3_113c(
       m,
@@ -2126,6 +2141,48 @@ export function applyPlayerPacket113c(
         }
       },
     )
+    return
+  }
+  if (op === 0x0b) {
+    C2S_Packet0B_Noop1Byte113c(m, pGame, pPlayer, 0, packetBytes.length)
+    return
+  }
+  if (op === 0x5f && packetBytes.length >= 5) {
+    ensureSliceWorldPathMemory113c(world)
+    const pPkt = writeC2SPacketScratch113c(m, packetBytes)
+    const callees = buildSliceC2SCallees113c(world)
+    C2S_Packet5F_UpdatePlayerPos113c(m, pGame, pPlayer, pPkt, 5, callees)
+    return
+  }
+  if ((op === 0x05 || op === 0x08) && packetBytes.length >= 5) {
+    ensureSliceWorldPathMemory113c(world)
+    if (isSgptDataTablesLoaded113c(m) && UNITS_GetLeftSkill113c(m, pPlayer) !== 0) {
+      const pPkt = writeC2SPacketScratch113c(m, packetBytes)
+      const callees = buildSliceC2SCallees113c(world)
+      if (op === 0x05) {
+        C2S_Packet05_LeftSkillOnLocation113c(m, pGame, pPlayer, pPkt, 5, callees)
+      } else {
+        C2S_Packet08_RepeatLeftSkillOnLocation113c(m, pGame, pPlayer, pPkt, 5, callees)
+      }
+    }
+    return
+  }
+  if (
+    (op === 0x07 || op === 0x09 || op === 0x0a) &&
+    packetBytes.length >= 9
+  ) {
+    ensureSliceWorldPathMemory113c(world)
+    if (isSgptDataTablesLoaded113c(m) && UNITS_GetLeftSkill113c(m, pPlayer) !== 0) {
+      const pPkt = writeC2SPacketScratch113c(m, packetBytes)
+      const callees = buildSliceC2SCallees113c(world)
+      if (op === 0x07) {
+        C2S_Packet07_ShiftLeftSkillOnUnit113c(m, pGame, pPlayer, pPkt, 9, callees)
+      } else if (op === 0x09) {
+        C2S_Packet09_RepeatLeftSkillOnUnit113c(m, pGame, pPlayer, pPkt, 9, callees)
+      } else {
+        C2S_Packet0A_RepeatShiftLeftSkillOnUnit113c(m, pGame, pPlayer, pPkt, 9, callees)
+      }
+    }
     return
   }
   if (packetBytes.length < 9 || op !== 0x06) return
@@ -2241,8 +2298,7 @@ export function hydrateFallenSliceFromMemdump113c(
     }
   }
   // Rebind `pTimer->pPool` to a live `0x7088` chunk in `SparseMemory113c`
-  m.set(pTimer, D2TimerStrc.pPool, 0)
-  EVENT_AllocChunk113c(m, pTimer)
+  m.set(pTimer, D2TimerStrc.pPool, EVENT_AllocChunk113c(m, pGame))
   ensureD2CommonPathGlobals113c(m)
 
   // Parse `a1c-coll-f785.bin.gz`: header `(x0, y0, w, h)` + `uint16[w * h]` at byte 16
@@ -2526,7 +2582,11 @@ export function stepFallenSliceFrame113c(
           }
         } else if (
           mode === 10 ||
-          (mode === 18 && PLAYER_IsNonMeleeSequenceSkillK3_113c(m, pUnit))
+          mode === 14 ||
+          mode === 15 ||
+          mode === 16 ||
+          ((mode === 7 || mode === 8 || mode === 11 || mode === 12 || mode === 18) &&
+            PLAYER_IsNonMeleeSequenceSkillK3_113c(m, pUnit))
         ) {
           PLAYER_StepSkillKeyframeK3_113c(m, pGame, pUnit, arg14, arg18, k2MeleeDotHooks)
           syncActRoomsAndUnitsIntoWorld113c(world)
@@ -2582,9 +2642,9 @@ export function stepFallenSliceFrame113c(
         const curPlrMode = m.get(pUnit, D2UnitStrc.dwAnimMode)
         if (
           curPlrMode === PLRMODE_ATTACK1 ||
+          curPlrMode === 8 ||
           curPlrMode === PLRMODE_BLOCK ||
-          curPlrMode === 10 ||
-          curPlrMode === 13 ||
+          (curPlrMode >= 10 && curPlrMode <= 16) ||
           curPlrMode === 18
         ) {
           transitionPlayerToNeutral113c(world, pUnit, true)
@@ -2737,7 +2797,7 @@ export function stepFallenSliceFrame113c(
       syncCallees,
       ignoreActDirtyFlag: true,
       skipArenaSync: false,
-      skipRefreshUnit: true,
+      skipRefreshUnit: false,
       onRoomChanged: () => {
         if (world.hasFullDrlg === true) {
           syncActRoomsAndUnitsIntoWorld113c(world)
@@ -2951,9 +3011,9 @@ function buildClientRoomSyncCallees113c(
           slvl,
         )
       } else if (opcode === 0x23) {
-        const bLeft = mem.u8((pNode + 0x08) >>> 0)
-        const skillId = mem.u16((pNode + 0x0a) >>> 0)
-        const itemGuid = mem.u32((pNode + 0x0c) >>> 0) >>> 0
+        const itemGuid = mem.u32((pNode + 0x08) >>> 0) >>> 0
+        const skillId = mem.u16((pNode + 0x0c) >>> 0)
+        const bLeft = mem.u8((pNode + 0x0e) >>> 0)
         S2C_SendPacket23_SetSkill113c(mem, pCl, uType, uId, bLeft, skillId, itemGuid)
       }
     },
@@ -3045,6 +3105,9 @@ function buildClientRoomSyncCallees113c(
         },
         syncUnitFlag8000(m2, _g2, cl2, u2) {
           SUNITDMG_ApplyArmorDurabilityAndGetHit113c(m2, 0, 0, u2, 0, cl2)
+        },
+        onStatModifiedNotify(m2, u2, statId, val, destPlr) {
+          D2GAME_PLRMODES_SendStatToClientOrParty113c(m2, u2, statId, destPlr, val)
         },
       })
     },
@@ -4552,8 +4615,7 @@ export function hydrateSnapshotKernelTables113c(
 
   const pTimer = m.get(pGame, D2GameStrc.pTimer) >>> 0
   if (pTimer !== 0) {
-    m.set(pTimer, D2TimerStrc.pPool, 0)
-    EVENT_AllocChunk113c(m, pTimer)
+    m.set(pTimer, D2TimerStrc.pPool, EVENT_AllocChunk113c(m, pGame))
   }
 
   const unitsByKey = new Map<string, number>()
@@ -4774,7 +4836,37 @@ export function hydrateSnapshotKernelTables113c(
     const kp = memInternal.known?.get(addr >>> 12)
     return kp !== undefined && kp[addr & 0xfff] !== 0
   }
+  interface PreHydratePlrState113c {
+    flags: number
+    flags2: number
+    updateNext: number
+    roomUpdateHead: number
+    gfx6: number
+    gfx7: number
+    gfx8: number
+    gfx9: number
+    gfx10: number
+    gfx11: number
+  }
+  const preHydratePlrStateByPtr = new Map<number, PreHydratePlrState113c>()
   for (const pPlr of playerById.values()) {
+    const pSlEx = m.u32((pPlr + 0x5c) >>> 0) >>> 0
+    const pSf =
+      pSlEx !== 0 && isAddrLoaded((pSlEx + 0x58) >>> 0) ? (m.u32((pSlEx + 0x58) >>> 0) >>> 0) : 0
+    const hasInitialGfx = pSf !== 0 && isAddrLoaded((pSf + 44) >>> 0)
+    const pPlrRoom = UNITS_GetRoom113c(m, pPlr)
+    preHydratePlrStateByPtr.set(pPlr, {
+      flags: m.u32((pPlr + 0xc4) >>> 0) >>> 0,
+      flags2: m.u32((pPlr + 0xc8) >>> 0) >>> 0,
+      updateNext: m.u32((pPlr + 0xe0) >>> 0) >>> 0,
+      roomUpdateHead: pPlrRoom !== 0 ? (m.u32((pPlrRoom + 0x1c) >>> 0) >>> 0) : 0,
+      gfx6: hasInitialGfx ? (m.u32((pSf + 24) >>> 0) >>> 0) : 0,
+      gfx7: hasInitialGfx ? (m.u32((pSf + 28) >>> 0) >>> 0) : 0,
+      gfx8: hasInitialGfx ? (m.u32((pSf + 32) >>> 0) >>> 0) : 0,
+      gfx9: hasInitialGfx ? (m.u32((pSf + 36) >>> 0) >>> 0) : 0,
+      gfx10: hasInitialGfx ? (m.u32((pSf + 40) >>> 0) >>> 0) : 0,
+      gfx11: hasInitialGfx ? (m.u32((pSf + 44) >>> 0) >>> 0) : 0,
+    })
     const pPlrData = m.u32((pPlr + 0x14) >>> 0) >>> 0
     if (pPlrData !== 0) {
       const pClientPlr = m.u32((pPlrData + 0x9c) >>> 0) >>> 0
@@ -4911,22 +5003,106 @@ export function hydrateSnapshotKernelTables113c(
     ) {
       const pInventory = m.u32((pUnit + 0x60) >>> 0) >>> 0
       if (pInventory !== 0) {
+        const prePlr = preHydratePlrStateByPtr.get(pUnit)
         const savedHp = STATLIST_GetUnitBaseStat113c(m, pUnit, 6, 0)
         const savedMana = STATLIST_GetUnitBaseStat113c(m, pUnit, 8, 0)
         const savedStam = STATLIST_GetUnitBaseStat113c(m, pUnit, 10, 0)
-        const savedFlags = m.u32((pUnit + 0xc4) >>> 0) >>> 0
-        const savedFlags2 = m.u32((pUnit + 0xc8) >>> 0) >>> 0
+        const savedFlags = prePlr !== undefined ? prePlr.flags : (m.u32((pUnit + 0xc4) >>> 0) >>> 0)
+        const savedFlags2 = prePlr !== undefined ? prePlr.flags2 : (m.u32((pUnit + 0xc8) >>> 0) >>> 0)
         const savedAnim40 = m.u32((pUnit + 0x40) >>> 0) >>> 0
         const savedAnim44 = m.u32((pUnit + 0x44) >>> 0) >>> 0
         const savedAnim48 = m.u32((pUnit + 0x48) >>> 0) >>> 0
         const savedAnim4C = m.u32((pUnit + 0x4c) >>> 0) >>> 0
         const savedAnim50 = m.u32((pUnit + 0x50) >>> 0) >>> 0
-        const savedUpdateNext = m.u32((pUnit + 0xdc) >>> 0) >>> 0
+        const savedUpdateNext =
+          prePlr !== undefined ? prePlr.updateNext : (m.u32((pUnit + 0xe0) >>> 0) >>> 0)
         const savedModStatCount = m.u16((pStatListEx + 0x54) >>> 0)
+        const pStateFlags = isAddrLoaded((pStatListEx + 0x58) >>> 0)
+          ? (m.u32((pStatListEx + 0x58) >>> 0) >>> 0)
+          : 0
+        const hasGfxDirtyWords =
+          pStateFlags !== 0 && isAddrLoaded((pStateFlags + 44) >>> 0)
+        const savedGfxWord6 =
+          prePlr !== undefined
+            ? prePlr.gfx6
+            : hasGfxDirtyWords
+              ? (m.u32((pStateFlags + 24) >>> 0) >>> 0)
+              : 0
+        const savedGfxWord7 =
+          prePlr !== undefined
+            ? prePlr.gfx7
+            : hasGfxDirtyWords
+              ? (m.u32((pStateFlags + 28) >>> 0) >>> 0)
+              : 0
+        const savedGfxWord8 =
+          prePlr !== undefined
+            ? prePlr.gfx8
+            : hasGfxDirtyWords
+              ? (m.u32((pStateFlags + 32) >>> 0) >>> 0)
+              : 0
+        const savedGfxWord9 =
+          prePlr !== undefined
+            ? prePlr.gfx9
+            : hasGfxDirtyWords
+              ? (m.u32((pStateFlags + 36) >>> 0) >>> 0)
+              : 0
+        const savedGfxWord10 =
+          prePlr !== undefined
+            ? prePlr.gfx10
+            : hasGfxDirtyWords
+              ? (m.u32((pStateFlags + 40) >>> 0) >>> 0)
+              : 0
+        const savedGfxWord11 =
+          prePlr !== undefined
+            ? prePlr.gfx11
+            : hasGfxDirtyWords
+              ? (m.u32((pStateFlags + 44) >>> 0) >>> 0)
+              : 0
         const savedWeaponId = m.u32((pInventory + 0x1c) >>> 0) >>> 0
         const pUnitRoom = UNITS_GetRoom113c(m, pUnit)
         const savedRoomUpdateHead =
-          pUnitRoom !== 0 ? (m.u32((pUnitRoom + 0x38) >>> 0) >>> 0) : 0
+          prePlr !== undefined
+            ? prePlr.roomUpdateHead
+            : pUnitRoom !== 0
+              ? (m.u32((pUnitRoom + 0x1c) >>> 0) >>> 0)
+              : 0
+        let pScrollNode = INVENTORY_GetFirstItem113c(m, pInventory)
+        while (pScrollNode !== 0) {
+          const pScrollItem = INVENTORY_UnitIsItem113c(m, pScrollNode)
+          if (pScrollItem !== 0) {
+            const itemMode = m.u32((pScrollItem + 0x10) >>> 0) >>> 0
+            if (itemMode === 0 || itemMode === 2) {
+              const scrollSkillId = ITEMS_GetScrollOrTomeSkillId113c(m, pScrollItem) | 0
+              if (scrollSkillId >= 0) {
+                let pScrollSk = SKILLS_GetSkillById113c(m, pUnit, scrollSkillId, -1) >>> 0
+                if (pScrollSk === 0) {
+                  pScrollSk = SKILLS_AddSkillToUnit113c(m, pUnit, scrollSkillId) >>> 0
+                }
+                const isActiveScrollSlot =
+                  (itemMode === 0 && (ITEMS_GetInvPage113c(m, pScrollItem) & 0xff) === 0) ||
+                  itemMode === 2
+                if (pScrollSk !== 0 && isActiveScrollSlot) {
+                  let qty = STATLIST_GetUnitStat113c(m, pScrollItem, 0x46, 0) | 0
+                  if (qty === 0 && ITEMS_CheckItemTypeIdMemPort113c(m, pScrollItem, 0x12) === 0) {
+                    qty = 1
+                  }
+                  if (qty > 0) {
+                    const prevCharges = SKILLS_GetCharges113c(m, pScrollSk) | 0
+                    SKILLS_SetCharges113c(m, pScrollSk, (prevCharges + qty) | 0)
+                  }
+                }
+              }
+            }
+          }
+          pScrollNode = INVENTORY_GetNextItem113c(m, pScrollNode)
+        }
+        if (saveBytes !== undefined && saveBytes.length >= 0x300) {
+          const saveDv = new DataView(saveBytes.buffer, saveBytes.byteOffset, saveBytes.byteLength)
+          const rightSkillId = saveDv.getUint32(0x7c, true) | 0
+          if (rightSkillId >= 217 && rightSkillId <= 220) {
+            SKILLS_SetRightSkill113c(m, pUnit, rightSkillId, 0xffffffff)
+          }
+        }
         const savedSp = replayStackPtr113c
         replayStackPtr113c = (savedSp + 0x20) >>> 0
         const pPreSnap = savedSp
@@ -4970,10 +5146,21 @@ export function hydrateSnapshotKernelTables113c(
         m.setU32((pUnit + 0x50) >>> 0, savedAnim50)
         m.setU32((pUnit + 0xc4) >>> 0, savedFlags)
         m.setU32((pUnit + 0xc8) >>> 0, savedFlags2)
-        m.setU32((pUnit + 0xdc) >>> 0, savedUpdateNext)
+        m.setU32((pUnit + 0xe0) >>> 0, savedUpdateNext)
         m.setU16((pStatListEx + 0x54) >>> 0, savedModStatCount)
+        const curStateFlags = isAddrLoaded((pStatListEx + 0x58) >>> 0)
+          ? (m.u32((pStatListEx + 0x58) >>> 0) >>> 0)
+          : 0
+        if (curStateFlags !== 0 && isAddrLoaded((curStateFlags + 44) >>> 0)) {
+          m.setU32((curStateFlags + 24) >>> 0, savedGfxWord6)
+          m.setU32((curStateFlags + 28) >>> 0, savedGfxWord7)
+          m.setU32((curStateFlags + 32) >>> 0, savedGfxWord8)
+          m.setU32((curStateFlags + 36) >>> 0, savedGfxWord9)
+          m.setU32((curStateFlags + 40) >>> 0, savedGfxWord10)
+          m.setU32((curStateFlags + 44) >>> 0, savedGfxWord11)
+        }
         if (pUnitRoom !== 0) {
-          m.setU32((pUnitRoom + 0x38) >>> 0, savedRoomUpdateHead)
+          m.setU32((pUnitRoom + 0x1c) >>> 0, savedRoomUpdateHead)
         }
       }
     }
@@ -5017,6 +5204,7 @@ export function hydrateSnapshotKernelTables113c(
     }
   }
   attachSliceWorldCallbacks113c(world)
+  ensureK3SkillsSrvStRegistered113c()
   hydrateMercHireableSnapshotStateK3_113c(world, saveBytes)
   for (const pPlr of playerById.values()) {
     const pPlrData = m.u32((pPlr + 0x14) >>> 0) >>> 0

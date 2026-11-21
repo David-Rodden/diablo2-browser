@@ -31,6 +31,7 @@ import {
   MONSTER_DropDeathItems113c,
   SUNIT_GetServerUnitFromHash113c,
 } from '../../../src/d2kern-113c/game/combat-a1c-113c.ts'
+import { ITEMS_CalcGroundExpireFrame_6FC2E0A0_113c } from '../../../src/d2kern-113c/game/k2-laneI-0x6fc3-w1-113c.ts'
 import {
   D2GAME_CreateItemEx_6FC31490_113c,
   SUNIT_ClearItemPerTickCommandFlags_6FD00986_113c,
@@ -428,11 +429,14 @@ describe('[K2] Real 1:1 D2Game Monster Drop -> TC -> CreateItemEx -> Affix -> Gr
     expect(rolledQual).toBeGreaterThanOrEqual(4)
 
     // 5. Ground expiration sweep via ITEMS_ExpireGroundItemsInAct113c (0x6FC2FB70)
+    // Note: real 1.13c 0x6FC31490 (CreateItemEx) does not populate pItemData+0x24;
+    // ground-drop callers (0x6FC319C0 / 0x6FC336D0) stamp it via 0x6FC2E0A0.
     const rareUnitId = m.get(pRareItem, D2UnitStrc.dwUnitId)
     expect(SUNIT_GetServerUnitFromHash113c(m, pGame, UNIT_ITEM, rareUnitId)).toBe(pRareItem)
     expect(COLLISION_CheckSubtileMask113c(m, pRoom, dropX, dropY, 0x200)).toBe(0x200)
-    const expireFrame = m.u32((pRareData + 0x24) >>> 0) >>> 0
+    const expireFrame = ITEMS_CalcGroundExpireFrame_6FC2E0A0_113c(m, pGame, pRareItem) >>> 0
     expect(expireFrame).toBeGreaterThan(0)
+    m.setU32((pRareData + 0x24) >>> 0, expireFrame)
     const pAct0 = m.u32((pGame + 0xbc) >>> 0) >>> 0
     m.set(pGame, D2GameStrc.dwGameFrame, (expireFrame + 1) >>> 0)
     ITEMS_ExpireGroundItemsInAct113c(m, pGame, pAct0)

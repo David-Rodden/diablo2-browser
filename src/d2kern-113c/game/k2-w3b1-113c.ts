@@ -1518,7 +1518,7 @@ export function ITEMS_RollSpawnableWeaponId_6FC2F8F0_113c(
   const startIndex = sdiv32((pWeapons - pItemsBase) | 0, 0x1a8)
   const pArmor = m.u32(pItemTables + 0x10)
   const count = sdiv32((pArmor - pWeapons) | 0, 0x1a8)
-  if (pWeapons === 0 || count <= 0) {
+  if (pWeapons === 0) {
     return -1
   }
 
@@ -1547,7 +1547,7 @@ export function ITEMS_RollSpawnableWeaponId_6FC2F8F0_113c(
   }
 
   if (matchCount <= 0) {
-    return -1
+    return matchedIds[0]! | 0
   }
   const newLo = stepSeed64At113c(m, pSeed)
   let pick = 0
@@ -1577,7 +1577,7 @@ export function ITEMS_RollSpawnableArmorId_6FC2FA30_113c(
   const startIndex = sdiv32((pArmor - pItemsBase) | 0, 0x1a8)
   const pMisc = m.u32(pItemTables + 0x18)
   const count = sdiv32((pMisc - pArmor) | 0, 0x1a8)
-  if (pArmor === 0 || count <= 0) {
+  if (pArmor === 0) {
     return -1
   }
 
@@ -1606,7 +1606,7 @@ export function ITEMS_RollSpawnableArmorId_6FC2FA30_113c(
   }
 
   if (matchCount <= 0) {
-    return -1
+    return matchedIds[0]! | 0
   }
   const newLo = stepSeed64At113c(m, pSeed)
   let pick = 0
@@ -2680,27 +2680,23 @@ function invokeMonsterStartMode113c(
   pTarget: number,
   nSpeedByte: number,
 ): number {
-  const pScratch = allocZeroedScratch113c(m, 0x24)
-  m.setU32(pScratch + 0x00, nMode >>> 0)
-  m.setU32(pScratch + 0x04, pUnit >>> 0)
-  m.setU32(pScratch + 0x08, pTarget >>> 0)
-  m.setU8(pScratch + 0x15, nSpeedByte & 0xff)
-  const pPath = pUnit !== 0 ? m.u32(pUnit + 0x2c) >>> 0 : 0
+  const pPath = pUnit !== 0 ? m.u32((pUnit + 0x2c) >>> 0) >>> 0 : 0
   if (pPath === 0) {
-    m.setU32(pUnit + 0x10, nMode >>> 0)
+    if (pUnit !== 0) {
+      m.setU32((pUnit + 0x10) >>> 0, nMode >>> 0)
+    }
     return 1
   }
-  const fakeWorld = {
+  return MONSTER_StartMode113c(
     m,
-    pGame,
-    pathUnitByPtr: new Map(),
-  } as unknown as Parameters<typeof MONSTER_StartMode113c>[0]
-  try {
-    return MONSTER_StartMode113c(fakeWorld, pUnit, nMode, pTarget, 0, 0) ? 1 : 0
-  } catch {
-    m.setU32(pUnit + 0x10, nMode >>> 0)
-    return 1
-  }
+    pGame >>> 0,
+    pUnit >>> 0,
+    nMode | 0,
+    pTarget >>> 0,
+    0,
+    0,
+    nSpeedByte & 0xff,
+  ) | 0
 }
 
 function invokeAiStall113c(
@@ -2709,18 +2705,7 @@ function invokeAiStall113c(
   pUnit: number,
   nDelay: number,
 ): void {
-  const fakeWorld = {
-    m,
-    pGame,
-    pathUnitByPtr: new Map(),
-  } as unknown as Parameters<typeof AI_Stall113c>[0]
-  try {
-    AI_Stall113c(fakeWorld, pUnit, nDelay)
-  } catch {
-    if (pUnit !== 0) {
-      m.setU32(pUnit + 0x10, 1)
-    }
-  }
+  AI_Stall113c(m, pGame >>> 0, pUnit >>> 0, nDelay | 0)
 }
 
 function invokeAiApproachTarget113c(
@@ -2734,30 +2719,17 @@ function invokeAiApproachTarget113c(
   nStepNum: number,
   nFlags: number,
 ): number {
-  const fakeWorld = {
+  return AI_ApproachTarget113c(
     m,
-    pGame,
-    pathUnitByPtr: new Map(),
-  } as unknown as Parameters<typeof AI_ApproachTarget113c>[0]
-  try {
-    return AI_ApproachTarget113c(
-      fakeWorld,
-      pUnit,
-      pTarget,
-      nMode,
-      targetX,
-      targetY,
-      nStepNum,
-      nFlags,
-    )
-      ? 1
-      : 0
-  } catch {
-    if (pUnit !== 0) {
-      m.setU32(pUnit + 0x10, nMode >>> 0)
-    }
-    return 0
-  }
+    pGame >>> 0,
+    pUnit >>> 0,
+    pTarget >>> 0,
+    nMode | 0,
+    targetX | 0,
+    targetY | 0,
+    nStepNum | 0,
+    nFlags | 0,
+  ) | 0
 }
 
 /**

@@ -266,35 +266,23 @@ function invokeMonsterStartMode113c(
   pTarget: number,
   nSpeedByte: number,
 ): number {
-  const sp = k2W4B1StackPtr
-  k2W4B1StackPtr = (sp + 0x24) >>> 0
-  try {
-    m.fill(sp, 0x24, 0)
-    m.setU32(sp + 0x00, nMode >>> 0)
-    m.setU32(sp + 0x04, pUnit >>> 0)
-    m.setU32(sp + 0x08, pTarget >>> 0)
-    m.setU8(sp + 0x15, nSpeedByte & 0xff)
-    const pPath = pUnit !== 0 ? m.u32(pUnit + 0x2c) >>> 0 : 0
-    if (pPath === 0) {
-      if (pUnit !== 0) {
-        m.setU32(pUnit + 0x10, nMode >>> 0)
-      }
-      return 1
+  const pPath = pUnit !== 0 ? m.u32((pUnit + 0x2c) >>> 0) >>> 0 : 0
+  if (pPath === 0) {
+    if (pUnit !== 0) {
+      m.setU32((pUnit + 0x10) >>> 0, nMode >>> 0)
     }
-    const fakeWorld = {
-      m,
-      pGame,
-      pathUnitByPtr: new Map(),
-    } as unknown as Parameters<typeof MONSTER_StartMode113c>[0]
-    try {
-      return MONSTER_StartMode113c(fakeWorld, pUnit, nMode, pTarget, 0, 0) ? 1 : 0
-    } catch {
-      m.setU32(pUnit + 0x10, nMode >>> 0)
-      return 1
-    }
-  } finally {
-    k2W4B1StackPtr = sp
+    return 1
   }
+  return MONSTER_StartMode113c(
+    m,
+    pGame >>> 0,
+    pUnit >>> 0,
+    nMode | 0,
+    pTarget >>> 0,
+    0,
+    0,
+    nSpeedByte & 0xff,
+  ) | 0
 }
 
 function invokeAiStall113c(
@@ -303,18 +291,7 @@ function invokeAiStall113c(
   pUnit: number,
   nDelay: number,
 ): void {
-  const fakeWorld = {
-    m,
-    pGame,
-    pathUnitByPtr: new Map(),
-  } as unknown as Parameters<typeof AI_Stall113c>[0]
-  try {
-    AI_Stall113c(fakeWorld, pUnit, nDelay)
-  } catch {
-    if (pUnit !== 0) {
-      m.setU32(pUnit + 0x10, 1)
-    }
-  }
+  AI_Stall113c(m, pGame >>> 0, pUnit >>> 0, nDelay | 0)
 }
 
 function invokeAiApproachTarget113c(
@@ -328,30 +305,17 @@ function invokeAiApproachTarget113c(
   nStepNum: number,
   nFlags: number,
 ): number {
-  const fakeWorld = {
+  return AI_ApproachTarget113c(
     m,
-    pGame,
-    pathUnitByPtr: new Map(),
-  } as unknown as Parameters<typeof AI_ApproachTarget113c>[0]
-  try {
-    return AI_ApproachTarget113c(
-      fakeWorld,
-      pUnit,
-      pTarget,
-      nMode,
-      targetX,
-      targetY,
-      nStepNum,
-      nFlags,
-    )
-      ? 1
-      : 0
-  } catch {
-    if (pUnit !== 0) {
-      m.setU32(pUnit + 0x10, nMode >>> 0)
-    }
-    return 0
-  }
+    pGame >>> 0,
+    pUnit >>> 0,
+    pTarget >>> 0,
+    nMode | 0,
+    targetX | 0,
+    targetY | 0,
+    nStepNum | 0,
+    nFlags | 0,
+  ) | 0
 }
 
 /**
@@ -2903,21 +2867,45 @@ export function OBJECTS_PopulateRoomEdgeObjectsMode1_6FC52790_113c(
   m: D2KernMemory113c,
   pGame: number,
   pRoom: number,
-  nDensity: number,
-  pRoomCoords = 0x00f0_b1c0,
+  pRoomCoordsOrDensity: number,
+  pRoomCoordsLegacy = 0,
   nFixedCoord = 0,
 ): number {
   hitD2GameVa113c(0x6FC52790)
-  DUNGEON_GetRoomCoordinates113c(m, pRoom, pRoomCoords)
-  OBJECTS_PopulateRoomEdgeObjects_6FC4FA90_113c(
-    m,
-    pGame,
-    pRoom,
-    pRoomCoords,
-    1,
-    nFixedCoord,
-    nDensity,
-  )
+  const directCoords =
+    pRoomCoordsLegacy !== 0
+      ? pRoomCoordsLegacy >>> 0
+      : (pRoomCoordsOrDensity >>> 0) >= 0x1000
+        ? pRoomCoordsOrDensity >>> 0
+        : 0
+  if (directCoords !== 0) {
+    OBJECTS_PopulateRoomEdgeObjects_6FC4FA90_113c(
+      m,
+      pGame,
+      pRoom,
+      directCoords,
+      1,
+      nFixedCoord,
+      0,
+    )
+    return 1
+  }
+  const sp = k2W4B1StackPtr >>> 0
+  k2W4B1StackPtr = (sp + 0x30) >>> 0
+  try {
+    DUNGEON_GetRoomCoordinates113c(m, pRoom, sp)
+    OBJECTS_PopulateRoomEdgeObjects_6FC4FA90_113c(
+      m,
+      pGame,
+      pRoom,
+      sp,
+      1,
+      nFixedCoord,
+      pRoomCoordsOrDensity,
+    )
+  } finally {
+    k2W4B1StackPtr = sp
+  }
   return 1
 }
 
@@ -2931,21 +2919,45 @@ export function OBJECTS_PopulateRoomEdgeObjectsMode0_6FC527B0_113c(
   m: D2KernMemory113c,
   pGame: number,
   pRoom: number,
-  nDensity: number,
-  pRoomCoords = 0x00f0_b1c0,
+  pRoomCoordsOrDensity: number,
+  pRoomCoordsLegacy = 0,
   nFixedCoord = 0,
 ): number {
   hitD2GameVa113c(0x6FC527B0)
-  DUNGEON_GetRoomCoordinates113c(m, pRoom, pRoomCoords)
-  OBJECTS_PopulateRoomEdgeObjects_6FC4FA90_113c(
-    m,
-    pGame,
-    pRoom,
-    pRoomCoords,
-    0,
-    nFixedCoord,
-    nDensity,
-  )
+  const directCoords =
+    pRoomCoordsLegacy !== 0
+      ? pRoomCoordsLegacy >>> 0
+      : (pRoomCoordsOrDensity >>> 0) >= 0x1000
+        ? pRoomCoordsOrDensity >>> 0
+        : 0
+  if (directCoords !== 0) {
+    OBJECTS_PopulateRoomEdgeObjects_6FC4FA90_113c(
+      m,
+      pGame,
+      pRoom,
+      directCoords,
+      0,
+      nFixedCoord,
+      0,
+    )
+    return 1
+  }
+  const sp = k2W4B1StackPtr >>> 0
+  k2W4B1StackPtr = (sp + 0x30) >>> 0
+  try {
+    DUNGEON_GetRoomCoordinates113c(m, pRoom, sp)
+    OBJECTS_PopulateRoomEdgeObjects_6FC4FA90_113c(
+      m,
+      pGame,
+      pRoom,
+      sp,
+      0,
+      nFixedCoord,
+      pRoomCoordsOrDensity,
+    )
+  } finally {
+    k2W4B1StackPtr = sp
+  }
   return 1
 }
 

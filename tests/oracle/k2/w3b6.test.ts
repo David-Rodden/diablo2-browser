@@ -439,9 +439,12 @@ describe('k2-w3b6-113c oracle tests (45 D2Game.dll functions)', () => {
     m.setU32(pQuestArg + 0x0c, pPlayer);
 
     ACT1Q4_Callback13_RefreshQuestState_6FC81540_113c(m, pQuest, pQuestArg);
-    expect(m.u8(pQuestDataEx + 0x50)).toBe(1);
     expect(m.u8(pQuestDataEx + 0x4c)).toBe(1);
-    expect(m.u8(pQuest + 0x0b)).toBe(3);
+    expect(m.u8(pQuestDataEx + 0x4d)).toBe(1);
+    expect(m.u8(pQuestDataEx + 0x4e)).toBe(1);
+    expect(m.u8(pQuestDataEx + 0x58)).toBe(1);
+    expect(m.u8(pQuestDataEx + 0x78)).toBe(1);
+    expect(m.u8(pQuest + 0x0b)).toBe(4);
     expect(m.u8(pQuest + 0x0c)).toBe(5);
   });
 
@@ -477,7 +480,7 @@ describe('k2-w3b6-113c oracle tests (45 D2Game.dll functions)', () => {
 
     ACT1Q5_Callback13_RefreshQuestState_6FC81A80_113c(m, pQuest, pQuestArg);
     expect(m.u8(pQuest + 0x0c)).toBe(3);
-    expect(m.u8(pQuest + 0x0b)).toBe(2);
+    expect(m.u8(pQuest + 0x0b)).toBe(1);
   });
 
   it('ACT1Q5_Callback00_NpcActivate_6FC81C60_113c seeds dialog table and handles Charsi quest 3 activation', () => {

@@ -16,6 +16,7 @@ import {
   INVENTORY_GetNextItem113c,
 } from '../common/inventory.ts'
 import { DRLGWARP_TestRoomTileBit113c } from '../common/items.ts'
+import { DATATBLS_GetItemsTxtRecordMemPort113c } from '../common/k0-d2common-memports.ts'
 import {
   QUESTRECORD_AllocRecord113c,
   QUESTRECORD_ClearQuestState113c,
@@ -45,17 +46,23 @@ import { SUNIT_HASH_OFFSET_BY_TYPE_113C } from './game-strc.ts'
 import { bindK2KernelGlobals113c } from './k2-d2tv-evaluators-113c.ts'
 import { QUESTS_GetQuestData_6FC53F30_113c } from './k2-laneJ-0x6fc4-w1-113c.ts'
 import {
+  ACT5Q0_StatusFilter_6FC76EA0_113c,
   ACT5Q1_ActiveFilter_6FC76D80_113c,
+  ACT5Q1_StatusFilter_6FC76E00_113c,
   ACT5Q2_ActiveFilter_6FC76C40_113c,
   ACT5Q2_Callback14_PlayerJoined_6FC781A0_113c,
   ACT5Q4_ActiveFilter_6FC76840_113c,
+  ACT5Q4_StatusFilter_6FC768C0_113c,
   ACT5Q5_Callback12_NpcScrollSetState_6FC77270_113c,
   ACT5Q6_ActiveFilter_6FC76810_113c,
   ACT5Q6_Callback14_PlayerJoined_6FC77540_113c,
 } from './k2-laneM-0x6fc7-w1-113c.ts'
 import {
   ACT3Q0_ActiveFilter113c,
+  ACT3Q0_StatusFilter113c,
   ACT3Q1_HratliIntroActiveFilter113c,
+  ACT3Q1_HratliIntroStatusFilter113c,
+  ACT3Q2_DarkWandererStatusFilter113c,
   ACT3Q5_BlackenedTempleActiveFilter113c,
   ACT3Q6_MephistoActiveFilter113c,
   ACT3Q7_Callback14_PlayerJoined113c,
@@ -64,15 +71,23 @@ import {
   ACT1Q6_InitQuestData_6FC88060_113c,
   ACT2Q3_InitQuestData_6FCE7480_113c,
   ACT5Q4_InitQuestData_6FC7D5C0_113c,
+  PACKETS_SrvMercItemAction_6FCF0BC0_113c,
 } from './k2-w10b1-113c.ts'
 import {
   ACT5Q5_InitQuestData_6FC7FB50_113c,
+  C2S_Packet35_NpcRepair_6FCEF0A0_113c,
   C2S_Packet3B_SpendSkillPoint_6FCEDA20_113c,
 } from './k2-w11b1-113c.ts'
-import { C2S_ExecuteEntityInteractionOrRunToTarget_6FCF01D0_113c } from './k2-w12b1-113c.ts'
+import {
+  C2S_ExecuteEntityInteractionOrRunToTarget_6FCF01D0_113c,
+  C2S_Packet23_MercReviveHandler_6FCEFB90_113c,
+} from './k2-w12b1-113c.ts'
 import {
   D2Game_6FCCA4D0_113c,
+  D2Game_6FCEF0E0_113c,
+  D2Game_6FCF08B0_113c,
   D2Game_6FCF0910_113c,
+  D2Game_6FCF12E0_113c,
 } from './k2-w13b1-113c.ts'
 import {
   ACT1Q2_OnScrollMessageBloodRaven_6FC88920_113c,
@@ -82,6 +97,12 @@ import {
   ACT3Q3_OnScrollMessageOrmusGidbinn_6FCDAA50_113c,
   ACT5Q2_OnQualKehkScrollCallback_6FC7C9E0_113c,
   ACT5Q3_OnMalahOrAnyaScrollCallback_6FC7F5E0_113c,
+  C2S_Packet1A_EquipCursorItem_6FCEF2F0_113c,
+  C2S_Packet1D_SwapCursorWithBodyItem_6FCF1200_113c,
+  C2S_Packet1F_SwapCursorWithContainerItem_6FCF1010_113c,
+  C2S_Packet32_NpcBuyItem_6FCEF570_113c,
+  C2S_Packet49_WaypointInteract_6FCF0D30_113c,
+  C2S_Packet_PlaceCursorItemIntoContainer_6FCEF270_113c,
   dispatchQuestSeqFilterF0_113c,
 } from './k2-w14b1-113c.ts'
 import {
@@ -97,6 +118,9 @@ import {
   ACT4Q2_InitQuestData_6FCDAD40_113c,
   ACT5Q2_InitQuestData_6FC7CC70_113c,
   ACT5Q3_InitQuestData_6FC7FC20_113c,
+  C2S_Packet_DropCursorItem_6FCEF380_113c,
+  C2S_Packet_HireMercenary_6FCF0060_113c,
+  C2S_Packet_NpcBuyItem_6FCEF220_113c,
 } from './k2-w15b1-113c.ts'
 import {
   ACT2Q2_InitQuestTableRecord_6FCE7ED0_113c,
@@ -107,23 +131,61 @@ import {
   ACT3Q5_InitQuestTableRecord_6FD09200_113c,
   ACT4Q3_InitQuestTableRecord_6FCDC5F0_113c,
   ACT5Q6_InitQuestTableRecord_6FC80080_113c,
+  C2S_HandlePacket1C_ShrineOrOrificeItemAction_6FCF0E90_113c,
+  C2S_HandlePacket27_IdentifyOrUseCursorItem_6FCEF400_113c,
+  C2S_HandlePacket38_NpcMenuRequest_6FCEFB30_113c,
+  C2S_HandlePacket41_ResurrectPlayer_6FCF14B0_113c,
+  C2S_HandlePacket4F_TradeButton_6FCF1470_113c,
 } from './k2-w16b1-113c.ts'
-import { ACT1Q0_Callback12_WarrivIntroSetState0_6FC82490_113c } from './k2-w2b2-113c.ts'
 import {
+  PACKET_C2S2C_Reject3_113c,
+  PACKET_C2S2D_Reject3_113c,
+  PACKET_C2S2E_PlaySoundNoop113c,
+  PACKET_C2S39_Reject3_113c,
+  PACKET_C2S42_ClearCursorNoop113c,
+  PACKET_C2S43_QuestInitNoop113c,
+  PACKET_C2S45_Reject3_113c,
+  PACKET_C2S4B_RequestUnitRefresh113c,
+  PACKET_C2S52_Reject3_113c,
+  PACKET_C2S58_MarkQuestIntroSeen113c,
+  PACKET_C2S66_WardenResponseNoop113c,
+} from './k2-combat-core-w1-113c.ts'
+import {
+  ACT1_IntroStatusFilter_6FC80800_113c,
+  ACT4_EndgameStatusFilter_6FC80810_113c,
+  ACT4_IntroStatusFilter_6FC80170_113c,
+} from './k2-w2b1-113c.ts'
+import { ACT1Q0_Callback12_WarrivIntroSetState0_6FC82490_113c } from './k2-w2b2-113c.ts'
+import { MONAI_TransferItemCellStatFromItemToUnit_6FCCCA20_113c } from './k2-w2b5-113c.ts'
+import {
+  ACT2Q4_StatusFilter_6FCE1970_113c,
+  ACT2Q5_StatusFilter_6FCE1960_113c,
   ACT4Prologue_ActiveFilter_6FCD8B50_113c,
   ACT4Prologue_Callback11_ScrollMessage_6FCD97A0_113c,
+  ACT4Prologue_StatusFilter_6FCD8B80_113c,
+  ACT4Q0_StatusFilter_6FCD87D0_113c,
   ACT4Q2_ActiveFilter_6FCD8810_113c,
 } from './k2-w2b6-113c.ts'
 import {
   ACT2Q0_ActiveFilter_6FCE2590_113c,
+  ACT2Q0_StatusFilter_6FCE25C0_113c,
   ACT2Q5_Callback13_UpdateStartedState_6FCE2DC0_113c,
   ACT2Q7_ActiveFilter_6FCE2750_113c,
   ACT2Q7_Callback_SetQuest31State0_6FCE2720_113c,
   ACT2Q8_ActiveFilter_6FCE25D0_113c,
+  ACT2Q8_StatusFilter_6FCE25E0_113c,
+  PACKET_Srv48_ClearPlayerIntro_6FCEB4E0_113c,
+  PACKET_Srv53_TurnOnWalkToRun_6FCEB450_113c,
+  PACKET_Srv54_TurnOffRunToWalk_6FCEB420_113c,
 } from './k2-w2b7-113c.ts'
-import { ACT3Q4_CheckAlkorQuestAlert_6FD053F0_113c } from './k2-w2b8-113c.ts'
+import {
+  ACT3Q4_CheckAlkorQuestAlert_6FD053F0_113c,
+  PACKET_Recv12_ClearGfxState0C_6FCEB590_113c,
+  PACKET_Recv3F_PlayVoicePhrase_6FCEBD50_113c,
+} from './k2-w2b8-113c.ts'
 import {
   QUESTS_AllocAndInitGameQuests_6FC548A0_113c,
+  QUESTS_AttachUnitToQuest_6FC55890_113c,
   registerK4QuestStatusFilterDispatcher113c,
 } from './k2-w3b3-113c.ts'
 import {
@@ -168,6 +230,7 @@ import {
   ACT1_InitAkaraIntroQuestDescriptor_6FC83CC0_113c,
   ACT1_InitCainIntroQuestDescriptor_6FC82FA0_113c,
 } from './k2-w4b3-113c.ts'
+import { ITEMS_SendUseScrollOrTomePacket3F_6FCCCFD0_113c } from './k2-w4b7-113c.ts'
 import {
   ACT4Q0_InitTyraelIntroDialog_6FCD9730_113c,
   ACT4Q1_EnsureStartedOrInvokeLinkedQuestCallback_6FCD8A70_113c,
@@ -185,10 +248,13 @@ import {
 import {
   ACT4Prologue_InitQuestDescriptor_6FCD9D80_113c,
   ACT4Q2_InitHadrielQuestDescriptor_6FCD97D0_113c,
+  ITEMS_UseTimedStateBuffPotion_6FCCE4D0_113c,
+  registerDefaultSpellIconHandler113c,
 } from './k2-w5b3-113c.ts'
 import {
   ACT2Q1_ActiveFilter_6FCE2520_113c,
   ACT2Q2_Callback11_SyncPlayerStaffItems_6FCE3A80_113c,
+  ACT2Q2_StatusFilter_6FCE3BD0_113c,
   ACT2Q3_ActiveFilter_6FCE2250_113c,
   ACT2Q3_Callback00_NpcActivate_6FCE37F0_113c,
   ACT2Q4_ActiveFilter_6FCE2080_113c,
@@ -198,6 +264,7 @@ import {
   ACT2Q6_ActiveFilter_6FCE1C20_113c,
   ACT2Q6_Callback00_NpcActivate_6FCE2B00_113c,
   ACT2Q6_Callback11_SyncPlayerQuestState_6FCE2900_113c,
+  ACT2Q6_StatusFilter_6FCE1D30_113c,
   ACT2Q8_ActiveFilter_6FCE25F0_113c,
   ACT2Q8_Callback00_NpcActivate_6FCE2680_113c,
 } from './k2-w5b4-113c.ts'
@@ -209,13 +276,27 @@ import {
   ACT2Q0_Callback_ScrollMessageCompleteIntro_6FCE4620_113c,
   ACT2Q1_Callback_NpcActivateDialog_6FCE4320_113c,
   ACT2Q1_Callback_PlayerEnterSyncRadamentQuestState_6FCE41D0_113c,
+  ACT2Q2_Callback_ClearDroppedStaffItemQuestFlags_6FCE3E10_113c,
+  ACT2Q2_Callback_ItemPickedUpUpdateStaffQuest_6FCE5F30_113c,
   ACT2Q4_Callback_NpcActivateDialog_6FCE4EA0_113c,
   ACT2Q7_Callback_NpcActivateGuardDialog_6FCE4900_113c,
   ACT2Q7_Callback_ScrollMessageSetState_6FCE4A40_113c,
   PACKET_Srv2F_NpcQuestMessage_6FCEC9D0_113c,
+  PACKET_Srv3B_ClearNpcIntroFlag_6FCEB4A0_113c,
   PACKET_Srv3C_SetSkillHotkey_6FCEBC70_113c,
   PACKET_Srv40_RequestQuestLog_6FCEBD30_113c,
 } from './k2-w5b5-113c.ts'
+import {
+  C2S_Packet50_DropPlayerGold_6FCEEF40_113c,
+  C2S_SyncObjectCollisionByGuid_6FCED440_113c,
+  ITEMS_UseFlatOrBuffPotion_6FCCEA40_113c,
+  ITEMS_UseHealingOrManaPotion_6FCCEDC0_113c,
+  ITEMS_UsePercentagePotion_6FCCE6D0_113c,
+} from './k2-w5b6-113c.ts'
+import {
+  PACKET_C2S14_SetUnitOverheadChat_6FCF00A0_113c,
+  PACKET_C2S59_MoveTownNpcToCoords_6FCEFF30_113c,
+} from './k2-w5b7-113c.ts'
 import {
   ACT3Q0_AddHratliIntroDialogNodes_6FD054C0_113c,
   ACT3Q0_OnHratliIntroSpeechDone_6FD05540_113c,
@@ -226,8 +307,11 @@ import {
   ACT3Q1_SyncGoldenBirdQuestStateFromPlayer_6FD03B40_113c,
   ACT3Q2_AddGidbinnNpcDialogNodes_6FD042F0_113c,
   ACT3Q2_GidbinnActiveFilter_6FD04500_113c,
+  ACT3Q2_GidbinnStatusFilter_6FD045B0_113c,
   ACT3Q3_AddKhalimsWillCainDialogNodes_6FD04C90_113c,
   ACT3Q3_KhalimsWillActiveFilter_6FD04F60_113c,
+  ACT3Q3_KhalimsWillStatusFilter_6FD04AB0_113c,
+  ACT3Q3_OnKhalimRelicPickedUp_6FD06190_113c,
   ACT3Q4_AddLamEsensTomeNpcDialogNodes_6FD05270_113c,
   ACT3Q4_SyncLamEsensTomeQuestFromPlayer_6FD050C0_113c,
   ACT3Q5_AddTravincalNpcDialogNodes_6FD03970_113c,
@@ -239,6 +323,11 @@ import {
   ACT3_CainIntroActiveFilter_6FD055C0_113c,
   ACT3_OnKurastNpcIntroSpeechDone_6FD056E0_113c,
 } from './k2-w5b8-113c.ts'
+import { ACT3Q4_StatusFilter_6FD06E00_113c } from './k2-w5b9-113c.ts'
+import {
+  ACT1Q5_StatusFilter_6FC85500_113c,
+  ACT5Q3_StatusFilter_6FC7B8C0_113c,
+} from './k2-w6b1-113c.ts'
 import {
   ACT2Intro_InitQuestData_6FCE5730_113c,
   ACT2Q0_InitQuestData_6FCE5690_113c,
@@ -246,8 +335,13 @@ import {
   ACT2Q2_Callback00_NpcActivateCainHoradricDialog_6FCE5310_113c,
   ACT2Q7_InitQuestData_6FCE5790_113c,
   ACT2Q8_InitQuestData_6FCE4880_113c,
+  ITEMS_UseAntidoteOrThawingCurePotion_6FCCF370_113c,
 } from './k2-w6b2-113c.ts'
-import { ACT3Q0_InitQuestData_6FD05920_113c } from './k2-w6b3-113c.ts'
+import {
+  ACT3Q0_InitQuestData_6FD05920_113c,
+  PACKET_SrvMercMoveToCoord_6FCED360_113c,
+  PACKET_SrvMercMoveToUnit_6FCED3D0_113c,
+} from './k2-w6b3-113c.ts'
 import {
   ACT1Q1_Callback00_NpcActivateAkara_6FC83C40_113c,
   ACT1Q2_Callback00_NpcActivateKashya_6FC83AD0_113c,
@@ -268,6 +362,12 @@ import {
   ACT4Q1_OnTyraelTalkCallback_6FCDA100_113c,
   ACT4Q2_OnQuestTarget0F6Callback_6FCD9DE0_113c,
   ACT4Q3_OnTyraelTalkOpenHarrogathPortal_6FCDB1B0_113c,
+  C2S_HandlePacket5D_PartyRelationAction_6FCEC860_113c,
+  C2S_HandlePacket5E_PartyRelationToggle_6FCEC8E0_113c,
+  C2S_ValidatePacket5ByteItem_6FCED4F0_113c,
+  ITEMS_SpellCastFireballAtCoords_6FCCDEE0_113c,
+  ITEMS_SpellCastFireballAtTargetOrPath_6FCCDF20_113c,
+  ITEMS_SpellIdentifyInventoryItem_6FCCDAC0_113c,
 } from './k2-w6b5-113c.ts'
 import {
   ACT3Q0_InitHratliIntroQuestTable_6FD06660_113c,
@@ -275,13 +375,25 @@ import {
   ACT3Q2_InitPlayerGidbinnQuestState_6FD06000_113c,
   ACT3Q2_OnNpcActivatedSendGidbinnAlert_6FD06CF0_113c,
   ACT3_InitKurastNpcIntroQuestTable_6FD06700_113c,
+  C2S_Packet23_PlaceCursorItemIntoBelt_6FCEEC70_113c,
+  C2S_Packet25_SwapCursorItemWithBeltItem_6FCEEDE0_113c,
+  C2S_Packet63_ShiftMoveInventoryItemToBelt_6FCF0950_113c,
 } from './k2-w6b6-113c.ts'
+import { PACKET_ProcessChatOrWhisperMessage_6FCEDBB0_113c } from './k2-w6b7-113c.ts'
 import {
   ACT2Q5_OnScrollMessage_6FCE67C0_113c,
   ACT4Q3_OnScrollMessage_6FCDB250_113c,
+  ITEMS_UseScrollOrTomeOfIdentify_6FCCD9C0_113c,
 } from './k2-w7b3-113c.ts'
 import {
+  ACT3Q4_OnLamEsensTomeDropped_6FD07A40_113c,
+  ACT3Q4_OnLamEsensTomePickedUp_6FD07AF0_113c,
+  C2S_Packet24_RemoveBeltItemToCursor_6FCF0F80_113c,
+  C2S_Packet27_IdentifyItemWithScroll_6FCEEFE0_113c,
+  C2S_Packet28_SocketItem_6FCEEBD0_113c,
+  C2S_Packet29_InsertScrollIntoTome_6FCEDB30_113c,
   C2S_Packet30_CancelNpcInteract_6FCED480_113c,
+  C2S_Packet34_CainIdentifyItems_6FCEF070_113c,
   C2S_Packet3A_AddStatPoint_6FCEC960_113c,
 } from './k2-w7b4-113c.ts'
 import {
@@ -293,16 +405,30 @@ import {
   ACT5Q4_OnPlayerEnteredOrInitState_6FC7AE20_113c,
   ACT5Q5_NpcIntroAndScrolls_6FC7F200_113c,
 } from './k2-w8b1-113c.ts'
-import { ACT4Q1_OnNpcMessage_6FCDA5E0_113c } from './k2-w8b2-113c.ts'
+import {
+  ACT4Q1_OnNpcMessage_6FCDA5E0_113c,
+  SKILLS_SrvDo_BookOrScrollOfTownPortal_6FCCF450_113c,
+} from './k2-w8b2-113c.ts'
 import {
   ACT2Q1_Callback01_NpcDeactivate_6FCE6E90_113c,
   ACT2Q3_Callback01_NpcDeactivate_6FCE6B30_113c,
   ACT2Q4_Callback01_NpcDeactivate_6FCE85A0_113c,
   ACT2Q5_InitQuestData_6FCE7080_113c,
   ACT3Q7_Callback00_NpcActivate_6FD07080_113c,
+  C2S_Packet19_PickupBufferOrStorageItemToCursor_6FCF1370_113c,
+  C2S_Packet1A_EquipCursorItemToBodyLoc_6FCEEE60_113c,
+  C2S_Packet1B_SwapTwoHandedOrDualWeaponBodyLoc_6FCF1140_113c,
   C2S_Packet20_UseInventoryItem_6FCEF730_113c,
+  C2S_Packet21_MergeStackableItems_6FCEE4B0_113c,
+  C2S_Packet26_UseBeltItem_6FCEF5B0_113c,
+  C2S_Packet27_IdentifyItem_6FCEF6B0_113c,
+  C2S_Packet60_SwapWeapons_6FCEF510_113c,
 } from './k2-w8b3-113c.ts'
-import { ACT3Q3_OnNpcSpeechComplete_6FD07940_113c } from './k2-w8b4-113c.ts'
+import {
+  ACT3Q1_OnQuestItemPickedUp_6FD07640_113c,
+  ACT3Q2_OnGidbinnPickedUp_6FD07770_113c,
+  ACT3Q3_OnNpcSpeechComplete_6FD07940_113c,
+} from './k2-w8b4-113c.ts'
 import {
   ACT1Q1_InitQuestData_6FC85990_113c,
   ACT1Q5_InitQuestData_6FC89200_113c,
@@ -317,6 +443,7 @@ import {
   ACT3Q3_InitQuestData_6FD07CE0_113c,
   ACT3Q6_InitQuestData_6FD0A080_113c,
   C2S_PacketTriggerMonsterSpawnNode_6FCEE440_113c,
+  C2S_PacketUseQuestScrollItem_6FCED8D0_113c,
 } from './k2-w9b2-113c.ts'
 import { MON_EVENT_AI_THINK } from './monster-events.ts'
 import { registerK4ReplayKernelBridge113c } from './replay-kernel-113c.ts'
@@ -970,6 +1097,29 @@ export function dispatchK4QuestCallback113c(
       ACT3Q2_InitPlayerGidbinnQuestState_6FD06000_113c(sm, pQuest, pArg)
       return true
 
+    // cbIdx 0x04 / 0x05: ItemPickedUp (+0xB0) & ItemDropped (+0xB4)
+    case 0x6fce5f30:
+      ACT2Q2_Callback_ItemPickedUpUpdateStaffQuest_6FCE5F30_113c(sm, pQuest, pArg)
+      return true
+    case 0x6fce3e10:
+      ACT2Q2_Callback_ClearDroppedStaffItemQuestFlags_6FCE3E10_113c(sm, pQuest, pArg)
+      return true
+    case 0x6fd06190:
+      ACT3Q3_OnKhalimRelicPickedUp_6FD06190_113c(sm, pQuest, pArg)
+      return true
+    case 0x6fd07af0:
+      ACT3Q4_OnLamEsensTomePickedUp_6FD07AF0_113c(sm, pQuest, pArg)
+      return true
+    case 0x6fd07a40:
+      ACT3Q4_OnLamEsensTomeDropped_6FD07A40_113c(sm, pQuest, pArg)
+      return true
+    case 0x6fd07640:
+      ACT3Q1_OnQuestItemPickedUp_6FD07640_113c(sm, pQuest, pArg)
+      return true
+    case 0x6fd07770:
+      ACT3Q2_OnGidbinnPickedUp_6FD07770_113c(sm, pQuest, pArg)
+      return true
+
     default:
       return false
   }
@@ -1033,7 +1183,26 @@ export function hydrateK4QuestAndNpcState113c(
     }
   }
 
+  // Hydrate D2Game 0x6FD27238 SpellIcon dispatch table (31 entries) if unmapped
+  if (!isByteAddrLoaded113c(m, 0x6fd27330)) {
+    m.fill(0x6fd27238, 0xfc, 0)
+    m.setU32(0x6fd27240, 0x6fcccfd0)
+    m.setU32(0x6fd27244, 0x6fccdac0)
+    m.setU32(0x6fd2724c, 0x6fccf450)
+    m.setU32(0x6fd27254, 0x6fccedc0)
+    m.setU32(0x6fd2725c, 0x6fccea40)
+    m.setU32(0x6fd27264, 0x6fcce6d0)
+    m.setU32(0x6fd2726c, 0x6fccf370)
+    m.setU32(0x6fd27274, 0x6fccd9c0)
+    m.setU32(0x6fd2727c, 0x6fccca20)
+    m.setU32(0x6fd27284, 0x6fcce4d0)
+    m.setU32(0x6fd2728c, 0x6fccdf20)
+    m.setU32(0x6fd27294, 0x6fccdee0)
+    m.setU32(0x6fd27330, 0x1f)
+  }
+
   // Hydrate unmapped unit node chains (+0x74 pField74, +0xD8 pQuestChain) on F2 snapshot units
+  const questItemsToReattach = new Set<number>()
   for (let listIdx = 0; listIdx < 5; listIdx++) {
     const hashBase = (pGame + SUNIT_HASH_OFFSET_BY_TYPE_113C[listIdx]!) >>> 0
     for (let b = 0; b < 128; b++) {
@@ -1042,6 +1211,10 @@ export function hydrateK4QuestAndNpcState113c(
         const pNode74 = m.u32((pU + 0x74) >>> 0) >>> 0
         if (pNode74 !== 0 && !isByteAddrLoaded113c(m, pNode74)) {
           m.fill(pNode74, 0x08, 0)
+          m.setU32((pU + 0x74) >>> 0, 0)
+          if (m.u32(pU) === 4) {
+            questItemsToReattach.add(pU)
+          }
         }
         const pQuestChain = m.u32((pU + 0xd8) >>> 0) >>> 0
         if (pQuestChain !== 0 && !isByteAddrLoaded113c(m, pQuestChain)) {
@@ -1082,6 +1255,15 @@ export function hydrateK4QuestAndNpcState113c(
       players.push(pPlr)
       const pInv = m.u32((pPlr + 0x60) >>> 0) >>> 0
       if (pInv !== 0 && isByteAddrLoaded113c(m, pInv)) {
+        let pScanIt = INVENTORY_GetFirstItem113c(m, pInv)
+        while (pScanIt !== 0) {
+          const pItNode74 = m.u32((pScanIt + 0x74) >>> 0) >>> 0
+          if (pItNode74 !== 0 && !isByteAddrLoaded113c(m, pItNode74)) {
+            m.fill(pItNode74, 0x08, 0)
+            m.setU32((pScanIt + 0x74) >>> 0, 0)
+          }
+          pScanIt = INVENTORY_GetNextItem113c(m, pScanIt)
+        }
         const pFirstNode = m.u32((pInv + 0x2c) >>> 0) >>> 0
         if (pFirstNode !== 0 && !isByteAddrLoaded113c(m, pFirstNode)) {
           m.setU32((pInv + 0x2c) >>> 0, 0)
@@ -1311,28 +1493,54 @@ export function hydrateK4QuestAndNpcState113c(
       // 0x6FC55165..0x6FC551AD: sync player-entered quest states (cbIdx = 0x0D)
       for (let pi = 0; pi < players.length; pi++) {
         const pPlr = players[pi]!
-        const pArg = K4_QUEST_ARG_SCRATCH_VA
-        m.fill(pArg, 0x1c, 0)
-        m.setU32(pArg, pGame >>> 0)
-        m.setU32((pArg + 0x04) >>> 0, 0x0d)
-        m.setU32((pArg + 0x0c) >>> 0, pPlr >>> 0)
-        let pQ = m.u32(pQuestCtrl) >>> 0
-        while (pQ !== 0) {
-          const pfn0D = m.u32((pQ + 0xd4) >>> 0) >>> 0
-          if (
-            pfn0D !== 0 &&
-            (hasActiveSaveQuestHistory ||
-              pfn0D === 0x6fc820e0 ||
-              pfn0D === 0x6fc81e30 ||
-              pfn0D === 0x6fc808b0 ||
-              pfn0D === 0x6fce44e0 ||
-              pfn0D === 0x6fd03b40 ||
-              pfn0D === 0x6fcd9320 ||
-              pfn0D === 0x6fc77e80)
-          ) {
-            dispatchK4QuestCallback113c(m, pfn0D, pQ, pArg)
+        const pPlrInv0D = m.u32((pPlr + 0x60) >>> 0) >>> 0
+        const unlinkedSwapPrevLinks: Array<{ addr: number; val: number }> = []
+        if (pPlrInv0D !== 0 && isByteAddrLoaded113c(m, pPlrInv0D)) {
+          let pCurIt = m.u32((pPlrInv0D + 0x0c) >>> 0) >>> 0
+          let pPrevNextAddr = (pPlrInv0D + 0x0c) >>> 0
+          while (pCurIt !== 0) {
+            const pItData = m.u32((pCurIt + 0x14) >>> 0) >>> 0
+            const pNextAddr = (pItData + 0x5c + 0x08) >>> 0
+            const pNextIt = pItData !== 0 ? (m.u32(pNextAddr) >>> 0) : 0
+            const nodePosOther = pItData !== 0 ? m.u8((pItData + 0x5c + 0x0d) >>> 0) : 0
+            if (nodePosOther === 4) {
+              unlinkedSwapPrevLinks.push({ addr: pPrevNextAddr, val: m.u32(pPrevNextAddr) >>> 0 })
+              m.setU32(pPrevNextAddr, pNextIt)
+            } else {
+              pPrevNextAddr = pNextAddr
+            }
+            pCurIt = pNextIt
           }
-          pQ = m.u32((pQ + 0xf4) >>> 0) >>> 0
+        }
+        try {
+          const pArg = K4_QUEST_ARG_SCRATCH_VA
+          m.fill(pArg, 0x1c, 0)
+          m.setU32(pArg, pGame >>> 0)
+          m.setU32((pArg + 0x04) >>> 0, 0x0d)
+          m.setU32((pArg + 0x0c) >>> 0, pPlr >>> 0)
+          let pQ = m.u32(pQuestCtrl) >>> 0
+          while (pQ !== 0) {
+            const pfn0D = m.u32((pQ + 0xd4) >>> 0) >>> 0
+            if (
+              pfn0D !== 0 &&
+              (hasActiveSaveQuestHistory ||
+                pfn0D === 0x6fc820e0 ||
+                pfn0D === 0x6fc81e30 ||
+                pfn0D === 0x6fc808b0 ||
+                pfn0D === 0x6fce44e0 ||
+                pfn0D === 0x6fd03b40 ||
+                pfn0D === 0x6fcd9320 ||
+                pfn0D === 0x6fc77e80)
+            ) {
+              dispatchK4QuestCallback113c(m, pfn0D, pQ, pArg)
+            }
+            pQ = m.u32((pQ + 0xf4) >>> 0) >>> 0
+          }
+        } finally {
+          for (let ui = unlinkedSwapPrevLinks.length - 1; ui >= 0; ui--) {
+            const rec = unlinkedSwapPrevLinks[ui]!
+            m.setU32(rec.addr, rec.val)
+          }
         }
       }
       // 0x6FC551AF..0x6FC55323: invoke Act 1..5 root quest sequence filters (+0xF0)
@@ -1341,6 +1549,14 @@ export function hydrateK4QuestAndNpcState113c(
         const pRootQ = QUESTS_GetQuestData_6FC53F30_113c(sm, pGame, actRootQuestIds[ri]!) >>> 0
         if (pRootQ !== 0) {
           dispatchQuestSeqFilterF0_113c(sm, pRootQ)
+        }
+      }
+      for (const pQItem of questItemsToReattach) {
+        const clsId = m.u32((pQItem + 0x04) >>> 0) | 0
+        const pItemsTxt = DATATBLS_GetItemsTxtRecordMemPort113c(m, clsId) >>> 0
+        const bQuest = pItemsTxt !== 0 ? m.u8((pItemsTxt + 0x12a) >>> 0) : 0
+        if (bQuest > 0 && bQuest <= 0x25) {
+          QUESTS_AttachUnitToQuest_6FC55890_113c(sm, pQItem, (bQuest - 1) | 0, pGame >>> 0)
         }
       }
     }
@@ -1535,17 +1751,10 @@ export function tryApplyQuestAndNpcC2SPacketK4_113c(
 ): boolean {
   if (packetBytes.length === 0) return false
   const op = packetBytes[0]!
-  if (
-    op !== 0x13 &&
-    op !== 0x2f &&
-    op !== 0x31 &&
-    op !== 0x30 &&
-    op !== 0x20 &&
-    op !== 0x3a &&
-    op !== 0x3b &&
-    op !== 0x40 &&
-    op !== 0x51
-  ) {
+  if (op < 0x12 || op === 0x2b || op === 0x3c || op === 0x4a || op === 0x4e || op === 0x5f) {
+    return false
+  }
+  if ((op >= 0x55 && op <= 0x57) || (op >= 0x5a && op <= 0x5c) || op === 0x64 || op === 0x65 || op > 0x66) {
     return false
   }
   const pPkt = K4_PACKET_SCRATCH_VA
@@ -1554,24 +1763,152 @@ export function tryApplyQuestAndNpcC2SPacketK4_113c(
   }
   const sm = m as SparseMemory113c
   const nLen = packetBytes.length
-  if (op === 0x13) {
+  if (op === 0x12) {
+    PACKET_Recv12_ClearGfxState0C_6FCEB590_113c(m, pPlayer, pPkt, nLen)
+  } else if (op === 0x13) {
     D2Game_6FCF0910_113c(sm, pGame, pPlayer, pPkt, nLen)
-  } else if (op === 0x2f) {
-    C2S_PacketTriggerMonsterSpawnNode_6FCEE440_113c(sm, pGame, pPlayer, pPkt, nLen)
-  } else if (op === 0x31) {
-    PACKET_Srv2F_NpcQuestMessage_6FCEC9D0_113c(sm, pGame, pPlayer, pPkt, nLen)
-  } else if (op === 0x30) {
-    C2S_Packet30_CancelNpcInteract_6FCED480_113c(sm, pGame, pPlayer, pPkt, nLen)
+  } else if (op === 0x14) {
+    PACKET_C2S14_SetUnitOverheadChat_6FCF00A0_113c(sm, pGame, pPlayer, pPkt, nLen)
+  } else if (op === 0x15) {
+    PACKET_ProcessChatOrWhisperMessage_6FCEDBB0_113c(sm, pGame, pPlayer, pPkt, nLen)
+  } else if (op === 0x16) {
+    D2Game_6FCF08B0_113c(sm, pGame, pPlayer, pPkt, nLen)
+  } else if (op === 0x17) {
+    C2S_Packet_DropCursorItem_6FCEF380_113c(sm, pGame, pPlayer, pPkt, nLen)
+  } else if (op === 0x18) {
+    D2Game_6FCEF0E0_113c(sm, pGame, pPlayer, pPkt, nLen)
+  } else if (op === 0x19) {
+    C2S_Packet19_PickupBufferOrStorageItemToCursor_6FCF1370_113c(sm, pGame, pPlayer, pPkt, nLen)
+  } else if (op === 0x1a) {
+    C2S_Packet1A_EquipCursorItemToBodyLoc_6FCEEE60_113c(sm, pGame, pPlayer, pPkt, nLen)
+  } else if (op === 0x1b) {
+    C2S_Packet1A_EquipCursorItem_6FCEF2F0_113c(sm, pGame, pPlayer, pPkt, nLen)
+  } else if (op === 0x1c) {
+    D2Game_6FCF12E0_113c(sm, pGame, pPlayer, pPkt, nLen)
+  } else if (op === 0x1d) {
+    C2S_Packet1D_SwapCursorWithBodyItem_6FCF1200_113c(sm, pGame, pPlayer, pPkt, nLen)
+  } else if (op === 0x1e) {
+    C2S_Packet1B_SwapTwoHandedOrDualWeaponBodyLoc_6FCF1140_113c(sm, pGame, pPlayer, pPkt, nLen)
+  } else if (op === 0x1f) {
+    C2S_Packet1F_SwapCursorWithContainerItem_6FCF1010_113c(sm, pGame, pPlayer, pPkt, nLen)
   } else if (op === 0x20) {
     C2S_Packet20_UseInventoryItem_6FCEF730_113c(sm, pGame, pPlayer, pPkt, nLen)
+  } else if (op === 0x21) {
+    C2S_Packet21_MergeStackableItems_6FCEE4B0_113c(sm, pGame, pPlayer, pPkt, nLen)
+  } else if (op === 0x22) {
+    C2S_ValidatePacket5ByteItem_6FCED4F0_113c(sm, pGame, pPlayer, pPkt, nLen)
+  } else if (op === 0x23) {
+    C2S_Packet23_PlaceCursorItemIntoBelt_6FCEEC70_113c(sm, pGame, pPlayer, pPkt, nLen)
+  } else if (op === 0x24) {
+    C2S_Packet24_RemoveBeltItemToCursor_6FCF0F80_113c(sm, pGame, pPlayer, pPkt, nLen)
+  } else if (op === 0x25) {
+    C2S_Packet25_SwapCursorItemWithBeltItem_6FCEEDE0_113c(sm, pGame, pPlayer, pPkt, nLen)
+  } else if (op === 0x26) {
+    C2S_Packet26_UseBeltItem_6FCEF5B0_113c(sm, pGame, pPlayer, pPkt, nLen)
+  } else if (op === 0x27) {
+    C2S_Packet27_IdentifyItem_6FCEF6B0_113c(sm, pGame, pPlayer, pPkt, nLen)
+  } else if (op === 0x28) {
+    C2S_Packet28_SocketItem_6FCEEBD0_113c(sm, pGame, pPlayer, pPkt, nLen)
+  } else if (op === 0x29) {
+    C2S_Packet29_InsertScrollIntoTome_6FCEDB30_113c(sm, pGame, pPlayer, pPkt, nLen)
+  } else if (op === 0x2a) {
+    C2S_Packet_PlaceCursorItemIntoContainer_6FCEF270_113c(sm, pGame, pPlayer, pPkt, nLen)
+  } else if (op === 0x2c) {
+    PACKET_C2S2C_Reject3_113c(m, pGame, pPlayer, pPkt, nLen)
+  } else if (op === 0x2d) {
+    PACKET_C2S2D_Reject3_113c(m, pGame, pPlayer, pPkt, nLen)
+  } else if (op === 0x2e) {
+    PACKET_C2S2E_PlaySoundNoop113c(m, pGame, pPlayer, pPkt, nLen)
+  } else if (op === 0x2f) {
+    C2S_PacketTriggerMonsterSpawnNode_6FCEE440_113c(sm, pGame, pPlayer, pPkt, nLen)
+  } else if (op === 0x30) {
+    C2S_Packet30_CancelNpcInteract_6FCED480_113c(sm, pGame, pPlayer, pPkt, nLen)
+  } else if (op === 0x31) {
+    PACKET_Srv2F_NpcQuestMessage_6FCEC9D0_113c(sm, pGame, pPlayer, pPkt, nLen)
+  } else if (op === 0x32) {
+    C2S_Packet_NpcBuyItem_6FCEF220_113c(sm, pGame, pPlayer, pPkt, nLen)
+  } else if (op === 0x33) {
+    C2S_Packet32_NpcBuyItem_6FCEF570_113c(sm, pGame, pPlayer, pPkt, nLen)
+  } else if (op === 0x34) {
+    C2S_Packet34_CainIdentifyItems_6FCEF070_113c(sm, pGame, pPlayer, pPkt, nLen)
+  } else if (op === 0x35) {
+    C2S_Packet35_NpcRepair_6FCEF0A0_113c(sm, pGame, pPlayer, pPkt, nLen)
+  } else if (op === 0x36) {
+    C2S_Packet_HireMercenary_6FCF0060_113c(sm, pGame, pPlayer, pPkt, nLen)
+  } else if (op === 0x37) {
+    C2S_Packet27_IdentifyItemWithScroll_6FCEEFE0_113c(sm, pGame, pPlayer, pPkt, nLen)
+  } else if (op === 0x38) {
+    C2S_HandlePacket38_NpcMenuRequest_6FCEFB30_113c(sm, pGame, pPlayer, pPkt, nLen)
+  } else if (op === 0x39) {
+    PACKET_C2S39_Reject3_113c(m, pGame, pPlayer, pPkt, nLen)
   } else if (op === 0x3a) {
     C2S_Packet3A_AddStatPoint_6FCEC960_113c(sm, pGame, pPlayer, pPkt, nLen)
   } else if (op === 0x3b) {
     C2S_Packet3B_SpendSkillPoint_6FCEDA20_113c(sm, pGame, pPlayer, pPkt, nLen)
+  } else if (op === 0x3d) {
+    C2S_SyncObjectCollisionByGuid_6FCED440_113c(sm, pGame, pPlayer, pPkt, nLen)
+  } else if (op === 0x3e) {
+    C2S_PacketUseQuestScrollItem_6FCED8D0_113c(sm, pGame, pPlayer, pPkt, nLen)
+  } else if (op === 0x3f) {
+    PACKET_Recv3F_PlayVoicePhrase_6FCEBD50_113c(m, pPlayer, pPkt, nLen)
   } else if (op === 0x40) {
     PACKET_Srv40_RequestQuestLog_6FCEBD30_113c(sm, pGame, pPlayer, pPkt, nLen)
+  } else if (op === 0x41) {
+    C2S_HandlePacket41_ResurrectPlayer_6FCF14B0_113c(sm, pGame, pPlayer, pPkt, nLen)
+  } else if (op === 0x42) {
+    PACKET_C2S42_ClearCursorNoop113c(m, pGame, pPlayer, pPkt, nLen)
+  } else if (op === 0x43) {
+    PACKET_C2S43_QuestInitNoop113c(m, pGame, pPlayer, pPkt, nLen)
+  } else if (op === 0x44) {
+    C2S_HandlePacket1C_ShrineOrOrificeItemAction_6FCF0E90_113c(sm, pGame, pPlayer, pPkt, nLen)
+  } else if (op === 0x45) {
+    PACKET_C2S45_Reject3_113c(m, pGame, pPlayer, pPkt, nLen)
+  } else if (op === 0x46) {
+    PACKET_SrvMercMoveToUnit_6FCED3D0_113c(sm, pGame, pPlayer, pPkt, nLen)
+  } else if (op === 0x47) {
+    PACKET_SrvMercMoveToCoord_6FCED360_113c(sm, pGame, pPlayer, pPkt, nLen)
+  } else if (op === 0x48) {
+    PACKET_Srv48_ClearPlayerIntro_6FCEB4E0_113c(m, pGame, pPlayer, pPkt, nLen)
+  } else if (op === 0x49) {
+    C2S_Packet49_WaypointInteract_6FCF0D30_113c(sm, pGame, pPlayer, pPkt, nLen)
+  } else if (op === 0x4b) {
+    PACKET_C2S4B_RequestUnitRefresh113c(m, pGame, pPlayer, pPkt, nLen)
+  } else if (op === 0x4c) {
+    C2S_HandlePacket27_IdentifyOrUseCursorItem_6FCEF400_113c(sm, pGame, pPlayer, pPkt, nLen)
+  } else if (op === 0x4d) {
+    PACKET_Srv3B_ClearNpcIntroFlag_6FCEB4A0_113c(sm, pGame, pPlayer, pPkt, nLen)
+  } else if (op === 0x4f) {
+    C2S_HandlePacket4F_TradeButton_6FCF1470_113c(sm, pGame, pPlayer, pPkt, nLen)
+  } else if (op === 0x50) {
+    C2S_Packet50_DropPlayerGold_6FCEEF40_113c(sm, pGame, pPlayer, pPkt, nLen)
   } else if (op === 0x51) {
     PACKET_Srv3C_SetSkillHotkey_6FCEBC70_113c(sm, pGame, pPlayer, pPkt, nLen)
+  } else if (op === 0x52) {
+    PACKET_C2S52_Reject3_113c(m, pGame, pPlayer, pPkt, nLen)
+  } else if (op === 0x53) {
+    PACKET_Srv53_TurnOnWalkToRun_6FCEB450_113c(m, pGame, pPlayer, pPkt, nLen)
+  } else if (op === 0x54) {
+    PACKET_Srv54_TurnOffRunToWalk_6FCEB420_113c(m, pGame, pPlayer, pPkt, nLen)
+  } else if (op === 0x58) {
+    PACKET_C2S58_MarkQuestIntroSeen113c(m, pGame, pPlayer, pPkt, nLen)
+  } else if (op === 0x59) {
+    PACKET_C2S59_MoveTownNpcToCoords_6FCEFF30_113c(sm, pGame, pPlayer, pPkt, nLen)
+  } else if (op === 0x5d) {
+    C2S_HandlePacket5E_PartyRelationToggle_6FCEC8E0_113c(sm, pGame, pPlayer, pPkt, nLen)
+  } else if (op === 0x5e) {
+    C2S_HandlePacket5D_PartyRelationAction_6FCEC860_113c(sm, pGame, pPlayer, pPkt, nLen)
+  } else if (op === 0x60) {
+    C2S_Packet60_SwapWeapons_6FCEF510_113c(sm, pGame, pPlayer, pPkt, nLen)
+  } else if (op === 0x61) {
+    PACKETS_SrvMercItemAction_6FCF0BC0_113c(sm, pGame, pPlayer, pPkt, nLen)
+  } else if (op === 0x62) {
+    C2S_Packet23_MercReviveHandler_6FCEFB90_113c(sm, pGame, pPlayer, pPkt, nLen)
+  } else if (op === 0x63) {
+    C2S_Packet63_ShiftMoveInventoryItemToBelt_6FCF0950_113c(sm, pGame, pPlayer, pPkt, nLen)
+  } else if (op === 0x66) {
+    PACKET_C2S66_WardenResponseNoop113c(m, pGame, pPlayer, pPkt, nLen)
+  } else {
+    return false
   }
   syncWorld()
   return true
@@ -1605,17 +1942,217 @@ export function dispatchK4QuestStatusFilter113c(
   pOutByte: number,
 ): number {
   const sm = m as SparseMemory113c
-  if ((pfnStatus >>> 0) === 0x6fd03ce0) {
-    return ACT3Q1_GoldenBirdStatusFilter_6FD03CE0_113c(
-      sm,
-      pQuest,
-      pPlayerUnit,
-      pGameQuestFlags,
-      pPlayerQuestFlags,
-      pOutByte,
-    )
+  const va = pfnStatus >>> 0
+  if (va === 0x6fc80800) {
+    return ACT1_IntroStatusFilter_6FC80800_113c(sm, pQuest, pPlayerUnit, pGameQuestFlags, pPlayerQuestFlags, pOutByte)
+  }
+  if (va === 0x6fc80170) {
+    return ACT4_IntroStatusFilter_6FC80170_113c(sm, pQuest, pPlayerUnit, pGameQuestFlags, pPlayerQuestFlags, pOutByte)
+  }
+  if (va === 0x6fc80810) {
+    return ACT4_EndgameStatusFilter_6FC80810_113c(sm, pQuest, pPlayerUnit, pGameQuestFlags, pPlayerQuestFlags, pOutByte)
+  }
+  if (va === 0x6fc85500) {
+    return ACT1Q5_StatusFilter_6FC85500_113c(sm, pQuest, pPlayerUnit, pGameQuestFlags, pPlayerQuestFlags, pOutByte)
+  }
+  if (va === 0x6fce25c0) {
+    return ACT2Q0_StatusFilter_6FCE25C0_113c(sm, pQuest, pPlayerUnit, pGameQuestFlags, pPlayerQuestFlags, pOutByte)
+  }
+  if (va === 0x6fce3bd0) {
+    return ACT2Q2_StatusFilter_6FCE3BD0_113c(sm, pQuest, pPlayerUnit, pGameQuestFlags, pPlayerQuestFlags, pOutByte)
+  }
+  if (va === 0x6fce1970) {
+    return ACT2Q4_StatusFilter_6FCE1970_113c(sm, pQuest, pPlayerUnit, pGameQuestFlags, pPlayerQuestFlags, pOutByte)
+  }
+  if (va === 0x6fce1960) {
+    return ACT2Q5_StatusFilter_6FCE1960_113c(sm, pQuest, pPlayerUnit, pGameQuestFlags, pPlayerQuestFlags, pOutByte)
+  }
+  if (va === 0x6fce1d30) {
+    return ACT2Q6_StatusFilter_6FCE1D30_113c(sm, pQuest, pPlayerUnit, pGameQuestFlags, pPlayerQuestFlags, pOutByte)
+  }
+  if (va === 0x6fce25e0) {
+    return ACT2Q8_StatusFilter_6FCE25E0_113c(sm, pQuest, pPlayerUnit, pGameQuestFlags, pPlayerQuestFlags, pOutByte)
+  }
+  if (va === 0x6fd028b0) {
+    return ACT3Q0_StatusFilter113c(sm, pQuest, pPlayerUnit, pGameQuestFlags, pPlayerQuestFlags, pOutByte)
+  }
+  if (va === 0x6fd03030) {
+    return ACT3Q1_HratliIntroStatusFilter113c(sm, pQuest, pPlayerUnit, pGameQuestFlags, pPlayerQuestFlags, pOutByte)
+  }
+  if (va === 0x6fd03040) {
+    return ACT3Q2_DarkWandererStatusFilter113c(sm, pQuest, pPlayerUnit, pGameQuestFlags, pPlayerQuestFlags, pOutByte)
+  }
+  if (va === 0x6fd03ce0) {
+    return ACT3Q1_GoldenBirdStatusFilter_6FD03CE0_113c(sm, pQuest, pPlayerUnit, pGameQuestFlags, pPlayerQuestFlags, pOutByte)
+  }
+  if (va === 0x6fd045b0) {
+    return ACT3Q2_GidbinnStatusFilter_6FD045B0_113c(sm, pQuest, pPlayerUnit, pGameQuestFlags, pPlayerQuestFlags, pOutByte)
+  }
+  if (va === 0x6fd04ab0) {
+    return ACT3Q3_KhalimsWillStatusFilter_6FD04AB0_113c(sm, pQuest, pPlayerUnit, pGameQuestFlags, pPlayerQuestFlags, pOutByte)
+  }
+  if (va === 0x6fd06e00) {
+    return ACT3Q4_StatusFilter_6FD06E00_113c(sm, pQuest, pPlayerUnit, pGameQuestFlags, pPlayerQuestFlags, pOutByte)
+  }
+  if (va === 0x6fcd87d0) {
+    return ACT4Q0_StatusFilter_6FCD87D0_113c(sm, pQuest, pPlayerUnit, pGameQuestFlags, pPlayerQuestFlags, pOutByte)
+  }
+  if (va === 0x6fcd8b80) {
+    return ACT4Prologue_StatusFilter_6FCD8B80_113c(sm, pQuest, pPlayerUnit, pGameQuestFlags, pPlayerQuestFlags, pOutByte)
+  }
+  if (va === 0x6fc76ea0) {
+    return ACT5Q0_StatusFilter_6FC76EA0_113c(sm, pQuest, pPlayerUnit, pGameQuestFlags, pPlayerQuestFlags, pOutByte)
+  }
+  if (va === 0x6fc76e00) {
+    return ACT5Q1_StatusFilter_6FC76E00_113c(sm, pQuest, pPlayerUnit, pGameQuestFlags, pPlayerQuestFlags, pOutByte)
+  }
+  if (va === 0x6fc7b8c0) {
+    return ACT5Q3_StatusFilter_6FC7B8C0_113c(sm, pQuest, pPlayerUnit, pGameQuestFlags, pPlayerQuestFlags, pOutByte)
+  }
+  if (va === 0x6fc768c0) {
+    return ACT5Q4_StatusFilter_6FC768C0_113c(sm, pQuest, pPlayerUnit, pGameQuestFlags, pPlayerQuestFlags, pOutByte)
   }
   return 0
+}
+
+function dispatchK4SpellIconHandler113c(
+  m: Memory113c,
+  pHandlerFn: number,
+  pGame: number,
+  pOwnerUnit: number,
+  pItem: number,
+  pTargetUnit: number,
+  nX: number,
+  nY: number,
+  nSpellParam: number,
+): number {
+  const sm = m as SparseMemory113c
+  switch (pHandlerFn >>> 0) {
+    case 0x6fcccfd0:
+      return ITEMS_SendUseScrollOrTomePacket3F_6FCCCFD0_113c(sm, nSpellParam, pOwnerUnit, pItem)
+    case 0x6fccdac0:
+      return ITEMS_SpellIdentifyInventoryItem_6FCCDAC0_113c(
+        sm,
+        pGame,
+        pOwnerUnit,
+        pItem,
+        pTargetUnit,
+        nX,
+        nY,
+        nSpellParam,
+      )
+    case 0x6fccf450:
+      return SKILLS_SrvDo_BookOrScrollOfTownPortal_6FCCF450_113c(
+        sm,
+        pGame,
+        pOwnerUnit,
+        pItem,
+        pTargetUnit,
+        nX,
+        nY,
+        nSpellParam,
+      )
+    case 0x6fccedc0:
+      return ITEMS_UseHealingOrManaPotion_6FCCEDC0_113c(
+        sm,
+        pGame,
+        pOwnerUnit,
+        pItem,
+        nX,
+        nY,
+        0,
+        nSpellParam,
+      )
+    case 0x6fccea40:
+      return ITEMS_UseFlatOrBuffPotion_6FCCEA40_113c(
+        sm,
+        pGame,
+        pOwnerUnit,
+        pItem,
+        nX,
+        nY,
+        0,
+        nSpellParam,
+      )
+    case 0x6fcce6d0:
+      return ITEMS_UsePercentagePotion_6FCCE6D0_113c(
+        sm,
+        pGame,
+        pOwnerUnit,
+        pItem,
+        nX,
+        nY,
+        0,
+        nSpellParam,
+      )
+    case 0x6fccf370:
+      return ITEMS_UseAntidoteOrThawingCurePotion_6FCCF370_113c(
+        sm,
+        pGame,
+        pOwnerUnit,
+        pItem,
+        pTargetUnit,
+        nX,
+        nY,
+        nSpellParam,
+      )
+    case 0x6fccd9c0:
+      return ITEMS_UseScrollOrTomeOfIdentify_6FCCD9C0_113c(
+        sm,
+        pGame,
+        pOwnerUnit,
+        pItem,
+        pTargetUnit,
+        nX,
+        nY,
+        nSpellParam,
+      )
+    case 0x6fccca20:
+      return MONAI_TransferItemCellStatFromItemToUnit_6FCCCA20_113c(m, pOwnerUnit, pItem)
+    case 0x6fcce4d0:
+      return ITEMS_UseTimedStateBuffPotion_6FCCE4D0_113c(
+        sm,
+        pGame,
+        pOwnerUnit,
+        pItem,
+        pTargetUnit,
+        nX,
+        nY,
+        nSpellParam,
+      )
+    case 0x6fccdf20: {
+      const nItemId = pItem !== 0 ? (m.u32((pItem + 0x04) >>> 0) | 0) : -1
+      const hasTxt = (DATATBLS_GetItemsTxtRecordMemPort113c(m, nItemId) >>> 0) !== 0
+      ITEMS_SpellCastFireballAtTargetOrPath_6FCCDF20_113c(
+        sm,
+        pGame,
+        pOwnerUnit,
+        pItem,
+        pTargetUnit,
+        nX,
+        nY,
+        nSpellParam,
+      )
+      return hasTxt ? 1 : 0
+    }
+    case 0x6fccdee0: {
+      const nItemId = pItem !== 0 ? (m.u32((pItem + 0x04) >>> 0) | 0) : -1
+      const hasTxt = (DATATBLS_GetItemsTxtRecordMemPort113c(m, nItemId) >>> 0) !== 0
+      ITEMS_SpellCastFireballAtCoords_6FCCDEE0_113c(
+        sm,
+        pGame,
+        pOwnerUnit,
+        pItem,
+        pTargetUnit,
+        nX,
+        nY,
+        nSpellParam,
+      )
+      return hasTxt ? 1 : 0
+    }
+    default:
+      return 0
+  }
 }
 
 let k4Installed = false
@@ -1623,6 +2160,7 @@ let k4Installed = false
 export function installK4QuestReplay113c(): void {
   if (k4Installed) return
   k4Installed = true
+  registerDefaultSpellIconHandler113c(dispatchK4SpellIconHandler113c)
   registerK4QuestCallbackDispatcher113c(dispatchK4QuestCallback113c)
   registerK4QuestNpcAlertDispatcher113c(dispatchK4QuestNpcAlert113c)
   registerK4QuestStatusFilterDispatcher113c(dispatchK4QuestStatusFilter113c)

@@ -312,8 +312,9 @@ describe('K1R14-LaneJ2: D2Game.dll Boot/Init & Event/Sync Coverage Gap Closure P
 
     const pPkt40 = m.alloc(0x28);
     m.setU8(pPkt40, 0x5b);
-    expect(NET_SendFixed40BytePacketToClient113c(m, pClient, pPkt40)).toBe(1);
-    expect(NET_QueuePacketToClientBuffer113c(m, pClient, 1, pPkt40, 10)).toBe(1);
+    // D2Game.dll@0x6FCAA3E0 returns queued byte length (`nPacketSize`) on success.
+    expect(NET_SendFixed40BytePacketToClient113c(m, pClient, pPkt40)).toBe(0x28);
+    expect(NET_QueuePacketToClientBuffer113c(m, pClient, 1, pPkt40, 10)).toBe(10);
     expect(m.u32(pQueue)).toBe(bytesAfterFullSync + 0x28 + 10);
   });
 

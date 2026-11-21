@@ -116,7 +116,8 @@ describe('K2 Wave 4 Batch 5 (w4b5: 45 D2Game.dll 1.13c VAs 0x6FCAD040..0x6FCBC27
     m.setU32(pGame + 0x1120 + (77 & 0x7f) * 4, pPlayer)
 
     NET_SendPacket82_PortalOwnerInfo_6FCAD040_113c(m, pGame, 10, pClient, 30)
-    expect(NET_SendPacket75_PartyUnitRosterUpdate_6FCAD120_113c(m, pPlayer, pPlayer)).toBe(1)
+    // D2Game.dll@0x6FCAA3E0 returns queued byte count (`nPacketSize`) on success.
+    expect(NET_SendPacket75_PartyUnitRosterUpdate_6FCAD120_113c(m, pPlayer, pPlayer)).toBe(13)
 
     const pBoss = m.alloc(0x100)
     const pMonData = m.alloc(0x60)
@@ -124,7 +125,7 @@ describe('K2 Wave 4 Batch 5 (w4b5: 45 D2Game.dll 1.13c VAs 0x6FCAD040..0x6FCBC27
     m.setU32(pBoss + 0x14, pMonData)
     expect(MONSTER_ShouldSyncBossLifeBarDelta_6FCAD500_113c(m, pBoss, 4096, pPlayer)).toBe(0)
 
-    expect(NET_SendPacket22_UnitSkillAmmoCount_6FCAD570_113c(m, pClient, 0, 77, 12, 3)).toBe(1)
+    expect(NET_SendPacket22_UnitSkillAmmoCount_6FCAD570_113c(m, pClient, 0, 77, 12, 3)).toBe(12)
     NET_SendPacket21_UpdateUnitSkill_6FCAD5F0_113c(m, pClient, pPlayer, 36, 5, 1)
   })
 
@@ -262,7 +263,8 @@ describe('K2 Wave 4 Batch 5 (w4b5: 45 D2Game.dll 1.13c VAs 0x6FCAD040..0x6FCBC27
     m.setU32(pPetUnit + 0x2c, pPetPath)
     m.setU32(pPetUnit + 0x80, pGame)
     PETS_SendPetOrMercAssignPacket_6FCB66E0_113c(m, pPlayer, pPetEntry)
-    expect(PETS_SendPacket7A_UnsummonPet_6FCB6810_113c(m, pPlayer, pPetEntry)).toBe(1)
+    // D2Game.dll@0x6FCAA3E0 returns queued byte count (13 for S2C 0x7A).
+    expect(PETS_SendPacket7A_UnsummonPet_6FCB6810_113c(m, pPlayer, pPetEntry)).toBe(13)
 
     m.setU32(pGame + 0x1320 + (999 & 0x7f) * 4, pPetUnit)
     expect(PETS_GetFirstPetUnitByType_6FCB6A40_113c(m, pPlayer, 3, 0, pGame)).toBe(pPetUnit)

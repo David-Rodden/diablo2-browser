@@ -81,6 +81,56 @@ export const SKINNABLE_MINIONS_BY_CLASS: Readonly<
 
 export const REQUIRED_MINION_CLIP_KEYS = ['nu', 'wl', 'a1', 'gh', 'dt'] as const
 
+/** One Diablo II animation mode mapped onto an animation of a mesh skin model. */
+export interface CharacterSkinMeshClip {
+  /** Animation name inside the model file. */
+  readonly anim: string
+  readonly loop: boolean
+  /** Natural duration of the animation in milliseconds. */
+  readonly durationMs: number
+  /**
+   * Ground speed (model units per second) the animation was authored for. When positive, a
+   * locomotion clip is played at the rate that matches the unit's actual movement (no foot sliding).
+   */
+  readonly moveSpeed?: number | undefined
+  /** Fraction (0..1, exclusive) of the animation at which the visible impact / release happens. */
+  readonly actionAt?: number | undefined
+}
+
+/**
+ * A unit rendered in real time from a skinned 3D model (`format: 'mesh'`).
+ *
+ * The clip table is keyed by Diablo II mode tokens (`nu`, `wl`, `a1`, ...) rather than by the
+ * source art's own animation names, so art converted from any source (Warcraft III today, other
+ * 3D sources later) plugs into the same contract.
+ */
+export interface CharacterSkinMeshSpec {
+  /** Model file (`.glb`) relative to the skin directory. */
+  readonly file: string
+  /** Scene pixels per model unit. */
+  readonly pxPerUnit: number
+  /** Scene-pixel bounding box of the rendered unit and the position of its ground point inside it. */
+  readonly box: {
+    readonly width: number
+    readonly height: number
+    readonly footX: number
+    readonly footY: number
+  }
+  readonly clips: Readonly<Record<string, CharacterSkinMeshClip>>
+  /**
+   * Reserved, not consumed yet: named model parts (for sources whose look changes with equipment)
+   * mapped to model files relative to the skin directory.
+   */
+  readonly components?: Readonly<Record<string, string>> | undefined
+  /**
+   * Reserved, not consumed yet: extra material maps (for example `normal`, `orm`) per texture slot,
+   * as files relative to the skin directory.
+   */
+  readonly materialMaps?: Readonly<Record<string, string>> | undefined
+}
+
+export const REQUIRED_MESH_HERO_CLIP_KEYS = ['nu', 'wl', 'dt'] as const
+
 export interface CharacterSkinMinionSpec {
   readonly name: CharacterSkinLocalizedText
   readonly directions: number
@@ -96,16 +146,23 @@ export interface CharacterSkinMinionSpec {
   readonly glowClips?: Readonly<Record<string, AnimClipMeta>> | undefined
   readonly groups: readonly (readonly CharacterSkinFrameTuple[])[]
   readonly glowGroups?: readonly (readonly CharacterSkinFrameTuple[])[] | undefined
+  /** Present exactly when the owning manifest has `format: 'mesh'`. */
+  readonly mesh?: CharacterSkinMeshSpec | undefined
 }
 
 export interface CharacterSkinManifest {
-  readonly schema: 1
+  /** `1` = baked sprite atlases (`format: 'rgba'`), `2` = real-time mesh (`format: 'mesh'`). */
+  readonly schema: 1 | 2
   readonly id: string
   readonly name: CharacterSkinLocalizedText
   readonly description?: CharacterSkinLocalizedText | undefined
   readonly author?: string | undefined
   readonly targetClass: PlayerClassToken
-  readonly format: 'rgba'
+  /**
+   * `'rgba'`: `pages` / `groups` / `clips` hold baked sprite frames.
+   * `'mesh'`: `mesh` (and every minion's `mesh`) holds a real-time model; the sprite fields are empty.
+   */
+  readonly format: 'rgba' | 'mesh'
   readonly directions: number
   /** Logical scale multiplier applied at draw time (e.g. `0.5` for 2x HD sprites). Defaults to `1`. */
   readonly renderScale?: number | undefined
@@ -126,6 +183,8 @@ export interface CharacterSkinManifest {
   readonly glowGroups?: readonly (readonly CharacterSkinFrameTuple[])[] | undefined
   /** Optional class-owned summoned minion skin replacements bundled with this character skin. */
   readonly minions?: Readonly<Record<string, CharacterSkinMinionSpec>> | undefined
+  /** Present exactly when `format === 'mesh'`. */
+  readonly mesh?: CharacterSkinMeshSpec | undefined
 }
 
 export interface CharacterSkinCatalogEntry {
@@ -318,13 +377,119 @@ function validateClips(
   return out
 }
 
+function validateFileMap(raw: unknown, label: string): Readonly<Record<string, string>> {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    throw new Error(`Invalid character skin ${label}: expected an object of relative files`)
+  }
+  const out: Record<string, string> = {}
+  for (const [key, file] of Object.entries(raw as Record<string, unknown>)) {
+    if (!/^[a-z0-9_-]{1,40}$/.test(key) || !isValidSkinRelativeFile(file)) {
+      throw new Error(`Invalid character skin ${label}.${key}: "${String(file)}"`)
+    }
+    out[key] = file.trim()
+  }
+  return out
+}
+
+function validateMeshSpec(
+  raw: unknown,
+  label: string,
+  requiredClips: readonly string[],
+): CharacterSkinMeshSpec {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    throw new Error(`Invalid character skin ${label}: expected mesh object`)
+  }
+  const obj = raw as Record<string, unknown>
+  if (!isValidSkinRelativeFile(obj.file) || !obj.file.trim().toLowerCase().endsWith('.glb')) {
+    throw new Error(`Invalid character skin ${label}.file "${String(obj.file)}" (expected a relative .glb file)`)
+  }
+  const pxPerUnit = Number(obj.pxPerUnit)
+  if (!Number.isFinite(pxPerUnit) || pxPerUnit < 0.01 || pxPerUnit > 100) {
+    throw new Error(`Invalid character skin ${label}.pxPerUnit=${String(obj.pxPerUnit)} (expected 0.01..100)`)
+  }
+  if (!obj.box || typeof obj.box !== 'object' || Array.isArray(obj.box)) {
+    throw new Error(`Invalid character skin ${label}.box: expected { width, height, footX, footY }`)
+  }
+  const boxRaw = obj.box as Record<string, unknown>
+  const width = Number(boxRaw.width)
+  const height = Number(boxRaw.height)
+  const footX = Number(boxRaw.footX)
+  const footY = Number(boxRaw.footY)
+  if (
+    !Number.isFinite(width) || width < 8 || width > 1024 ||
+    !Number.isFinite(height) || height < 8 || height > 1024 ||
+    !Number.isFinite(footX) || footX < 0 || footX > width ||
+    !Number.isFinite(footY) || footY < 0 || footY > height
+  ) {
+    throw new Error(`Invalid character skin ${label}.box (expected 8..1024 px with the foot point inside it)`)
+  }
+  if (!obj.clips || typeof obj.clips !== 'object' || Array.isArray(obj.clips)) {
+    throw new Error(`Invalid character skin ${label}.clips: expected clips record`)
+  }
+  const clips: Record<string, CharacterSkinMeshClip> = {}
+  for (const [rawKey, rawClip] of Object.entries(obj.clips as Record<string, unknown>)) {
+    const key = rawKey.trim().toLowerCase()
+    if (!/^[a-z0-9]{2}$/.test(key)) {
+      throw new Error(`Invalid character skin ${label}.clips key "${rawKey}" (expected a 2-character mode token)`)
+    }
+    if (!rawClip || typeof rawClip !== 'object' || Array.isArray(rawClip)) {
+      throw new Error(`Invalid character skin ${label}.clips.${rawKey}: expected clip object`)
+    }
+    const c = rawClip as Record<string, unknown>
+    if (typeof c.anim !== 'string' || c.anim.trim().length === 0 || c.anim.length > 80) {
+      throw new Error(`Invalid character skin ${label}.clips.${rawKey}.anim`)
+    }
+    const durationMs = Number(c.durationMs)
+    if (!Number.isFinite(durationMs) || durationMs <= 0 || durationMs > 600000) {
+      throw new Error(`Invalid character skin ${label}.clips.${rawKey}.durationMs=${String(c.durationMs)}`)
+    }
+    if (typeof c.loop !== 'boolean') {
+      throw new Error(`Invalid character skin ${label}.clips.${rawKey}.loop: expected boolean`)
+    }
+    let moveSpeed: number | undefined
+    if (c.moveSpeed !== undefined) {
+      moveSpeed = Number(c.moveSpeed)
+      if (!Number.isFinite(moveSpeed) || moveSpeed < 0 || moveSpeed > 100000) {
+        throw new Error(`Invalid character skin ${label}.clips.${rawKey}.moveSpeed=${String(c.moveSpeed)}`)
+      }
+    }
+    let actionAt: number | undefined
+    if (c.actionAt !== undefined) {
+      actionAt = Number(c.actionAt)
+      if (!Number.isFinite(actionAt) || actionAt <= 0 || actionAt >= 1) {
+        throw new Error(`Invalid character skin ${label}.clips.${rawKey}.actionAt=${String(c.actionAt)} (expected 0..1 exclusive)`)
+      }
+    }
+    clips[key] = {
+      anim: c.anim.trim().toLowerCase(),
+      loop: c.loop,
+      durationMs,
+      ...(moveSpeed !== undefined ? { moveSpeed } : {}),
+      ...(actionAt !== undefined ? { actionAt } : {}),
+    }
+  }
+  for (const req of requiredClips) {
+    if (!clips[req]) {
+      throw new Error(`Character skin ${label} is missing required clip "${req}" (expected ${requiredClips.join(', ')})`)
+    }
+  }
+  return {
+    file: obj.file.trim(),
+    pxPerUnit,
+    box: { width, height, footX, footY },
+    clips,
+    ...(obj.components !== undefined ? { components: validateFileMap(obj.components, `${label}.components`) } : {}),
+    ...(obj.materialMaps !== undefined ? { materialMaps: validateFileMap(obj.materialMaps, `${label}.materialMaps`) } : {}),
+  }
+}
+
 export function validateCharacterSkinManifest(raw: unknown): CharacterSkinManifest {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
     throw new Error('Character skin manifest validation failed: expected JSON object')
   }
   const obj = raw as Record<string, unknown>
-  if (obj.schema !== 1) {
-    throw new Error(`Unsupported character skin manifest schema=${String(obj.schema)} (expected 1)`)
+  if (obj.schema !== 1 && obj.schema !== 2) {
+    throw new Error(`Unsupported character skin manifest schema=${String(obj.schema)} (expected 1 or 2)`)
   }
   if (typeof obj.id !== 'string' || !SKIN_ID_RE.test(obj.id)) {
     throw new Error(`Invalid character skin id "${String(obj.id)}" (expected kebab-case)`)
@@ -337,8 +502,14 @@ export function validateCharacterSkinManifest(raw: unknown): CharacterSkinManife
   if (!(PLAYER_CLASS_TOKENS as readonly string[]).includes(targetClass)) {
     throw new Error(`Invalid character skin targetClass "${String(obj.targetClass)}"`)
   }
-  if (obj.format !== 'rgba') {
-    throw new Error(`Unsupported character skin format "${String(obj.format)}" (expected "rgba")`)
+  if (obj.format !== 'rgba' && obj.format !== 'mesh') {
+    throw new Error(`Unsupported character skin format "${String(obj.format)}" (expected "rgba" or "mesh")`)
+  }
+  const isMesh = obj.format === 'mesh'
+  if (isMesh !== (obj.schema === 2)) {
+    throw new Error(
+      `Character skin format "${obj.format}" does not match schema=${String(obj.schema)} (rgba = schema 1, mesh = schema 2)`,
+    )
   }
   const directions = Number(obj.directions)
   if (!VALID_DIRECTIONS.has(directions)) {
@@ -382,17 +553,23 @@ export function validateCharacterSkinManifest(raw: unknown): CharacterSkinManife
         })()
       : undefined
 
-  const pages = validatePages(obj.pages, 'pages')
-  const groups = validateGroups(obj.groups, pages.length, 'groups')
-  const clips = validateClips(obj.clips, groups.length, 'clips')
-  if (!clips.nu && !clips.tn && !clips.wl) {
+  const mesh = isMesh ? validateMeshSpec(obj.mesh, 'mesh', REQUIRED_MESH_HERO_CLIP_KEYS) : undefined
+  if (!isMesh && obj.mesh !== undefined) {
+    throw new Error(`Character skin "${obj.id}" has a mesh section but format is "rgba"`)
+  }
+  const pages: readonly CharacterSkinPageSpec[] = isMesh ? [] : validatePages(obj.pages, 'pages')
+  const groups: readonly (readonly CharacterSkinFrameTuple[])[] = isMesh
+    ? []
+    : validateGroups(obj.groups, pages.length, 'groups')
+  const clips: Readonly<Record<string, AnimClipMeta>> = isMesh ? {} : validateClips(obj.clips, groups.length, 'clips')
+  if (!isMesh && !clips.nu && !clips.tn && !clips.wl) {
     throw new Error(`Character skin "${obj.id}" must provide at least one baseline idle/walk clip (nu, tn, or wl)`)
   }
 
   let glowPages: readonly CharacterSkinPageSpec[] | undefined
   let glowGroups: readonly (readonly CharacterSkinFrameTuple[])[] | undefined
   let glowClips: Readonly<Record<string, AnimClipMeta>> | undefined
-  if (obj.glowPages !== undefined || obj.glowGroups !== undefined) {
+  if (!isMesh && (obj.glowPages !== undefined || obj.glowGroups !== undefined)) {
     glowPages = validatePages(obj.glowPages, 'glowPages')
     glowGroups = validateGroups(obj.glowGroups, glowPages.length, 'glowGroups')
     glowClips =
@@ -457,20 +634,32 @@ export function validateCharacterSkinManifest(raw: unknown): CharacterSkinManife
         }
         mPortraitFile = mObj.portraitFile.trim()
       }
-      const mPages = validatePages(mObj.pages, `minions.${rawKey}.pages`)
-      const mGroups = validateGroups(mObj.groups, mPages.length, `minions.${rawKey}.groups`)
-      const mClips = validateClips(mObj.clips, mGroups.length, `minions.${rawKey}.clips`)
-      for (const reqClip of REQUIRED_MINION_CLIP_KEYS) {
-        if (!mClips[reqClip]) {
-          throw new Error(
-            `Character skin "${obj.id}" minions.${rawKey} is missing required core clip "${reqClip}" (expected nu, wl, a1, gh, dt)`,
-          )
+      const mMesh = isMesh
+        ? validateMeshSpec(mObj.mesh, `minions.${rawKey}.mesh`, REQUIRED_MINION_CLIP_KEYS)
+        : undefined
+      if (!isMesh && mObj.mesh !== undefined) {
+        throw new Error(`Character skin "${obj.id}" minions.${rawKey} has a mesh section but format is "rgba"`)
+      }
+      const mPages: readonly CharacterSkinPageSpec[] = isMesh ? [] : validatePages(mObj.pages, `minions.${rawKey}.pages`)
+      const mGroups: readonly (readonly CharacterSkinFrameTuple[])[] = isMesh
+        ? []
+        : validateGroups(mObj.groups, mPages.length, `minions.${rawKey}.groups`)
+      const mClips: Readonly<Record<string, AnimClipMeta>> = isMesh
+        ? {}
+        : validateClips(mObj.clips, mGroups.length, `minions.${rawKey}.clips`)
+      if (!isMesh) {
+        for (const reqClip of REQUIRED_MINION_CLIP_KEYS) {
+          if (!mClips[reqClip]) {
+            throw new Error(
+              `Character skin "${obj.id}" minions.${rawKey} is missing required core clip "${reqClip}" (expected nu, wl, a1, gh, dt)`,
+            )
+          }
         }
       }
       let mGlowPages: readonly CharacterSkinPageSpec[] | undefined
       let mGlowGroups: readonly (readonly CharacterSkinFrameTuple[])[] | undefined
       let mGlowClips: Readonly<Record<string, AnimClipMeta>> | undefined
-      if (mObj.glowPages !== undefined || mObj.glowGroups !== undefined) {
+      if (!isMesh && (mObj.glowPages !== undefined || mObj.glowGroups !== undefined)) {
         mGlowPages = validatePages(mObj.glowPages, `minions.${rawKey}.glowPages`)
         mGlowGroups = validateGroups(mObj.glowGroups, mGlowPages.length, `minions.${rawKey}.glowGroups`)
         mGlowClips =
@@ -492,6 +681,7 @@ export function validateCharacterSkinManifest(raw: unknown): CharacterSkinManife
         ...(mGlowClips !== undefined ? { glowClips: mGlowClips } : {}),
         groups: mGroups,
         ...(mGlowGroups !== undefined ? { glowGroups: mGlowGroups } : {}),
+        ...(mMesh !== undefined ? { mesh: mMesh } : {}),
       }
     }
     if (Object.keys(validatedMinions).length > 0) {
@@ -500,13 +690,13 @@ export function validateCharacterSkinManifest(raw: unknown): CharacterSkinManife
   }
 
   return {
-    schema: 1,
+    schema: isMesh ? 2 : 1,
     id: obj.id,
     name,
     ...(description !== undefined ? { description } : {}),
     ...(author !== undefined ? { author } : {}),
     targetClass: targetClass as PlayerClassToken,
-    format: 'rgba',
+    format: isMesh ? 'mesh' : 'rgba',
     directions,
     ...(renderScale !== undefined ? { renderScale } : {}),
     ...(typeof obj.floating === 'boolean' ? { floating: obj.floating } : {}),
@@ -521,6 +711,7 @@ export function validateCharacterSkinManifest(raw: unknown): CharacterSkinManife
     groups,
     ...(glowGroups !== undefined ? { glowGroups } : {}),
     ...(minions !== undefined ? { minions } : {}),
+    ...(mesh !== undefined ? { mesh } : {}),
   }
 }
 
@@ -616,7 +807,7 @@ export function shouldSkinOverrideMorph(
 export function resolveSkinClipKey(
   classToken: PlayerClassToken,
   requestedClip: string,
-  clips: Readonly<Record<string, AnimClipMeta>>,
+  clips: Readonly<Record<string, unknown>>,
 ): string | null {
   const req = requestedClip.trim().toLowerCase()
   if (clips[req]) return req
@@ -691,7 +882,7 @@ export function resolveMinionKeyForMonsterClassId(
  */
 export function resolveMinionClipKey(
   requestedClip: string,
-  clips: Readonly<Record<string, AnimClipMeta>>,
+  clips: Readonly<Record<string, unknown>>,
 ): string | null {
   const req = requestedClip.trim().toLowerCase()
   if (clips[req]) return req

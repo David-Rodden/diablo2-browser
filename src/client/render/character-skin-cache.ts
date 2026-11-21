@@ -19,15 +19,20 @@ import {
   type CharacterSkinCatalogEntry,
   type CharacterSkinFrameTuple,
   type CharacterSkinManifest,
+  type CharacterSkinMeshClip,
+  type CharacterSkinMeshSpec,
   type CharacterSkinMinionSpec,
   type CharacterSkinMorphPolicy,
   type CharacterSkinRuntimeConfig,
   type CharacterSkinScope,
 } from '../../common/units/character-skin.ts'
+import { parseMeshSkinModel, type MeshSkinClip, type MeshSkinModel } from '../../common/units/mesh-skin-model.ts'
 import type { AnimClipMeta } from '../../common/units/unit-types.ts'
 import { getGameLang, type GameLang } from '../i18n/lang.ts'
 import { closeModalDomOverlay, openModalDomOverlay } from '../ui/dom-overlay.ts'
 import type { AtlasFrame } from './atlas.ts'
+import { MeshSkinAnimator } from './mesh-skin-animator.ts'
+import { MeshSkinRenderer, type MeshSkinGpuModel, type MeshSkinTextureSource } from './mesh-skin-renderer.ts'
 import type { AtlasHandle, PagedAtlasFrame, SpriteRenderer } from './renderer.ts'
 
 export type MinionPortraitDrawable = CanvasImageSource & {
@@ -73,6 +78,34 @@ export interface LoadedMinionSkinArt {
   readonly shadowScale: number
 }
 
+/** One Diablo II mode token resolved to a playable animation of a loaded mesh skin model. */
+export interface LoadedMeshSkinClip {
+  readonly meta: CharacterSkinMeshClip
+  readonly clip: MeshSkinClip
+}
+
+/** A mesh skin unit (hero or one summon) whose model and textures are uploaded to one renderer. */
+export interface LoadedMeshSkinUnit {
+  readonly skinId: string
+  /** `'hero'` or the minion key. */
+  readonly unitKey: string
+  readonly spec: CharacterSkinMeshSpec
+  readonly model: MeshSkinModel
+  readonly gpu: MeshSkinGpuModel
+  readonly clips: Readonly<Record<string, LoadedMeshSkinClip>>
+  readonly floating: boolean
+  readonly shadowOffsetY: number
+  readonly shadowScale: number
+}
+
+/** Mesh skin runtime owned by one sprite renderer. */
+export interface MeshSkinRuntime {
+  readonly meshRenderer: MeshSkinRenderer
+  readonly animator: MeshSkinAnimator
+}
+
+export const MESH_SKIN_HERO_UNIT_KEY = 'hero'
+
 export interface SkinAvatarCompositeFrame {
   readonly x: number
   readonly y: number
@@ -100,6 +133,11 @@ export interface CharacterSkinServiceOptions {
   readonly skinsBaseUrl?: string | undefined
   readonly fetchFn?: typeof fetch | undefined
   readonly decodeImageBytes?: ((bytes: Uint8Array, expectedW: number, expectedH: number) => Promise<DecodedSkinImage>) | undefined
+  /**
+   * Decoder for textures embedded in mesh skin models. Must return straight (non-premultiplied)
+   * alpha: model textures reuse their alpha channel as a mask over colour that must survive.
+   */
+  readonly decodeMeshTexture?: ((bytes: Uint8Array, mimeType: string) => Promise<DecodedSkinImage>) | undefined
   readonly disableIndexedDb?: boolean | undefined
 }
 
@@ -196,6 +234,106 @@ async function defaultDecodeImageBytes(bytes: Uint8Array): Promise<DecodedSkinIm
     width: bitmap.width,
     height: bitmap.height,
     close: () => bitmap.close(),
+  }
+}
+
+async function defaultDecodeMeshTexture(bytes: Uint8Array, mimeType: string): Promise<DecodedSkinImage> {
+  if (typeof createImageBitmap !== 'function' || typeof Blob !== 'function') {
+    throw new Error('createImageBitmap is not available in this environment')
+  }
+  const safeCopy = new Uint8Array(bytes.byteLength)
+  safeCopy.set(bytes)
+  const bitmap = await createImageBitmap(new Blob([safeCopy], { type: mimeType }), {
+    premultiplyAlpha: 'none',
+    colorSpaceConversion: 'none',
+  })
+  return {
+    source: bitmap,
+    width: bitmap.width,
+    height: bitmap.height,
+    close: () => bitmap.close(),
+  }
+}
+
+/** Models, textures and playback state of mesh skins for one sprite renderer. */
+class PerRendererMeshSkinCache implements MeshSkinRuntime {
+  readonly meshRenderer: MeshSkinRenderer
+  readonly animator = new MeshSkinAnimator()
+  private readonly renderer: SpriteRenderer
+  private readonly loaded = new Map<string, LoadedMeshSkinUnit>()
+  private readonly inflight = new Map<string, Promise<LoadedMeshSkinUnit | null>>()
+  private readonly failed = new Set<string>()
+  /** Bumped by every eviction so loads that were in flight at that moment are discarded. */
+  private generation = 0
+
+  constructor(renderer: SpriteRenderer) {
+    this.renderer = renderer
+    this.meshRenderer = new MeshSkinRenderer(renderer)
+  }
+
+  getReady(cacheKey: string): LoadedMeshSkinUnit | undefined {
+    const existing = this.loaded.get(cacheKey)
+    if (existing && this.renderer.isDisposed) {
+      this.loaded.clear()
+      return undefined
+    }
+    return existing
+  }
+
+  hasFailed(cacheKey: string): boolean {
+    return this.failed.has(cacheKey)
+  }
+
+  ensureLoaded(
+    cacheKey: string,
+    loadFn: (meshRenderer: MeshSkinRenderer) => Promise<LoadedMeshSkinUnit | null>,
+  ): Promise<LoadedMeshSkinUnit | null> {
+    const existing = this.getReady(cacheKey)
+    if (existing) return Promise.resolve(existing)
+    if (this.failed.has(cacheKey) || this.renderer.isDisposed) return Promise.resolve(null)
+    const pending = this.inflight.get(cacheKey)
+    if (pending) return pending
+    const generation = this.generation
+    const p = (async (): Promise<LoadedMeshSkinUnit | null> => {
+      try {
+        const unit = await loadFn(this.meshRenderer)
+        // An eviction while loading (plugin disabled, skin replaced) makes this result stale.
+        if (generation !== this.generation || this.renderer.isDisposed) {
+          if (unit !== null) this.meshRenderer.disposeModel(unit.gpu)
+          return null
+        }
+        if (unit === null) {
+          this.failed.add(cacheKey)
+          return null
+        }
+        this.loaded.set(cacheKey, unit)
+        return unit
+      } catch (err) {
+        if (generation === this.generation) this.failed.add(cacheKey)
+        console.warn(`[CharacterSkinService] Failed to load mesh skin "${cacheKey}": ${(err as Error).message}`)
+        return null
+      } finally {
+        if (generation === this.generation) this.inflight.delete(cacheKey)
+      }
+    })()
+    this.inflight.set(cacheKey, p)
+    return p
+  }
+
+  /** Evict units whose cache key passes `match`; frees the shared targets once nothing is left. */
+  evictWhere(match: (cacheKey: string) => boolean): void {
+    this.generation += 1
+    this.inflight.clear()
+    for (const key of [...this.failed]) if (match(key)) this.failed.delete(key)
+    for (const [key, unit] of [...this.loaded.entries()]) {
+      if (!match(key)) continue
+      this.loaded.delete(key)
+      this.meshRenderer.disposeModel(unit.gpu)
+    }
+    if (this.loaded.size === 0) {
+      this.meshRenderer.dispose()
+      this.animator.clear()
+    }
   }
 }
 
@@ -591,6 +729,7 @@ export class CharacterSkinService {
   private readonly skinsBaseUrl: string
   private readonly fetchFn: typeof fetch | undefined
   private readonly decodeImageBytes: (bytes: Uint8Array, expectedW: number, expectedH: number) => Promise<DecodedSkinImage>
+  private readonly decodeMeshTexture: (bytes: Uint8Array, mimeType: string) => Promise<DecodedSkinImage>
   private readonly idbRepo: CustomSkinIdbRepository
 
   private config: CharacterSkinRuntimeConfig = DEFAULT_CHARACTER_SKIN_CONFIG
@@ -598,8 +737,10 @@ export class CharacterSkinService {
   private readonly customPackages = new Map<string, StoredCustomSkinPackage>()
   private readonly manifestCache = new Map<string, CharacterSkinManifest>()
   private readonly manifestInflight = new Map<string, Promise<CharacterSkinManifest>>()
+  private readonly manifestFailed = new Set<string>()
 
   private readonly gpuCaches = new WeakMap<SpriteRenderer, PerRendererSkinAtlasCache>()
+  private readonly meshCaches = new WeakMap<SpriteRenderer, PerRendererMeshSkinCache>()
   private readonly liveRenderers = new Set<SpriteRenderer>()
 
   private readonly avatarReady = new Map<string, SkinAvatarComposite>()
@@ -620,6 +761,7 @@ export class CharacterSkinService {
       options.fetchFn ??
       (typeof globalThis.fetch === 'function' ? globalThis.fetch.bind(globalThis) : undefined)
     this.decodeImageBytes = options.decodeImageBytes ?? ((bytes) => defaultDecodeImageBytes(bytes))
+    this.decodeMeshTexture = options.decodeMeshTexture ?? defaultDecodeMeshTexture
     this.idbRepo = new CustomSkinIdbRepository(options.disableIndexedDb === true)
 
     for (const entry of BUILTIN_FALLBACK_SKINS) {
@@ -796,6 +938,9 @@ export class CharacterSkinService {
         throw new Error(`Missing atlas file "${page.file}" inside .d2skin.zip`)
       }
     }
+    if (manifest.mesh && !filesRecord[manifest.mesh.file]) {
+      throw new Error(`Missing model file "${manifest.mesh.file}" inside .d2skin.zip`)
+    }
     if (manifest.glowPages) {
       for (const page of manifest.glowPages) {
         if (!filesRecord[page.file]) {
@@ -816,6 +961,9 @@ export class CharacterSkinService {
               throw new Error(`Missing minion "${mKey}" glow atlas file "${page.file}" inside .d2skin.zip`)
             }
           }
+        }
+        if (mSpec.mesh && !filesRecord[mSpec.mesh.file]) {
+          throw new Error(`Missing minion "${mKey}" model file "${mSpec.mesh.file}" inside .d2skin.zip`)
         }
         if (mSpec.portraitFile && !filesRecord[mSpec.portraitFile]) {
           throw new Error(`Missing minion "${mKey}" portrait file "${mSpec.portraitFile}" inside .d2skin.zip`)
@@ -923,6 +1071,7 @@ export class CharacterSkinService {
 
   private evictSkinAssets(skinId: string): void {
     this.manifestInflight.delete(skinId)
+    this.manifestFailed.delete(skinId)
     this.avatarReady.delete(skinId)
     this.avatarInflight.delete(skinId)
     this.evictPortraitsForSkin(skinId)
@@ -937,6 +1086,7 @@ export class CharacterSkinService {
         continue
       }
       this.gpuCaches.get(renderer)?.evict(skinId)
+      this.meshCaches.get(renderer)?.evictWhere((key) => key.startsWith(`${skinId}::`))
     }
   }
 
@@ -948,6 +1098,7 @@ export class CharacterSkinService {
         continue
       }
       this.gpuCaches.get(renderer)?.evictAllMinions()
+      this.meshCaches.get(renderer)?.evictWhere((key) => !key.endsWith(`::${MESH_SKIN_HERO_UNIT_KEY}`))
     }
   }
 
@@ -959,6 +1110,7 @@ export class CharacterSkinService {
         continue
       }
       this.gpuCaches.get(renderer)?.evictAll()
+      this.meshCaches.get(renderer)?.evictWhere(() => true)
     }
   }
 
@@ -1005,9 +1157,128 @@ export class CharacterSkinService {
     this.manifestInflight.set(skinId, p)
     try {
       return await p
+    } catch (err) {
+      this.manifestFailed.add(skinId)
+      throw err
     } finally {
       this.manifestInflight.delete(skinId)
     }
+  }
+
+  /**
+   * Synchronous manifest peek for the render loop: the cached manifest, `'loading'` while it is
+   * being fetched (the fetch is started on first miss), or `null` when it cannot be loaded.
+   */
+  peekSelectedManifest(classToken: PlayerClassToken): CharacterSkinManifest | 'loading' | null {
+    const skinId = this.getSelectedSkinId(classToken)
+    if (!skinId) return null
+    const cached = this.customPackages.get(skinId)?.manifest ?? this.manifestCache.get(skinId)
+    if (cached) return cached
+    if (this.manifestFailed.has(skinId)) return null
+    void this.loadManifest(skinId).catch(() => null)
+    return 'loading'
+  }
+
+  /** Mesh skin runtimes of every live renderer (diagnostics / verification tooling). */
+  listMeshSkinRuntimes(): readonly MeshSkinRuntime[] {
+    const out: MeshSkinRuntime[] = []
+    for (const renderer of this.liveRenderers) {
+      const cache = renderer.isDisposed ? undefined : this.meshCaches.get(renderer)
+      if (cache) out.push(cache)
+    }
+    return out
+  }
+
+  /** Mesh skin runtime (impostor renderer + playback state) for `renderer`. */
+  getMeshSkinRuntime(renderer: SpriteRenderer): MeshSkinRuntime {
+    return this.getOrCreateMeshCache(renderer)
+  }
+
+  private getOrCreateMeshCache(renderer: SpriteRenderer): PerRendererMeshSkinCache {
+    let cache = this.meshCaches.get(renderer)
+    if (!cache) {
+      cache = new PerRendererMeshSkinCache(renderer)
+      this.meshCaches.set(renderer, cache)
+      this.liveRenderers.add(renderer)
+    }
+    return cache
+  }
+
+  /**
+   * Synchronous render-loop lookup for a mesh skin unit of the class's selected skin: the hero
+   * (`minionKey === null`) or one bundled summon. Downloads and uploads only that unit's model on
+   * first miss. Returns `null` for sprite skins, unknown minions and failed loads.
+   */
+  getMeshSkinUnit(
+    renderer: SpriteRenderer,
+    classToken: PlayerClassToken,
+    minionKey: string | null,
+  ): LoadedMeshSkinUnit | 'loading' | null {
+    if (!this.config.enabled) return null
+    if (minionKey !== null && !this.config.minionsEnabled) return null
+    const skinId = this.getSelectedSkinId(classToken)
+    if (!skinId) return null
+    const manifest = this.peekSelectedManifest(classToken)
+    if (manifest === 'loading') return 'loading'
+    if (manifest === null || manifest.format !== 'mesh') return null
+    const unitKey = minionKey === null ? MESH_SKIN_HERO_UNIT_KEY : minionKey.trim().toLowerCase()
+    if (minionKey !== null && !manifest.minions?.[unitKey]?.mesh) return null
+    const cache = this.getOrCreateMeshCache(renderer)
+    const cacheKey = `${skinId}::${unitKey}`
+    const ready = cache.getReady(cacheKey)
+    if (ready) return ready
+    if (cache.hasFailed(cacheKey)) return null
+    void this.ensureMeshSkinUnit(renderer, skinId, minionKey === null ? null : unitKey)
+    return 'loading'
+  }
+
+  ensureMeshSkinUnit(
+    renderer: SpriteRenderer,
+    skinId: string,
+    minionKey: string | null,
+  ): Promise<LoadedMeshSkinUnit | null> {
+    const unitKey = minionKey === null ? MESH_SKIN_HERO_UNIT_KEY : minionKey.trim().toLowerCase()
+    const cache = this.getOrCreateMeshCache(renderer)
+    return cache.ensureLoaded(`${skinId}::${unitKey}`, async (meshRenderer) => {
+      const manifest = await this.loadManifest(skinId)
+      const minionSpec = minionKey === null ? undefined : manifest.minions?.[unitKey]
+      const spec = minionKey === null ? manifest.mesh : minionSpec?.mesh
+      if (!spec) return null
+      const model = parseMeshSkinModel(await this.loadSkinFileBytes(skinId, spec.file))
+      const clips: Record<string, LoadedMeshSkinClip> = {}
+      for (const [key, meta] of Object.entries(spec.clips)) {
+        const clip = model.clips[meta.anim]
+        if (!clip) {
+          throw new Error(`clip "${key}" refers to animation "${meta.anim}" missing from ${spec.file}`)
+        }
+        clips[key] = { meta, clip }
+      }
+      const decoded: DecodedSkinImage[] = []
+      try {
+        for (const img of model.images) {
+          decoded.push(await this.decodeMeshTexture(img.bytes, img.mimeType))
+        }
+        if (renderer.isDisposed) return null
+        const gpu = meshRenderer.uploadModel(
+          model,
+          decoded.map((d) => d.source as MeshSkinTextureSource),
+        )
+        const owner = minionKey === null ? manifest : minionSpec
+        return {
+          skinId,
+          unitKey,
+          spec,
+          model,
+          gpu,
+          clips,
+          floating: owner?.floating === true,
+          shadowOffsetY: owner?.shadowOffsetY ?? 0,
+          shadowScale: owner?.shadowScale ?? 1,
+        }
+      } finally {
+        for (const d of decoded) d.close?.()
+      }
+    })
   }
 
   private async loadSkinFileBytes(skinId: string, relFile: string): Promise<Uint8Array> {
@@ -1068,6 +1339,9 @@ export class CharacterSkinService {
     const gpuCache = this.getOrCreateGpuCache(renderer)
     return gpuCache.ensureLoaded(skinId, async () => {
       const manifest = await this.loadManifest(skinId)
+      if (manifest.format === 'mesh') {
+        throw new Error('mesh skins have no sprite atlas (use getMeshSkinUnit)')
+      }
       const pages = await Promise.all(
         manifest.pages.map(async (spec) => {
           const bytes = await this.loadSkinFileBytes(skinId, spec.file)
@@ -1125,7 +1399,7 @@ export class CharacterSkinService {
     return gpuCache.ensureMinionLoaded(skinId, cleanKey, async () => {
       const manifest = await this.loadManifest(skinId)
       const spec = manifest.minions?.[cleanKey]
-      if (!spec) return null
+      if (!spec || manifest.format === 'mesh') return null
       const pages = await Promise.all(
         spec.pages.map(async (pSpec) => {
           const bytes = await this.loadSkinFileBytes(skinId, pSpec.file)
@@ -1286,6 +1560,7 @@ export class CharacterSkinService {
       const decodedGlow: DecodedSkinImage[] = []
       try {
         const manifest = await this.loadManifest(skinId)
+        if (manifest.format === 'mesh') return null
         const clipKey = resolveSkinClipKey(classToken, 'tn', manifest.clips)
         if (!clipKey) return null
         const clip = manifest.clips[clipKey]

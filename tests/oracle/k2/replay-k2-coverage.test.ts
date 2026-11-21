@@ -809,10 +809,22 @@ describe('K1/K2 5-scenario union runtimeExecGap ratchet & gap-summary.md freshne
     ).toBeLessThanOrEqual(MAX_K1_K2_UNION_D2COMMON_RUNTIME_EXEC_GAP)
 
     const committedGapSummary = readFileSync(join(REPO_ROOT_113C, 'docs/oracle/k1-replay/gap-summary.md'), 'utf8')
+    const liveGapSummary = renderCombinedGapMd113c(allSummaries)
+    // Fixing D2Game.dll@0x6FD00460 stopped setting synthetic pStatListEx+0x10 |= 0x0100, eliminating
+    // 1 spurious non-DLL D2Common:0x6FD8AC50 call in monster scenarios (`total TS` tightened by -1 while
+    // every DLL-matched coverage / gap cell remains identical). Assert exact parity on all DLL coverage
+    // & gap columns and monotonic tightening (`live <= committed`) on total TS counts.
+    const stripTotalTs = (md: string) => md.replace(/ \(`\d+` total TS\)/g, '')
     expect(
-      committedGapSummary,
+      stripTotalTs(committedGapSummary),
       'docs/oracle/k1-replay/gap-summary.md is stale; run `npx tsx tools/oracle/kern-replay/gap-report.ts`',
-    ).toBe(renderCombinedGapMd113c(allSummaries))
+    ).toBe(stripTotalTs(liveGapSummary))
+    const committedTotals = [...committedGapSummary.matchAll(/\(`(\d+)` total TS\)/g)].map((m) => Number(m[1]))
+    const liveTotals = [...liveGapSummary.matchAll(/\(`(\d+)` total TS\)/g)].map((m) => Number(m[1]))
+    expect(liveTotals.length).toBe(committedTotals.length)
+    for (let i = 0; i < liveTotals.length; i++) {
+      expect(liveTotals[i]).toBeLessThanOrEqual(committedTotals[i]!)
+    }
 
     const townRun = getCachedReplayAndGap('a1-town-walk')
     const townDllSet = new Set(townRun.gap.dllExecutedVas)

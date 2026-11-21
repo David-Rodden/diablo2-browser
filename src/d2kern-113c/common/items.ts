@@ -5340,7 +5340,7 @@ export function UNITS_GetAnimDataStringOrPath113c(
     } else {
       modeCode = m.u32(0x20) >>> 0
     }
-    if (mode !== 0 && mode !== 12 && DATATBLS_CheckMonStats2FlagInline113c(m, icls, 0x10) !== 0) {
+    if ((mode !== 0 && mode !== 12) || DATATBLS_CheckMonStats2FlagInline113c(m, icls, 0x10) !== 0) {
       const wCode =
         COMPOSIT_GetWeaponClassCode113c(m, pUnit, 1, nClass, nMode, pInventory, pOutW) >>> 0
       m.setU32(pOutW, wCode)
@@ -5470,7 +5470,7 @@ function buildUnitAnimCodeUpper113c(
     } else {
       modeCode = m.u32(0x20) >>> 0
     }
-    if (mode !== 0 && mode !== 12 && DATATBLS_CheckMonStats2FlagInline113c(m, icls, 0x10) !== 0) {
+    if ((mode !== 0 && mode !== 12) || DATATBLS_CheckMonStats2FlagInline113c(m, icls, 0x10) !== 0) {
       wCode = COMPOSIT_GetWeaponClassCode113c(
         mProxy,
         pUnit,
@@ -7217,10 +7217,18 @@ export function ITEMS_SerializeItemBitstream113c(
   }
 
   if (srv !== 0) {
-    const tmpFields = m.alloc(8)
-    ITEMS_GetAutoAffixData113c(m, item, tmpFields, (tmpFields + 4) >>> 0)
-    const f1c = m.u32(tmpFields)
-    const f20 = m.u32((tmpFields + 4) >>> 0)
+    const savedSp = itemsSerStackPtr113c
+    const tmpFields = savedSp
+    itemsSerStackPtr113c = (savedSp + 8) >>> 0
+    let f1c = 0
+    let f20 = 0
+    try {
+      ITEMS_GetAutoAffixData113c(m, item, tmpFields, (tmpFields + 4) >>> 0)
+      f1c = m.u32(tmpFields)
+      f20 = m.u32((tmpFields + 4) >>> 0)
+    } finally {
+      itemsSerStackPtr113c = savedSp
+    }
     if (f20 !== 0) {
       fogWriteBits113c(m, bs, 1, 1)
       fogWriteBits113c(m, bs, f1c, 0x20)
@@ -8015,6 +8023,9 @@ export function ITEMS_GetRepairAllCost113c(
  * `@va D2Common:0x6FD79D00` (`D2Common.#10987` `ITEMS_SerializeItemToBuffer`,
  * `__stdcall(pItem, pOutBuffer, nMaxBytes, bWriteHeader, bIncludeSockets, bSimpleItemCodeOnly) -> u32`, `ret 0x18`).
  */
+const ITEMS_SER_STACK_BASE_113C = 0x6fde3d00
+let itemsSerStackPtr113c = ITEMS_SER_STACK_BASE_113C
+
 export function ITEMS_SerializeItemToBuffer113c(
   m: Memory113c,
   pItem: number,
@@ -8025,18 +8036,24 @@ export function ITEMS_SerializeItemToBuffer113c(
   bSimpleItemCodeOnly: number,
 ): number {
   hitD2CommonVa113c(0x6FD79D00)
-  const bitBuf = m.alloc(0x14)
-  fogInitBitBuffer113c(m, bitBuf, pOutBuffer, nMaxBytes)
-  ITEMS_WriteItemStreamAndSockets113c(
-    m,
-    pItem,
-    bitBuf,
-    bWriteHeader,
-    bIncludeSockets,
-    bSimpleItemCodeOnly,
-  )
-  if (m.u32((bitBuf + 0x10) >>> 0) !== 0) return 0
-  return fogGetBitBufferSize113c(m, bitBuf) >>> 0
+  const savedSp = itemsSerStackPtr113c
+  const bitBuf = savedSp
+  itemsSerStackPtr113c = (savedSp + 0x18) >>> 0
+  try {
+    fogInitBitBuffer113c(m, bitBuf, pOutBuffer, nMaxBytes)
+    ITEMS_WriteItemStreamAndSockets113c(
+      m,
+      pItem,
+      bitBuf,
+      bWriteHeader,
+      bIncludeSockets,
+      bSimpleItemCodeOnly,
+    )
+    if (m.u32((bitBuf + 0x10) >>> 0) !== 0) return 0
+    return fogGetBitBufferSize113c(m, bitBuf) >>> 0
+  } finally {
+    itemsSerStackPtr113c = savedSp
+  }
 }
 
 type ItemModFuncById113c = (

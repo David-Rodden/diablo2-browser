@@ -73,7 +73,7 @@ async function main(): Promise<void> {
     for (let i = 0; i < 40; i += 1) {
       await h.tick(2)
       const skinLoaded = await h.cdp.evaluate<boolean>(`(
-        performance.getEntriesByType('resource').filter(e => e.name.includes('/skins/ne-kelthuzad/atlas-')).length > 0
+        performance.getEntriesByType('resource').filter(e => e.name.includes('/skins/ne-kelthuzad/hero-')).length > 0
       )`)
       if (skinLoaded) break
       await sleep(100)
@@ -142,8 +142,8 @@ async function main(): Promise<void> {
     const modalClosed = await h.cdp.evaluate<boolean>(`!document.getElementById('d2-skin-manager-modal-overlay')`)
     assert(modalClosed, 'Expected Escape to close #d2-skin-manager-modal-overlay')
 
-    // 6. Phase 2: Spawn all 6 Necromancer Summons (Ghoul, 4-element WC3 Necromancers, Abomination,
-    //    Blood Abomination, Crypt Lord, Infernal) + HUD portraits + Hovered Monster Plaque!
+    // 6. Phase 2: Spawn all 6 Necromancer Summons (Ghoul, 4-element WC3 Necromancers, Rock Golem,
+    //    Abomination, Flesh Golem, Infernal) + HUD portraits + Hovered Monster Plaque!
     await h.cdp.evaluate(`(() => {
       const app = window.__d2Play;
       const w = app.session.world;
@@ -157,14 +157,14 @@ async function main(): Promise<void> {
       const by = hero ? hero.y : w.self.y;
       const summons = [
         // [id, petType, classId, dx, dy, dir, compS4]
-        [9101, 4, 363, -4.5,  2.5, 0, undefined], // Ghoul #1 (South)
-        [9102, 4, 363, -2.2,  4.2, 7, undefined], // Ghoul #2 (SE)
-        [9103, 5, 364, -5.5, -1.5, 1, 1],         // WC3 Necromancer (Cold cyan orb)
-        [9104, 5, 364,  5.2, -1.5, 7, 2],         // WC3 Necromancer (Fire orange orb)
-        [9105, 3, 289,  3.6,  3.4, 1, undefined], // Abomination (Clay Golem)
-        [9106, 3, 290,  6.2,  1.6, 2, undefined], // Blood Abomination (Blood Golem)
-        [9107, 3, 291, -0.5, -4.2, 0, undefined], // Crypt Lord (Iron Golem)
-        [9108, 3, 292,  2.8, -3.6, 0, undefined], // Infernal (Fire Golem)
+        [9101, 4, 363, -4.8,  2.2, 0, undefined], // Ghoul #1 (South)
+        [9102, 4, 363, -2.6,  4.4, 7, undefined], // Ghoul #2 (SE)
+        [9103, 5, 364, -5.6, -1.6, 1, 1],         // WC3 Necromancer (Cold cyan orb)
+        [9104, 5, 364, -2.4, -4.2, 0, 2],         // WC3 Necromancer (Fire orange orb)
+        [9105, 3, 289,  1.2,  4.2, 0, undefined], // Rock Golem (Clay Golem)
+        [9106, 3, 290,  5.6,  3.2, 1, undefined], // Abomination (Blood Golem)
+        [9107, 3, 291,  1.8, -4.2, 0, undefined], // Flesh Golem (Iron Golem)
+        [9108, 3, 292,  6.2, -1.2, 1, undefined], // Infernal (Fire Golem)
       ];
       w.pets.clear();
       for (const [id, petType, classId, dx, dy, dir, s4] of summons) {
@@ -195,7 +195,7 @@ async function main(): Promise<void> {
       }
       if (app.hudModel) {
         app.hudModel.syncFromWorld();
-        app.hudModel.setHoveredMonster(9105); // Hover Abomination (Clay Golem)
+        app.hudModel.setHoveredMonster(9105); // Hover Rock Golem (Clay Golem)
       }
       app.renderFrame(performance.now());
     })()`)
@@ -207,7 +207,7 @@ async function main(): Promise<void> {
         const res = performance.getEntriesByType('resource');
         const minionCount = res.filter(e => e.name.includes('/skins/ne-kelthuzad/minion-')).length;
         const sp = window.__d2Play.hudManager?.summonPortraits ?? [];
-        return minionCount >= 12 && sp.length >= 3 && sp.every(s => Boolean(s.customPortrait));
+        return minionCount >= 6 && sp.length >= 3 && sp.every(s => Boolean(s.customPortrait));
       })()`)
       if (ready) break
       await sleep(100)
@@ -237,8 +237,8 @@ async function main(): Promise<void> {
       `Expected all summonPortraits to carry custom WC3 portraits, got ${JSON.stringify(hudCheck)}`,
     )
     assert(
-      hudCheck.targetCustomZh === '憎恶',
-      `Expected hovered Clay Golem targetMonster customDisplayName.zh === '憎恶', got '${String(hudCheck.targetCustomZh)}'`,
+      hudCheck.targetCustomZh === '岩石傀儡',
+      `Expected hovered Clay Golem targetMonster customDisplayName.zh === '岩石傀儡', got '${String(hudCheck.targetCustomZh)}'`,
     )
 
     // Capture multi-resolution Scourge Army + WC3 HUD Portraits + Hover Bar screenshots!

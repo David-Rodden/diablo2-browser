@@ -773,7 +773,7 @@ export function ACT2Q5_InitQuestData_6FCE7080_113c(
   m.setU32((pQuest + 0xdc) >>> 0, 0x6fd24ff8)
   m.setU8((pQuest + 0x0a) >>> 0, 1)
   m.setU8((pQuest + 0x0c) >>> 0, 0)
-  const pState = (pPreallocatedState !== 0 ? pPreallocatedState : allocW8B3Stack(m, 0x10)) >>> 0
+  const pState = (pPreallocatedState !== 0 ? pPreallocatedState : m.alloc(0x0c)) >>> 0
   m.setU32((pQuest + 0xe8) >>> 0, 0)
   m.setU32((pQuest + 0x18) >>> 0, pState)
   m.setU32((pQuest + 0xe0) >>> 0, 0x0d)

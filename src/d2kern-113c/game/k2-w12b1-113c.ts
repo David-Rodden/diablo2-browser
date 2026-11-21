@@ -1961,11 +1961,14 @@ export function ITEMS_DeserializeAndPlaceItemListFromJMStream_6FC74810_113c(
   pOutBytesRead: number,
 ): number {
   hitD2GameVa113c(0x6FC74810)
+  if ((pBitstream >>> 0) === 0 || (nMaxBufferSize | 0) < 2) return 0x0e
   if (u16(m, pBitstream) !== 0x4d4a) return 0x0e
+  if ((nMaxBufferSize | 0) < 4) return 0x0e
   const nItemCount = u16(m, pBitstream + 2)
   let pCur = (pBitstream + 4) >>> 0
   const pHeader = (K2_W12B1_SCRATCH_BASE + 0x240) >>> 0
   const pBytesRead = (K2_W12B1_SCRATCH_BASE + 0x268) >>> 0
+  m.fill(pHeader, 0x28, 0)
 
   for (let i = 0; i < nItemCount; i += 1) {
     const nRem = (pBitstream + nMaxBufferSize - pCur) | 0

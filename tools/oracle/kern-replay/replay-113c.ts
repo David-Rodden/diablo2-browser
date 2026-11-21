@@ -136,9 +136,12 @@ function ensureReplayHydrationAssetsLoaded113c(): void {
   const rawAct2To5 = JSON.parse(
     gunzipSync(readFileSync(join(REPO_ROOT_113C, 'tests/fixtures/oracle/k4/drlg-act2-5-ds1-dt1-113c.json.gz'))).toString('utf8'),
   ) as { ds1: Record<string, string>; dt1: Record<string, string> }
+  const rawWildTemple = JSON.parse(
+    gunzipSync(readFileSync(join(REPO_ROOT_113C, 'tools/oracle/k6-s3/drlg-wildtemple-ds1-dt1-113c.json.gz'))).toString('utf8'),
+  ) as { ds1: Record<string, string>; dt1: Record<string, string> }
   const ds1 = new Map<string, Uint8Array>()
   const dt1 = new Map<string, Uint8Array>()
-  for (const bundle of [raw, rawAct2To5]) {
+  for (const bundle of [raw, rawAct2To5, rawWildTemple]) {
     for (const [k, b64] of Object.entries(bundle.ds1)) {
       ds1.set(k.replace(/\//g, '\\').toLowerCase(), new Uint8Array(Buffer.from(b64, 'base64')))
     }
@@ -488,6 +491,17 @@ export interface FieldDivergence113c {
 
 const POS_FIELDS_113C = new Set(['id', 'class', 'mode', 'x', 'y'])
 
+function normalizeS2c22UninitPad113c(hex: string): string {
+  const lc = hex.toLowerCase()
+  // D2Game.dll@0x6FCAD570..0x6FCAD5D2 (NET_SendPacket22_UnitSkillAmmoCount) allocates 0x0C
+  // stack bytes via `sub esp, 0xc` and writes bytes [0, 1, 3..6, 7..8, 9, 11], leaving
+  // byte [2] (chars 4..5) and byte [10] (chars 20..21) as uninitialized MSVC stack bytes.
+  if (lc.length === 24 && lc.startsWith('22')) {
+    return `${lc.slice(0, 4)}00${lc.slice(6, 20)}00${lc.slice(22, 24)}`
+  }
+  return hex
+}
+
 /** First field mismatch of `actual` against `golden` under `policy` (unit rows keyed by id). */
 export function diffFrame113c(
   golden: TraceFrame,
@@ -543,15 +557,19 @@ export function diffFrame113c(
     }
   }
   if (policy === 'strict' && header.s2c === true && golden.s2c !== undefined && frame > 2) {
-    const sdiff = diffS2cFramePackets(golden.s2c, actual.s2c)
+    const normGold = golden.s2c.map(normalizeS2c22UninitPad113c)
+    const normAct = actual.s2c !== undefined ? actual.s2c.map(normalizeS2c22UninitPad113c) : undefined
+    const sdiff = diffS2cFramePackets(normGold, normAct)
     if (sdiff !== null) {
+      const m = /^s2c\[(\d+)\]$/.exec(sdiff.field)
+      const idx = m !== null ? Number(m[1]) : -1
       return {
         frame,
         key: 's2c',
         id: sdiff.id,
         field: sdiff.field,
-        expected: sdiff.expected,
-        actual: sdiff.actual,
+        expected: idx >= 0 ? (golden.s2c[idx] ?? null) : sdiff.expected,
+        actual: idx >= 0 && actual.s2c !== undefined ? (actual.s2c[idx] ?? null) : sdiff.actual,
       }
     }
   }

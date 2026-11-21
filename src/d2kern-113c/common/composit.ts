@@ -203,10 +203,26 @@ export function COMPOSIT_GetWeaponClassIdFromCode113c(
 ): number {
   hitD2CommonVa113c(0x6FD937F0)
   const target = dwWeaponClassCode >>> 0
+  let tableLoaded = false
+  try {
+    m.u8(D2COMMON_WEAPON_CLASS_TABLE_VA_113C)
+    tableLoaded = true
+  } catch {
+    tableLoaded = false
+  }
+  if (tableLoaded) {
+    for (let i = 0; i < WEAPON_CLASS_TABLE_COUNT_113C; i++) {
+      const code = m.u32((D2COMMON_WEAPON_CLASS_TABLE_VA_113C + i * 8) >>> 0)
+      if (code === target) {
+        return m.u32((D2COMMON_WEAPON_CLASS_TABLE_VA_113C + i * 8 + 4) >>> 0)
+      }
+    }
+    return 0
+  }
   for (let i = 0; i < WEAPON_CLASS_TABLE_COUNT_113C; i++) {
-    const code = m.u32((D2COMMON_WEAPON_CLASS_TABLE_VA_113C + i * 8) >>> 0)
-    if (code === target) {
-      return m.u32((D2COMMON_WEAPON_CLASS_TABLE_VA_113C + i * 8 + 4) >>> 0)
+    const entry = WEAPON_CLASS_CODE_TABLE_6FDE3368[i]!
+    if (entry[0] >>> 0 === target) {
+      return entry[1] >>> 0
     }
   }
   return 0

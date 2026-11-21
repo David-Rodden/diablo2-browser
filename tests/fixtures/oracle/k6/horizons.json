@@ -6,36 +6,32 @@
   },
   "k6-act3-consumables-quest": {
     "bootFrame": 2,
-    "strict": 41,
+    "strict": 140,
     "pos": 140
   },
   "k6-druid-skills": {
     "bootFrame": 2,
-    "strict": 2,
-    "pos": 37,
-    "strictHorizon": 10
+    "strict": 130,
+    "pos": 231
   },
   "k6-assassin-skills": {
     "bootFrame": 2,
-    "strict": 2,
-    "pos": 58,
-    "strictHorizon": 10
+    "strict": 58,
+    "pos": 78
   },
   "k6-items-potions-belt-combat": {
     "bootFrame": 2,
-    "strict": 3,
-    "pos": 7,
-    "strictHorizon": 5
+    "strict": 214,
+    "pos": 291
   },
   "k6-town-npc-gamble-waypoint": {
     "bootFrame": 2,
-    "strict": 3,
-    "pos": 10
+    "strict": 47,
+    "pos": 120
   },
   "k6-nightmare-bloodmoor-combat": {
     "bootFrame": 2,
-    "strict": 3,
-    "pos": 104,
-    "strictHorizon": 10
+    "strict": 168,
+    "pos": 168
   }
 }

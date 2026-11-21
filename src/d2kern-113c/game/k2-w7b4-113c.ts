@@ -2184,7 +2184,7 @@ export function SUNITDMG_GrantExpToPlayerOrHireling_6FCFE870_113c(
   }
   const nLevel = STATLIST_GetUnitBaseStat113c(m, unit, 0x0c, 0) | 0;
   if (dwType === 0) {
-    SUNITDMG_AddPlayerExperienceAndCheckLevelUp113c(m, pGame >>> 0, unit, nExpGain >>> 0);
+    SUNITDMG_AddPlayerExperienceAndCheckLevelUp113c(m, pGame >>> 0, unit, nExpGain >>> 0, true, nLevel);
     return;
   }
   if (dwType === 1) {

@@ -1506,7 +1506,7 @@ describe('Tier 5 Part B — White-Box Adversarial Tests (F7–F12)', () => {
   })
 
   it('T5.B5: F8 LocalLobbyProvider encodes classic/hardcore/ladder statusFlags bits in .d2s, rejects trimmed case-insensitive duplicates, and supports selectCharacter -> parameterless enterGame()', async () => {
-    const lobby = new Server.LocalLobbyProvider({ registry })
+    const lobby = new Server.LocalLobbyProvider({ registry, backend: 'legacy' })
 
     const hcSummary = await lobby.createCharacter({
       name: '  HardcoreKing  ',

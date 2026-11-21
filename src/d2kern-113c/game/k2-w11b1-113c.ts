@@ -1990,6 +1990,7 @@ export function ACT5Q5_InitQuestData_6FC7FB50_113c(
   for (let i = 0; i < 15; i += 1) {
     w32(m, pQuest + 0xa0 + i * 4, 0)
   }
+  w8(m, pQuest + 0x0c, 0)
   w32(m, pQuest + 0xa0, 0x6fc775f0)
   w32(m, pQuest + 0xc8, 0x6fc775d0)
   w32(m, pQuest + 0xac, 0x6fc7ab60)
@@ -1998,14 +1999,9 @@ export function ACT5Q5_InitQuestData_6FC7FB50_113c(
   w32(m, pQuest + 0xcc, 0x6fc7f200)
   w32(m, pQuest + 0xd4, 0x6fc77540)
   w32(m, pQuest + 0xdc, 0x6fd2cac0)
+  w8(m, pQuest + 0x0a, 1)
 
-  const existingState = u32(m, pQuest + 0x18)
-  const pState =
-    pPreallocatedState !== 0
-      ? pPreallocatedState
-      : existingState !== 0
-        ? existingState
-        : allocServerMem(m, 0x64)
+  const pState = pPreallocatedState !== 0 ? pPreallocatedState >>> 0 : m.alloc(0x64) >>> 0
   for (let i = 0; i < 25; i += 1) {
     w32(m, pState + i * 4, 0)
   }
@@ -2180,9 +2176,14 @@ export function OBJ_TeleportPlayerToRoomPad_6FC8BD60_113c(
   w16(m, pPacket07 + 3, u16(m, pRoomCoords + 0x14))
   w8(m, pPacket07 + 5, nLevelId & 0xff)
   NET_QueuePacketToClientBuffer113c(m, pClient, 1, pPacket07, 6)
+  const pRefreshRoom = UNITS_GetRoom113c(m, pPlayerUnit) >>> 0
+  const willLinkUpdate =
+    pRefreshRoom !== 0 &&
+    (u32(m, pRefreshRoom + 0x34) & 0x04) === 0 &&
+    (u32(m, pPlayerUnit + 0xc4) & 0x2000) === 0
   UNITROOM_RefreshUnit113c(m, pPlayerUnit)
   w32(m, pPlayerUnit + 0xc8, (u32(m, pPlayerUnit + 0xc8) | 0x10000) >>> 0)
-  return 1
+  return willLinkUpdate ? ((pRefreshRoom + 0x1c) >>> 0) : pRefreshRoom
 }
 
 /**

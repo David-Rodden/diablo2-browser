@@ -51,6 +51,10 @@ import {
   QUESTS_GetQuestData_6FC53F30_113c,
 } from './k2-laneJ-0x6fc4-w1-113c.ts';
 import {
+  ACT1Q4_MarkFlag52_6FC80590_113c,
+  ACT1Q4_MarkFlag63_6FC805C0_113c,
+} from './k2-w2b1-113c.ts';
+import {
   ACT1Q4_RecordInifussTreeObjectGuid_6FC81860_113c,
   QUESTS_GetPlayerNpcIntroFlag_6FC89590_113c,
   QUESTS_SetPlayerNpcIntroFlag_6FC895F0_113c,
@@ -1036,48 +1040,82 @@ export function ACT1Q4_Callback13_RefreshQuestState_6FC81540_113c(
   const pGame = m.u32(pQuestArg >>> 0) >>> 0;
   const pQuestFlags = getPlayerQuestFlags113c(m, pGame, pPlayer);
   const pQuestDataEx = m.u32((pQuest + 0x18) >>> 0) >>> 0;
-  if (DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 4, 0) !== 0) {
-    m.setU8((pQuestDataEx + 0x50) >>> 0, 1);
+  if (DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 4, 0) === 1) {
+    const pQuestGame = m.u32((pQuest + 0x04) >>> 0) >>> 0;
+    const pQuestCtrl0 = m.u32((pQuestGame + 0x10f4) >>> 0) >>> 0;
+    if (pQuestCtrl0 !== 0) {
+      let pNode = m.u32(pQuestCtrl0 >>> 0) >>> 0;
+      while (pNode !== 0) {
+        if (m.u32(pNode >>> 0) === 4) {
+          const pNodeEx = m.u32((pNode + 0x18) >>> 0) >>> 0;
+          m.setU8((pNodeEx + 0x52) >>> 0, 1);
+          break;
+        }
+        pNode = m.u32((pNode + 0xf4) >>> 0) >>> 0;
+      }
+    }
+    const pQuestGame2 = m.u32((pQuest + 0x04) >>> 0) >>> 0;
+    const pQuestCtrl = m.u32((pQuestGame2 + 0x10f4) >>> 0) >>> 0;
+    if (m.u32((pQuestCtrl + 0x08) >>> 0) === 0) {
+      throw new D2CommonAssertError('0x6fd19ff9', 0x820);
+    }
+    const pGameQuestFlags = m.u32((pQuestCtrl + 0x0c) >>> 0) >>> 0;
+    QUESTRECORD_SetQuestState113c(m, pGameQuestFlags, 4, 0x0d);
+    m.setU32((pQuestDataEx + 0x54) >>> 0, 3);
     m.setU8((pQuestDataEx + 0x4c) >>> 0, 1);
-    return;
-  }
-  if (DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 4, 0x0f) !== 0) {
-    return;
-  }
-  if (DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 4, 4) === 1) {
-    m.setU8((pQuestDataEx + 0x50) >>> 0, 1);
+    m.setU8((pQuestDataEx + 0x4d) >>> 0, 1);
+  } else if (DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 4, 0x0f) === 1) {
+    ACT1Q4_MarkFlag52_6FC80590_113c(m, m.u32((pQuest + 0x04) >>> 0) >>> 0);
+    ACT1Q4_MarkFlag63_6FC805C0_113c(m, m.u32((pQuest + 0x04) >>> 0) >>> 0);
+    m.setU32((pQuestDataEx + 0x54) >>> 0, 3);
     m.setU8((pQuestDataEx + 0x4c) >>> 0, 1);
-    m.setU8((pQuest + 0x0b) >>> 0, 3);
+    m.setU8((pQuestDataEx + 0x4d) >>> 0, 1);
+  } else if (DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 4, 4) === 1) {
+    m.setU8((pQuest + 0x0b) >>> 0, 4);
     m.setU8((pQuest + 0x0c) >>> 0, 5);
-    return;
-  }
-  if (DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 4, 3) === 1) {
-    m.setU8((pQuest + 0x0b) >>> 0, 3);
+    m.setU8((pQuestDataEx + 0x4c) >>> 0, 1);
+    m.setU8((pQuestDataEx + 0x4e) >>> 0, 1);
+    m.setU8((pQuestDataEx + 0x4d) >>> 0, 1);
+    m.setU8((pQuestDataEx + 0x78) >>> 0, 1);
+    m.setU32((pQuestDataEx + 0x58) >>> 0, 1);
+  } else if (DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 4, 3) === 1) {
     m.setU8((pQuest + 0x0c) >>> 0, 3);
+    m.setU8((pQuest + 0x0b) >>> 0, 1);
   } else if (DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 4, 2) === 1) {
-    m.setU8((pQuest + 0x0b) >>> 0, 2);
     m.setU8((pQuest + 0x0c) >>> 0, 2);
+    m.setU8((pQuest + 0x0b) >>> 0, 1);
   }
-  if (ITEMS_FindQuestItemByBaseCode_6FC2E660_113c(m, pPlayer, pGame, 0x20646b62) !== 0) {
+  const hasBkd = ITEMS_FindQuestItemByBaseCode_6FC2E660_113c(
+    m,
+    m.u32((pQuestArg + 0x0c) >>> 0) >>> 0,
+    m.u32(pQuestArg >>> 0) >>> 0,
+    0x20646b62,
+  );
+  const hasBks = ITEMS_FindQuestItemByBaseCode_6FC2E660_113c(
+    m,
+    m.u32((pQuestArg + 0x0c) >>> 0) >>> 0,
+    m.u32(pQuestArg >>> 0) >>> 0,
+    0x20736b62,
+  );
+  if (hasBkd !== 0) {
     m.setU32((pQuestDataEx + 0x7c) >>> 0, (m.u32((pQuestDataEx + 0x7c) >>> 0) + 1) >>> 0);
-    m.setU8((pQuestDataEx + 0x53) >>> 0, 1);
-    if (m.u8((pQuest + 0x0b) >>> 0) < 3) {
-      m.setU8((pQuest + 0x0b) >>> 0, 3);
-    }
-    if (m.u8((pQuest + 0x0c) >>> 0) === 0) {
-      m.setU8((pQuest + 0x0c) >>> 0, 1);
-    }
+  }
+  if (hasBks !== 0) {
+    m.setU32((pQuestDataEx + 0x7c) >>> 0, (m.u32((pQuestDataEx + 0x7c) >>> 0) + 1) >>> 0);
+  }
+  if (hasBkd !== 0) {
+    m.setU8((pQuest + 0x0c) >>> 0, 5);
+    m.setU8((pQuest + 0x0b) >>> 0, 3);
+    m.setU8((pQuestDataEx + 0x4e) >>> 0, 1);
+    m.setU8((pQuestDataEx + 0x78) >>> 0, 1);
+    m.setU32((pQuestDataEx + 0x58) >>> 0, 1);
     return;
   }
-  if (ITEMS_FindQuestItemByBaseCode_6FC2E660_113c(m, pPlayer, pGame, 0x20736b62) !== 0) {
-    m.setU32((pQuestDataEx + 0x7c) >>> 0, (m.u32((pQuestDataEx + 0x7c) >>> 0) + 1) >>> 0);
-    m.setU8((pQuestDataEx + 0x54) >>> 0, 1);
-    if (m.u8((pQuest + 0x0b) >>> 0) < 2) {
-      m.setU8((pQuest + 0x0b) >>> 0, 2);
-    }
-    if (m.u8((pQuest + 0x0c) >>> 0) === 0) {
-      m.setU8((pQuest + 0x0c) >>> 0, 1);
-    }
+  if (hasBks !== 0) {
+    m.setU8((pQuestDataEx + 0x78) >>> 0, 1);
+    m.setU8((pQuest + 0x0c) >>> 0, 4);
+    m.setU8((pQuest + 0x0b) >>> 0, 2);
+    m.setU32((pQuestDataEx + 0x58) >>> 0, 1);
   }
 }
 
@@ -1175,7 +1213,7 @@ export function ACT1Q5_Callback13_RefreshQuestState_6FC81A80_113c(
   }
   if (DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 3, 3) === 1) {
     m.setU8((pQuest + 0x0c) >>> 0, 3);
-    m.setU8((pQuest + 0x0b) >>> 0, 2);
+    m.setU8((pQuest + 0x0b) >>> 0, 1);
   }
 }
 

@@ -1392,45 +1392,42 @@ export function D2GAME_PLRMODES_SendClientWhisperAdapter113c(
   if (pTargetClient === 0) {
     return
   }
-  let nameLen = 0
-  while (nameLen < 16 && mem.u8(pTargetClient + 8 + nameLen) !== 0) {
-    nameLen += 1
-  }
-  if (nameLen >= 16) {
-    return
-  }
-  const pkt = new Uint8Array(40)
-  pkt[0] = 0x5a
-  pkt[1] = 2
-  pkt[2] = 4
-  for (let i = 0; i < 16; i += 1) {
-    const ch = mem.u8(pTargetClient + 8 + i)
-    pkt[8 + i] = ch
-    if (ch === 0) {
-      break
-    }
-  }
-  for (let i = 0; i < 16; i += 1) {
-    const ch = mem.u8(pTargetClient + 0x18 + i)
-    pkt[24 + i] = ch
-    if (ch === 0) {
-      break
-    }
-  }
   if (callees && callees.sendPacketToClient) {
+    let nameLen = 0
+    while (nameLen < 16 && mem.u8(pTargetClient + 8 + nameLen) !== 0) {
+      nameLen += 1
+    }
+    if (nameLen >= 16) {
+      return
+    }
+    const pkt = new Uint8Array(40)
+    if (mem.u8(pTargetClient) !== 0) {
+      for (let i = 0; i < 40; i += 1) {
+        pkt[i] = mem.u8((pTargetClient + i) >>> 0)
+      }
+    } else {
+      pkt[0] = 0x5a
+      pkt[1] = 2
+      pkt[2] = 4
+      for (let i = 0; i < 16; i += 1) {
+        const ch = mem.u8(pTargetClient + 8 + i)
+        pkt[8 + i] = ch
+        if (ch === 0) {
+          break
+        }
+      }
+      for (let i = 0; i < 16; i += 1) {
+        const ch = mem.u8(pTargetClient + 0x18 + i)
+        pkt[24 + i] = ch
+        if (ch === 0) {
+          break
+        }
+      }
+    }
     callees.sendPacketToClient(mem, pClient, pkt)
     return
   }
-  const sp = bootGapBStackPtr
-  bootGapBStackPtr = (sp + 0x30) >>> 0
-  try {
-    for (let i = 0; i < 40; i += 1) {
-      mem.setU8((sp + i) >>> 0, pkt[i]!)
-    }
-    NET_SendFixed40BytePacketToClient113c(mem, pClient, sp)
-  } finally {
-    bootGapBStackPtr = sp
-  }
+  NET_SendFixed40BytePacketToClient113c(mem, pClient, pTargetClient)
 }
 
 // @va D2Game:0x6FCEB8F0
@@ -2012,15 +2009,15 @@ export function D2GAME_ITEMSTAT_OnStatChangedCallback113c(
     }
   }
 
-  const scaleResourceStat = (curStatId: number): void => {
+  const scaleResourceStat = (curStatId: number): boolean => {
     const oldMax = nOldValue | 0
     const newMax = nNewValue | 0
     if (newMax === oldMax || oldMax <= 0) {
-      return
+      return false
     }
     const curVal = STATLIST_GetUnitStat113c(mem, pUnit, curStatId, 0) | 0
     if (curVal <= 0) {
-      return
+      return false
     }
     const denom = oldMax > 0x100 ? oldMax : 0x100
     let scaled = Math.trunc((curVal / denom) * newMax)
@@ -2031,11 +2028,14 @@ export function D2GAME_ITEMSTAT_OnStatChangedCallback113c(
       scaled = newMax
     }
     STATLIST_SetUnitStat113c(mem, pUnit, curStatId, scaled, 0)
+    return true
   }
 
   switch (nStatId) {
     case 7: {
-      scaleResourceStat(6)
+      if (!scaleResourceStat(6)) {
+        return
+      }
       if ((mem.u32(pUnit) >>> 0) === 1) {
         const pMonStatsTxt = getMonsterStatsTxtRecord113c(mem, pUnit)
         if (pMonStatsTxt !== 0) {

@@ -19,6 +19,7 @@ import {
   UNITS_GetPlayerData113c,
   UNITS_HasObjectSubClassBit0113c,
 } from '../common/composit.ts'
+import { D2CommonAssertError } from '../common/inline-helpers.ts'
 import { DRLG_GetActNoFromLevelId113c } from '../common/drlg/drlg.ts'
 import {
   DRLGPRESET_FreeSaveHeaderBlock113c,
@@ -3322,9 +3323,14 @@ export function SUNIT_DeactivateAndRemoveUnit113c(
   hooks?: Post150LaneI1Hooks113c,
 ): void {
   hitD2GameVa113c(0x6FD00C80)
-  if (pUnit === 0) return
-  const dwUnitType = m.u32(pUnit >>> 0) >>> 0
-  if (dwUnitType <= 3) {
+  if ((pUnit >>> 0) === 0) {
+    throw new D2CommonAssertError('SUnit.cpp', 0x3ad)
+  }
+  const dwUnitType = m.u32(pUnit >>> 0) | 0
+  if (dwUnitType >= 6) {
+    throw new D2CommonAssertError('SUnit.cpp', 0x3ae)
+  }
+  if ((dwUnitType >>> 0) <= 3) {
     if (hooks?.onDeactivateUnitInteractions !== undefined) {
       hooks.onDeactivateUnitInteractions(m, pUnit, pGame)
     } else if (m.u8((pUnit + 0x6c) >>> 0) !== 0) {

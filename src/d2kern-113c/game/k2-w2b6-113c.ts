@@ -69,6 +69,8 @@ const ITEM_CODE_HELLFORGE_HAMMER_113C = 0x20686668;
 /** Normal difficulty per-act NPC vendor item level caps (`[12, 20, 28, 36, 45]`). */
 const NORMAL_ACT_LEVEL_CAPS_113C = [0x0c, 0x14, 0x1c, 0x24, 0x2d] as const;
 
+let k2W2B6StackPtr = 0x7e110000;
+
 /**
  * Helper matching the inlined quest chain lookup (`pGame->pQuestControl->pQuest` walk by `dwQuestId`).
  */
@@ -100,16 +102,23 @@ export function SKILLS_SrvDo124_ClearSeqFlagAndFrameCount_6FCD2E90_113c(
   _nSkillLevel = 0,
 ): number {
   hitD2GameVa113c(0x6FCD2E90);
-  const sp = m.alloc(8) >>> 0;
-  const pOutFrame = sp;
-  const pOutFrameCount = (sp + 4) >>> 0;
-  UNITS_GetShiftedFrameMetrics113c(m, pUnit, pOutFrame, pOutFrameCount);
-  const nFrame = m.u32(pOutFrame) | 0;
-  m.setU8((pUnit + 0x4e) >>> 0, 0);
-  if (nFrame <= 0) {
-    m.setU32((pUnit + 0x3c) >>> 0, 0);
+  const sp = k2W2B6StackPtr;
+  k2W2B6StackPtr = (sp + 0x10) >>> 0;
+  try {
+    const pOutFrame = sp;
+    const pOutFrameCount = (sp + 4) >>> 0;
+    m.setU32(pOutFrame, 0);
+    m.setU32(pOutFrameCount, 0);
+    UNITS_GetShiftedFrameMetrics113c(m, pUnit, pOutFrame, pOutFrameCount);
+    const nFrame = m.u32(pOutFrame) | 0;
+    m.setU8((pUnit + 0x4e) >>> 0, 0);
+    if (nFrame <= 0) {
+      m.setU32((pUnit + 0x3c) >>> 0, 0);
+    }
+    return 1;
+  } finally {
+    k2W2B6StackPtr = sp;
   }
-  return 1;
 }
 
 /**
@@ -257,12 +266,17 @@ export function SKILLS_SrvSt_AllocZeroDamageCombatForTarget_6FCD3EB0_113c(
   if (pTarget === unit || pTarget === 0) {
     return 0;
   }
-  const pDmg = m.alloc(0x70) >>> 0;
-  for (let i = 0; i < 0x1c; i = (i + 1) | 0) {
-    m.setU32((pDmg + (i << 2)) >>> 0, 0);
+  const sp = k2W2B6StackPtr;
+  k2W2B6StackPtr = (sp + 0x70) >>> 0;
+  try {
+    for (let i = 0; i < 0x1c; i = (i + 1) | 0) {
+      m.setU32((sp + (i << 2)) >>> 0, 0);
+    }
+    SUNITDMG_AllocCombat113c(m, game, unit, pTarget, sp, 0x80);
+    return 1;
+  } finally {
+    k2W2B6StackPtr = sp;
   }
-  SUNITDMG_AllocCombat113c(m, game, unit, pTarget, pDmg, 0x80);
-  return 1;
 }
 
 /**
@@ -676,13 +690,19 @@ export function ACT4Q3_ActivateHarrogathWaypointForPlayer_6FCD9030_113c(
   pPlayer: number,
 ): void {
   hitD2GameVa113c(0x6FCD9030);
-  const pWaypointNoOut = m.alloc(4) >>> 0;
-  if (WAYPOINT_GetWaypointNoFromLevelId113c(m, 0x6d, pWaypointNoOut) !== 0) {
-    const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer >>> 0) >>> 0;
-    const nDifficulty = m.u8((pGame + 0x6d) >>> 0);
-    const wWaypointNo = m.u16(pWaypointNoOut);
-    const pWaypointData = m.u32((pPlayerData + (nDifficulty << 2) + 0x1c) >>> 0) >>> 0;
-    WAYPOINT_ActivateWaypoint113c(m, pWaypointData, wWaypointNo);
+  const sp = k2W2B6StackPtr;
+  k2W2B6StackPtr = (sp + 0x08) >>> 0;
+  try {
+    m.setU32(sp, 0);
+    if (WAYPOINT_GetWaypointNoFromLevelId113c(m, 0x6d, sp) !== 0) {
+      const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer >>> 0) >>> 0;
+      const nDifficulty = m.u8((pGame + 0x6d) >>> 0);
+      const wWaypointNo = m.u16(sp);
+      const pWaypointData = m.u32((pPlayerData + (nDifficulty << 2) + 0x1c) >>> 0) >>> 0;
+      WAYPOINT_ActivateWaypoint113c(m, pWaypointData, wWaypointNo);
+    }
+  } finally {
+    k2W2B6StackPtr = sp;
   }
 }
 
@@ -970,17 +990,23 @@ export function NPCTRADE_ClampNormalActLevelCap_6FCDCB20_113c(
   }
   const npc = pNpc >>> 0;
   const nClassId = npc === 0 ? 0xffffffff : m.u32((npc + 4) >>> 0) >>> 0;
-  const pOutIdx = m.alloc(4) >>> 0;
-  const pNpcRecord = D2GAME_ARENA_FindPlayerSlotByUnit113c(m, pOutIdx, game, nClassId) >>> 0;
-  if (pNpcRecord === 0) {
-    return maxCap;
+  const sp = k2W2B6StackPtr;
+  k2W2B6StackPtr = (sp + 0x08) >>> 0;
+  try {
+    m.setU32(sp, 0);
+    const pNpcRecord = D2GAME_ARENA_FindPlayerSlotByUnit113c(m, sp, game, nClassId) >>> 0;
+    if (pNpcRecord === 0) {
+      return maxCap;
+    }
+    const uAct = m.u8((pNpcRecord + 0x22) >>> 0);
+    if (uAct >= 5) {
+      return maxCap;
+    }
+    const nActCap = NORMAL_ACT_LEVEL_CAPS_113C[uAct]!;
+    return nActCap < maxCap ? nActCap : maxCap;
+  } finally {
+    k2W2B6StackPtr = sp;
   }
-  const uAct = m.u8((pNpcRecord + 0x22) >>> 0);
-  if (uAct >= 5) {
-    return maxCap;
-  }
-  const nActCap = NORMAL_ACT_LEVEL_CAPS_113C[uAct]!;
-  return nActCap < maxCap ? nActCap : maxCap;
 }
 
 /**

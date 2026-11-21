@@ -217,7 +217,7 @@ function shelfPackRgbaPages(
 
   const pages = pageBuffers.map((buf, idx) => {
     const h = pageHeights[idx]!
-    const pngBytes = encodeRgbaPng({ width: pageWidth, height: h, pixels: buf })
+    const pngBytes = encodeRgbaPng({ width: pageWidth, height: h, pixels: buf, compressionLevel: 9 })
     const hash8 = createHash('sha256').update(pngBytes).digest('hex').slice(0, 8)
     const file = pageBuffers.length === 1 ? `${prefix}-${hash8}.png` : `${prefix}-${String(idx)}-${hash8}.png`
     return {

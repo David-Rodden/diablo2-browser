@@ -2155,9 +2155,7 @@ export async function startPlayApp(options?: {
     if (capturedLocalServerFactory) {
       registerLocalServerFactory(capturedLocalServerFactory)
     }
-    if (siteConfig.singlePlayerBackend !== undefined) {
-      getLocalLobbyProvider()?.setBackend?.(siteConfig.singlePlayerBackend)
-    }
+    getLocalLobbyProvider()?.setBackend?.(siteConfig.singlePlayerBackend ?? 'd2kern-113c')
     frontendRenderer.setAsyncHandlers({
       ...baseAsyncHandlers,
       onSinglePlayer: handleSinglePlayerEntry,
@@ -3023,7 +3021,7 @@ export async function startPlayApp(options?: {
     },
     renderFrame,
     getSinglePlayerBackend: (): SinglePlayerBackendMode =>
-      getLocalLobbyProvider()?.getBackend?.() ?? 'legacy',
+      getLocalLobbyProvider()?.getBackend?.() ?? 'd2kern-113c',
     setSinglePlayerBackend: (mode: SinglePlayerBackendMode): void => {
       getLocalLobbyProvider()?.setBackend?.(mode)
     },

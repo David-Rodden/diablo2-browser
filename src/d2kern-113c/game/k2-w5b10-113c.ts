@@ -125,10 +125,11 @@ function dispatchMonsterStartMode6FC95E10(
   const pTarget = m.u32((pModeArgs + 0x08) >>> 0) >>> 0
   const targetX = m.u32((pModeArgs + 0x0c) >>> 0) | 0
   const targetY = m.u32((pModeArgs + 0x10) >>> 0) | 0
+  const pathTypeArg = m.u8((pModeArgs + 0x15) >>> 0)
   if (hooks !== undefined && hooks.world !== undefined) {
     return MONSTER_StartMode113c(hooks.world, pUnit, mode, pTarget, targetX, targetY) ? 1 : 0
   }
-  return MONSTER_StartModeMem113c(m, pGame >>> 0, pUnit, mode, pTarget, targetX, targetY) | 0
+  return MONSTER_StartModeMem113c(m, pGame >>> 0, pUnit, mode, pTarget, targetX, targetY, pathTypeArg, bUpdateAnim | 0) | 0
 }
 
 function aiIdleWander6FD11B10(

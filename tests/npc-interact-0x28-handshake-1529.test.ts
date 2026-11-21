@@ -251,11 +251,12 @@ describe('1.13c S2C 0x28 UpdateQuestInfo -> C2S 0x2F NpcInit / 0x30 NpcCancel Ha
   })
 
   it('Single-Player E2E (LocalLobbyProvider + OnlineSession): client/server position desync waits for GameInstance server walk + S2C 0x28 before opening menu and populating non-empty Charsi shop', async () => {
-    const lobby = new LocalLobbyProvider({ seed: 1337 })
+    const lobby = new LocalLobbyProvider({ seed: 1337, backend: 'legacy' })
     await lobby.importCharacterD2s(testCharacterSaves().get('TestFireSorc')!)
     const adapter: LocalLoopbackAdapter = await lobby.enterGame({
       charName: 'TestFireSorc',
       difficulty: 0,
+      backend: 'legacy',
     })
 
     const session = new OnlineSession()

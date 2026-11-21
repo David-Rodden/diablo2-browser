@@ -1127,6 +1127,11 @@ describe('K2 Real D2Game Non-Item Combat, Timed StatLists, Room Restore & 0x6FCA
     STATLIST_SetUnitStat113c(m, pFoe2, 6, 5 << 8, 0)
     STATLIST_SetUnitStat113c(m, pFoe2, 7, 5 << 8, 0)
     expect(SUNITDMG_ExecuteSingleHit113c(m, pGame, pPlayer, pFoe2, 0, 128)).toBe(1)
-    expect(SUNITDMG_DistributeExperience113c(m, pGame, pPlayer, pFoe2)).toBeGreaterThan(0)
+
+    const pFoe3 = spawnUnitInWorld(m, pGame, pRoom, 1, 0, 61, baseX + 2, baseY + 1)
+    STATLIST_SetUnitStat113c(m, pFoe3, 12, 1, 0)
+    STATLIST_SetUnitStat113c(m, pFoe3, 6, 5 << 8, 0)
+    STATLIST_SetUnitStat113c(m, pFoe3, 7, 5 << 8, 0)
+    expect(SUNITDMG_DistributeExperience113c(m, pGame, pPlayer, pFoe3)).toBeGreaterThan(0)
   })
 })

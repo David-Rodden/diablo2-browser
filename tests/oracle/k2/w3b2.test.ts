@@ -413,8 +413,8 @@ describe('Milestone 33 [K2] Wave 3 Batch 2 (w3b2): 45 D2Game 0x6FC3BCA0..0x6FC52
     m.setU8(pMonUModTxt + 5 * 0x20 + 0x06, 1)
     expect(MONUMOD_CheckModEligibility_6FC43100_113c(m, pChamp, pGame, 5, 0)).toBe(1)
 
-    // [16/45] MONUMOD_EventReviveOrCorpseCheck_6FC43E20_113c
-    expect(MONUMOD_EventReviveOrCorpseCheck_6FC43E20_113c(m, pGame, 0)).toBe(1)
+    // [16/45] MONUMOD_EventReviveOrCorpseCheck_6FC43E20_113c (D2Game.dll@0x6FC43EF0 requires non-null unit; D2Common.dll@0x6FD891F0 returns 0 for null)
+    expect(MONUMOD_EventReviveOrCorpseCheck_6FC43E20_113c(m, pGame, pChamp)).toBe(1)
 
     // [17/45] MONUMOD_ApplyCursedAmplifyDamage_6FC44030_113c
     m.setU16(pSkillsTxt + 0x42 * 0x23c + 0x10, 9)

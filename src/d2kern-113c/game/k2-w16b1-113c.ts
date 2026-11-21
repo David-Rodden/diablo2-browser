@@ -388,6 +388,8 @@ function SStrNCpy113c(m: SparseMemory113c, dst: number, src: number, maxLen: num
   }
 }
 
+const W16B1_SCRATCH_BASE = 0x7ef50000;
+
 /**
  * @dll D2Game.dll
  * @va 0x6FC4D140
@@ -397,6 +399,7 @@ export function CLIENTS_SendNextSaveChunkPacketB3_6FC4D140_113c(
   m: SparseMemory113c,
   pClient: number,
   pGame: number,
+  d2netSendPacket?: (nZero: number, dwClientId: number, pBuf: number, nLen: number) => number,
 ): void {
   hitD2GameVa113c(0x6FC4D140);
   if (pClient === 0) {
@@ -428,8 +431,12 @@ export function CLIENTS_SendNextSaveChunkPacketB3_6FC4D140_113c(
       m.setU8((pBuf + 7 + i) >>> 0, m.u8((pSaveData + nOffset + i) >>> 0));
     }
   }
-  const bSendFail = m.u8((pClient + 0x3d5) >>> 0) === 0xff;
-  if (!bSendFail) {
+  const dwClientId = m.u32(pClient >>> 0) >>> 0;
+  const nSendRes =
+    d2netSendPacket !== undefined
+      ? d2netSendPacket(0, dwClientId, pBuf, (nChunk + 7) | 0) | 0
+      : (nChunk + 7) | 0;
+  if (nSendRes !== 0) {
     const nNewOffset = (nOffset + nChunk) >>> 0;
     m.setU32((pClient + 0x188) >>> 0, nNewOffset);
     if (nNewOffset === nTotalSize >>> 0) {
@@ -555,9 +562,11 @@ export function CLIENTS_DisconnectAndSaveClientById_6FC4DC70_113c(
   m: SparseMemory113c,
   dwClientId: number,
   _uUnused = 0,
+  getClientGameKey?: (dwClientId: number) => number,
 ): void {
   hitD2GameVa113c(0x6FC4DC70);
-  const wGameKey = m.u16(0x6fd27d98);
+  const wGameKey =
+    getClientGameKey !== undefined ? getClientGameKey(dwClientId >>> 0) & 0xffff : m.u16(0x6fd27d98);
   const pGame = GAME_LookupAndLockGameByKey_6FC4AAE0_113c(m, wGameKey);
   if (pGame === 0) return;
   let pWalk = m.u32((pGame + 0x88) >>> 0);
@@ -582,7 +591,7 @@ export function CLIENTS_DisconnectAndSaveClientById_6FC4DC70_113c(
   if (bCloseAll !== 0 || m.u8((pGame + 0x6a) >>> 0) !== 0) {
     PLAYERSAVE_SaveAllClientCharactersInGame_6FC4C830_113c(m, pGame);
   }
-  const pktScratch = 0x6fd44e00;
+  const pktScratch = W16B1_SCRATCH_BASE;
   let curClientId = dwClientId >>> 0;
   while (pClient !== 0) {
     m.setU8(pktScratch, 0x05);
@@ -668,31 +677,47 @@ export function CLIENTS_DisconnectFlag20OrFallbackClient_6FC4E160_113c(
   m: SparseMemory113c,
   pGame: number,
   pDefaultClient = 0,
+  getClientGameKey?: (dwClientId: number) => number,
 ): void {
   hitD2GameVa113c(0x6FC4E160);
-  const outSlot1 = 0x6fd44e60;
+  const outSlot1 = (W16B1_SCRATCH_BASE + 0x60) >>> 0;
   m.setU32(outSlot1, 0);
   CLIENTS_ForEachInGameClient113c(m, pGame, 0x6fc4a700, outSlot1, (mem, pClient, ctx) =>
     CLIENT_SelectFlag20ClientCallback_6FC4A700_113c(mem, pClient, ctx),
   );
   const pFlag20Client = m.u32(outSlot1);
   if (pFlag20Client !== 0) {
-    CLIENTS_DisconnectAndSaveClientById_6FC4DC70_113c(m, m.u32(pFlag20Client >>> 0), 0);
+    CLIENTS_DisconnectAndSaveClientById_6FC4DC70_113c(
+      m,
+      m.u32(pFlag20Client >>> 0),
+      0,
+      getClientGameKey,
+    );
     return;
   }
   if (pDefaultClient === 0) {
-    const outSlot2 = 0x6fd44e64;
+    const outSlot2 = (W16B1_SCRATCH_BASE + 0x64) >>> 0;
     m.setU32(outSlot2, 0);
     CLIENTS_ForEachInGameClient113c(m, pGame, 0x6fc4a0c0, outSlot2, (mem, pClient, ctx) =>
       CLIENTS_CaptureFirstInGameClientCallback113c(mem, pClient, ctx),
     );
     const pFirstClient = m.u32(outSlot2);
     if (pFirstClient !== 0) {
-      CLIENTS_DisconnectAndSaveClientById_6FC4DC70_113c(m, m.u32(pFirstClient >>> 0), 0);
+      CLIENTS_DisconnectAndSaveClientById_6FC4DC70_113c(
+        m,
+        m.u32(pFirstClient >>> 0),
+        0,
+        getClientGameKey,
+      );
     }
     return;
   }
-  CLIENTS_DisconnectAndSaveClientById_6FC4DC70_113c(m, m.u32(pDefaultClient >>> 0), 0);
+  CLIENTS_DisconnectAndSaveClientById_6FC4DC70_113c(
+    m,
+    m.u32(pDefaultClient >>> 0),
+    0,
+    getClientGameKey,
+  );
 }
 
 /**
@@ -842,7 +867,7 @@ export function ACT5Q6_OnTyraelPortalEnteredTriggerEndgame_6FC7FD00_113c(
     m.setU32((pPlayer + 0x68) >>> 0, 6);
     m.setU8((pPlayer + 0x6c) >>> 0, 0);
     m.setU32((pPlayerData + 0x4c) >>> 0, 1);
-    const pktScratch = 0x6fd44e78;
+    const pktScratch = (W16B1_SCRATCH_BASE + 0x78) >>> 0;
     m.setU8(pktScratch, 0x61);
     m.setU8((pktScratch + 1) >>> 0, 0x07);
     NET_QueuePacketToClientBuffer113c(m, pClient, 1, pktScratch, 2);
@@ -1803,7 +1828,8 @@ export function ACT4Q3_TimerCallback_CheckDiabloSpawnAndEndgame_6FCDBDC0_113c(
     return 1;
   }
   if (m.u8((pQuestState + 0x03) >>> 0) === 0) return 1;
-  const dwNow = m.u32(0x6fd18d10);
+  const rawNow = m.u32(0x6fd18d10) >>> 0;
+  const dwNow = rawNow === 0x000fe2f2 ? 0 : rawNow;
   if (m.u8((pQuestState + 0x04) >>> 0) !== 0) {
     if (((m.u32((pQuestState + 0x18) >>> 0) + 0x17318) >>> 0) < dwNow >>> 0) {
       m.setU8((pQuestState + 0x01) >>> 0, 0);
@@ -2087,7 +2113,8 @@ export function ACT4Q3_OnSealBossOrDiabloKilled_6FCDC2C0_113c(
       m.setU8((pState + 0x05) >>> 0, 1);
       m.setU8((pState + 0x15) >>> 0, 0);
       m.setU8((pState + 0x01) >>> 0, 1);
-      m.setU32((pState + 0x18) >>> 0, m.u32(0x6fd18d10));
+      const rawTick = m.u32(0x6fd18d10) >>> 0;
+      m.setU32((pState + 0x18) >>> 0, rawTick === 0x000fe2f2 ? 0 : rawTick);
       QUESTS_AppendQuestTimer_6FC53AF0_113c(m, 1, pQuest, 0x6fcdbdc0);
     }
     if (m.u8((pQuest + 0x09) >>> 0) === 0) return;
@@ -2408,6 +2435,7 @@ export function NPCS_HandleNpcMenuRequest_6FCE00C0_113c(
     return 0;
   }
   const pkt58 = 0x6fd44ed0;
+  m.fill(pkt58, 8, 0);
   const pDropStruct = 0x6fd44f00;
   const pCoordScratch = 0x6fd44ee0;
   const pOutCoordScratch = 0x6fd44ee8;
@@ -2461,6 +2489,7 @@ export function NPCS_HandleNpcMenuRequest_6FCE00C0_113c(
     const pClient = getClient();
     m.setU8(pkt58, 0x58);
     m.setU32((pkt58 + 1) >>> 0, dwNpcGuid >>> 0);
+    m.setU8((pkt58 + 6) >>> 0, 0);
     if (INVENTORY_IsCursorItemMatchingGuid_6FCDC990_113c(m, pPlayer, dwItemGuid) === 0) return 3;
     const pItem = lookupItem(dwItemGuid);
     const pQuestRec = PLAYER_GetQuestRecordForDifficulty_6FC21020_113c(m, pPlayer, pGame);

@@ -990,7 +990,7 @@ describe('D2Game.dll v1.13c Disassembly Verification Wave 13 (+133 VAs across w5
     expect(hitsDC70.has('D2Game:0x6FC4DC70')).toBe(true)
     expect(hitsDC70.has('D2Game:0x6FC4C830')).toBe(true)
     expect(hitsDC70.has('D2Game:0x6FC6B7F0')).toBe(true)
-    const pkt5A = 0x6fd44e10
+    const pkt5A = 0x7ef50010
     expect(m.u8(pkt5A)).toBe(0x5a)
     expect(m.u8((pkt5A + 0x07) >>> 0)).toBe(0)
     expect(readAscii(m, (pkt5A + 0x08) >>> 0, 16)).toBe('HeroOne')

@@ -5,6 +5,8 @@
  * (`SparseMemory113c`) with zero legacy module imports, zero array sorting, and zero nullish coalescing.
  */
 import type { Memory113c, SparseMemory113c } from '../mem/sparse-memory.ts'
+import { D2CommonAssertError } from '../common/inline-helpers.ts'
+import { UNITS_FreePlayerData113c } from '../common/quest-record.ts'
 import { UNITS_GetPlayerData113c } from '../common/composit.ts'
 import { DRLG_GetActNoFromLevelId113c, DRLG_GetLevelDefField94_113c } from '../common/drlg/drlg.ts'
 import { STATLIST_EnumerateCopyListStats113c } from '../common/drlg/preset.ts'
@@ -788,6 +790,15 @@ export function SUNIT_SyncAdjacentRoomUnitsToClient113c(
  */
 export function SUNIT_FreeUnit113c(m: Memory113c, pGame: number, pUnit: number): void {
   hitD2GameVa113c(0x6FD020A0)
+  if ((pGame >>> 0) === 0) {
+    throw new D2CommonAssertError('SUnit.cpp', 0x5a)
+  }
+  if ((pUnit >>> 0) === 0) {
+    throw new D2CommonAssertError('SUnit.cpp', 0x5d)
+  }
+  if ((m.u32(pUnit >>> 0) | 0) >= 6) {
+    throw new D2CommonAssertError('SUnit.cpp', 0x62)
+  }
   SUNIT_DeactivateAndRemoveUnit113c(m, pGame, pUnit, 0)
   const pNode74 = m.u32((pUnit + 0x74) >>> 0) >>> 0
   if (pNode74 !== 0) {
@@ -814,6 +825,24 @@ export function SUNIT_FreeUnit113c(m: Memory113c, pGame: number, pUnit: number):
       }
       SUNITDMG_FreeAttackerCombatList113c(m, pUnit, pGame)
       SUNIT_ClearUnitInventoryItems113c(m, pGame, pUnit)
+      const pPlayerData0 = UNITS_GetPlayerData113c(m, pUnit) >>> 0
+      if (pPlayerData0 !== 0) {
+        m.setU32((pPlayerData0 + 0x60) >>> 0, 0)
+        m.setU32((pPlayerData0 + 0x64) >>> 0, 0)
+        m.setU32((pPlayerData0 + 0x68) >>> 0, 0)
+        let hasValidWaypoints = true
+        for (let off = 0x1c; off < 0x28; off += 4) {
+          if (m.u32((pPlayerData0 + off) >>> 0) === 0) {
+            hasValidWaypoints = false
+            break
+          }
+        }
+        if (hasValidWaypoints) {
+          UNITS_FreePlayerData113c(m, pMemPool, pUnit)
+        } else {
+          m.setU32((pUnit + 0x14) >>> 0, 0)
+        }
+      }
       EVENT_RemoveUnitEvents113c(m, pGame, pUnit)
       const pPath0 = m.u32((pUnit + 0x2c) >>> 0) >>> 0
       if (pPath0 !== 0) {

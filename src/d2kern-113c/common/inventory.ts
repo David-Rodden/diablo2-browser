@@ -839,6 +839,7 @@ export function fogBitManipReadSigned113c(
  */
 export function fogGetLinkIndex113c(m: Memory113c, pLinker: number, dwCode: number): number {
   const linker = pLinker >>> 0
+  if (linker === 0) return -1
   let hi = m.u32(linker) | 0
   let lo = 0
   const pEntries = m.u32((linker + 0x08) >>> 0) >>> 0

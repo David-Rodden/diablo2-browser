@@ -12,9 +12,9 @@ const itemCount = (name: string) => {
 }
 
 async function enter(name: string): Promise<LocalLoopbackAdapter> {
-  const lobby = new LocalLobbyProvider({ seed: 555 })
+  const lobby = new LocalLobbyProvider({ seed: 555, backend: 'legacy' })
   await lobby.importCharacterD2s(saves.get(name)!)
-  return lobby.enterGame({ charName: name, difficulty: 0 })
+  return lobby.enterGame({ charName: name, difficulty: 0, backend: 'legacy' })
 }
 
 describe('test characters', () => {

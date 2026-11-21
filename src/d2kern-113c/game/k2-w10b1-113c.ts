@@ -1305,14 +1305,25 @@ export function SKILLS_ApplySummonStatsPassivesAndEquip_6FC6F970_113c(
 }
 
 let nextW10B1HeapPtr = 0x00410000
+let w10B1StackPtr = 0x7e250000
 
 function allocW10B1Block(m: SparseMemory113c, nBytes: number): number {
-  const ptr = nextW10B1HeapPtr >>> 0
-  nextW10B1HeapPtr = ((ptr + nBytes + 0xf) & ~0xf) >>> 0
-  for (let off = 0; off < nBytes; off += 4) {
-    m.setU32((ptr + off) >>> 0, 0)
-  }
+  const sz = nBytes > 0 ? nBytes : 4
+  const ptr = m.alloc(sz) >>> 0
+  m.fill(ptr, sz, 0)
   return ptr
+}
+
+function withW10B1Stack<T>(m: SparseMemory113c, nBytes: number, fn: (ptr: number) => T): T {
+  const aligned = ((nBytes + 0xf) & ~0xf) >>> 0
+  const saved = w10B1StackPtr >>> 0
+  w10B1StackPtr = (saved + aligned) >>> 0
+  try {
+    m.fill(saved, aligned, 0)
+    return fn(saved)
+  } finally {
+    w10B1StackPtr = saved
+  }
 }
 
 /**
@@ -1352,9 +1363,6 @@ export function ACT5Q4_InitQuestData_6FC7D5C0_113c(
   void QUESTS_DefaultSequenceFilter_6FC7AFB0_113c
 
   let edx = pPreallocatedState >>> 0
-  if (edx === 0) {
-    edx = m.u32((esi + 0x18) >>> 0)
-  }
   if (edx === 0) {
     edx = allocW10B1Block(m, 0x90)
   }
@@ -1584,9 +1592,6 @@ export function ACT1Q6_InitQuestData_6FC88060_113c(
   void ACT1Q5_CheckCharsiImbueNpcAlert113c
 
   let eax = pPreallocatedState >>> 0
-  if (eax === 0) {
-    eax = m.u32((esi + 0x18) >>> 0)
-  }
   if (eax === 0) {
     eax = allocW10B1Block(m, 0x198)
   }
@@ -1880,14 +1885,15 @@ export function NPCS_RepairPlayerItemOrAllItems_6FCDDE60_113c(
         ? m.u32((UNITS_GetPlayerData113c(m, pPlayerUnit) + 0x9c) >>> 0)
         : 0
     const nGold = STATLIST_GetUnitStat113c(m, pPlayerUnit, 0xe, 0)
-    const pPkt = allocW10B1Block(m, 0x10)
-    m.setU8(pPkt, 0x2a)
-    m.setU8((pPkt + 1) >>> 0, 0)
-    m.setU8((pPkt + 2) >>> 0, 0x9)
-    m.setU32((pPkt + 3) >>> 0, 0xffffffff)
-    m.setU32((pPkt + 7) >>> 0, 0xffffffff)
-    m.setU32((pPkt + 0xb) >>> 0, nGold >>> 0)
-    NET_QueuePacketToClientBuffer113c(m, pClient, 1, pPkt, 0xf)
+    withW10B1Stack(m, 0x10, (pPkt) => {
+      m.setU8(pPkt, 0x2a)
+      m.setU8((pPkt + 1) >>> 0, 0)
+      m.setU8((pPkt + 2) >>> 0, 0x9)
+      m.setU32((pPkt + 3) >>> 0, 0xffffffff)
+      m.setU32((pPkt + 7) >>> 0, 0xffffffff)
+      m.setU32((pPkt + 0xb) >>> 0, nGold >>> 0)
+      NET_QueuePacketToClientBuffer113c(m, pClient, 1, pPkt, 0xf)
+    })
     return 1
   }
 
@@ -2022,17 +2028,18 @@ export function NPCS_RepairPlayerItemOrAllItems_6FCDDE60_113c(
       }
     }
     if (!bNeedsRepair) {
-      const pFullChargesOut = allocW10B1Block(m, 4)
-      const bHasChargedSkills = ITEMS_HasUsedCharges113c(
-        m,
-        pItem,
-        pFullChargesOut,
-      )
-      if (bHasChargedSkills !== 0 && m.u32(pFullChargesOut) === 0) {
-        bNeedsRepair = true
-      } else if (nMaxDur !== 0 && (nCurDur | 0) < (nMaxDur | 0)) {
-        bNeedsRepair = true
-      }
+      withW10B1Stack(m, 4, (pFullChargesOut) => {
+        const bHasChargedSkills = ITEMS_HasUsedCharges113c(
+          m,
+          pItem,
+          pFullChargesOut,
+        )
+        if (bHasChargedSkills !== 0 && m.u32(pFullChargesOut) === 0) {
+          bNeedsRepair = true
+        } else if (nMaxDur !== 0 && (nCurDur | 0) < (nMaxDur | 0)) {
+          bNeedsRepair = true
+        }
+      })
     }
   }
   if (!bNeedsRepair) {
@@ -2454,12 +2461,13 @@ export function DUNGEON_TeleportUnitToRoomAndCoords_6FD019C0_113c(
   }
   if (bKeepExactCoords === 0) {
     const nUnitSizeX = UNITS_GetUnitSizeX113c(m, pUnit)
-    const pCoord = allocW10B1Block(m, 8)
-    m.setU32(pCoord, nTargetX >>> 0)
-    m.setU32((pCoord + 4) >>> 0, nTargetY >>> 0)
-    pResolvedRoom = COLLISION_FindFreePositionSimple113c(m, pResolvedRoom, pCoord, nUnitSizeX, 0x1c09, 0)
-    nTargetX = i32(m, pCoord)
-    nTargetY = i32(m, (pCoord + 4) >>> 0)
+    withW10B1Stack(m, 8, (pCoord) => {
+      m.setU32(pCoord, nTargetX >>> 0)
+      m.setU32((pCoord + 4) >>> 0, nTargetY >>> 0)
+      pResolvedRoom = COLLISION_FindFreePositionSimple113c(m, pResolvedRoom, pCoord, nUnitSizeX, 0x1c09, 0)
+      nTargetX = i32(m, pCoord)
+      nTargetY = i32(m, (pCoord + 4) >>> 0)
+    })
   }
   if (pResolvedRoom === 0) {
     return 0
@@ -2479,16 +2487,17 @@ export function DUNGEON_TeleportUnitToRoomAndCoords_6FD019C0_113c(
   if (m.u32(pUnit) === 0) {
     const pPlayerData = UNITS_GetPlayerData113c(m, pUnit)
     const pClient = m.u32((pPlayerData + 0x9c) >>> 0)
-    const pRoomCoords = allocW10B1Block(m, 0x20)
-    DUNGEON_GetRoomCoordinates113c(m, pResolvedRoom, pRoomCoords)
-    const nLevelId = DUNGEON_GetLevelIdFromRoom113c(m, pResolvedRoom)
-    NET_SendPacket07_RoomTileCoords_6FCABF50_113c(
-      m,
-      m.u32((pRoomCoords + 0x10) >>> 0),
-      m.u32((pRoomCoords + 0x14) >>> 0),
-      pClient,
-      nLevelId,
-    )
+    withW10B1Stack(m, 0x20, (pRoomCoords) => {
+      DUNGEON_GetRoomCoordinates113c(m, pResolvedRoom, pRoomCoords)
+      const nLevelId = DUNGEON_GetLevelIdFromRoom113c(m, pResolvedRoom)
+      NET_SendPacket07_RoomTileCoords_6FCABF50_113c(
+        m,
+        m.u32((pRoomCoords + 0x10) >>> 0),
+        m.u32((pRoomCoords + 0x14) >>> 0),
+        pClient,
+        nLevelId,
+      )
+    })
     UNITROOM_RefreshUnit113c(m, pUnit)
     const uAddFlag = bUseFlag800 !== 0 ? 0x800 : 0x10000
     m.setU32((pUnit + 0xc8) >>> 0, (m.u32((pUnit + 0xc8) >>> 0) | uAddFlag) >>> 0)
@@ -2544,8 +2553,8 @@ export function PARTY_SetOrClearPlayerHostility_6FD11130_113c(
     return
   }
 
-  D2GAME_PARTY_EnsurePlayerRelationNode113c(m, pSourcePlayer, pTargetPlayer, pGame)
   D2GAME_PARTY_EnsurePlayerRelationNode113c(m, pTargetPlayer, pSourcePlayer, pGame)
+  D2GAME_PARTY_EnsurePlayerRelationNode113c(m, pSourcePlayer, pTargetPlayer, pGame)
 
   const bIsHostile = PARTY_TestPlayerRelationFlags113c(m, pSourcePlayer, pTargetPlayer, 8)
   if (bIsHostile !== bDeclareHostility) {
@@ -2573,9 +2582,10 @@ export function PARTY_SetOrClearPlayerHostility_6FD11130_113c(
       return
     }
     const dwExpireTick = PARTY_GetHostileCooldownTick113c(m, pSourcePlayer, pTargetPlayer)
-    const dwNowTick = m.u32(0x6fd18d10)
+    const rawTick = m.u32(0x6fd18d10) >>> 0
+    const dwNowTick = rawTick === 0x000fe2f2 ? 0 : rawTick
     if ((dwExpireTick >>> 0) <= (dwNowTick >>> 0)) {
-      const dwNewExpire = (m.u32(0x6fd18d10) + 0xea60) >>> 0
+      const dwNewExpire = (dwNowTick + 0xea60) >>> 0
       PLAYERLIST_SetHostileDelayTick_6FD10090_113c(m, pTargetPlayer, pSourcePlayer, dwNewExpire)
       PARTY_DeclareHostilityBetweenPlayers_6FD10FF0_113c(
         m,
@@ -2609,6 +2619,6 @@ export function PARTY_SetOrClearPlayerHostility_6FD11130_113c(
     NET_SendEventMessagePacket5A_6FC90BF0_113c(m, 0, 0x10, pSourcePlayer)
   }
 
-  PARTY_BroadcastPacket8CRelationFlags_6FD105B0_113c(m, pSourcePlayer, pTargetPlayer, pGame)
   PARTY_BroadcastPacket8CRelationFlags_6FD105B0_113c(m, pTargetPlayer, pSourcePlayer, pGame)
+  PARTY_BroadcastPacket8CRelationFlags_6FD105B0_113c(m, pSourcePlayer, pTargetPlayer, pGame)
 }

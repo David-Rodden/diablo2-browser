@@ -650,7 +650,8 @@ describe('D2Game.dll v1.13c Disassembly Verification Wave 11 (+70 VAs across lan
     expect(hits1.has('D2Game:0x6FC41420')).toBe(true)
     expect(m.u32(pAiGen)).toBe(0x0a)
     expect(m.u32((pAiGen + 0x14) >>> 0)).toBe(0)
-    expect(m.u32((pAiCtrl + 0x04) >>> 0)).toBe(m.u32((pAiGen + 0x04) >>> 0))
+    expect(m.u32((pAiGen + 0x04) >>> 0)).not.toBe(0)
+    expect(m.u32((pAiCtrl + 0x04) >>> 0)).toBe(0)
 
     SKILLS_ApplyCurseSpecialMonsterAiState_6FC700A0_113c(m, 81, pMon, pGame)
     expect(m.u32(pAiGen)).toBe(0x0c)
@@ -659,10 +660,10 @@ describe('D2Game.dll v1.13c Disassembly Verification Wave 11 (+70 VAs across lan
     SKILLS_ApplyCurseSpecialMonsterAiState_6FC700A0_113c(m, 82, pMon, pGame)
     expect(m.u32(pAiGen)).toBe(0)
 
-    // State 0x36 (UNINTERRUPTABLE) throws via 0x6FCBD230
+    // State 0x36 (UNINTERRUPTABLE) throws via 0x6FCBD230 (line 0x1a6 = 422)
     STATES_ToggleGfxStateFlag113c(m, pMon, 0x36, 1)
     expect(() => SKILLS_ApplyCurseSpecialMonsterAiState_6FC700A0_113c(m, 86, pMon, pGame)).toThrow(
-      /0x36|0x1a6/,
+      /0x36|0x1a6|422/,
     )
   })
 

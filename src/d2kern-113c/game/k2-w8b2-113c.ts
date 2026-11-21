@@ -2430,7 +2430,7 @@ export function ACT4Q1_OnNpcMessage_6FCDA5E0_113c(
           5,
         );
         const pfnF0 = m.u32((pQuestData + 0xf0) >>> 0) >>> 0;
-        if (pfnF0 === 0 || m.u32(0x6fd18d14) !== 0) {
+        if (pfnF0 === 0 || m.u32(0x6fd18d14) === 1) {
           throw new D2CommonAssertError('0x6FD19FF9', 0xdf);
         }
         if (pfnQuestCallbackF0 !== undefined) {

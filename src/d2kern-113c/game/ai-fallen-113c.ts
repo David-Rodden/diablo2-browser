@@ -13,6 +13,7 @@ import {
 } from '../common/collision.ts'
 import { MONSTER_GetMissileIdForAnimMode113c } from '../common/drlg/drlg-ver.ts'
 import { DUNGEON_GetRoomCoordListFromSubtile113c } from '../common/dungeon.ts'
+import { D2CommonAssertError } from '../common/inline-helpers.ts'
 import {
   DUNGEON_CheckRoomIsTownMemPort113c,
   SKILLS_GetUsedSkillMemPort113c,
@@ -62,6 +63,7 @@ import {
   MONSTER_IsContinuousMode113c,
   SUNIT_IsDeadOrDying113c,
   UNITS_ChangeAnimMode113c,
+  registerFreeAttackerCombatList113c,
 } from './monster-events.ts'
 import {
   D2GAME_IAT_GDW_BITMASKS_VA_113C,
@@ -188,15 +190,16 @@ function dispatchMonsterStartMode(
   if (hooks !== undefined && hooks.onMonsterStartMode !== undefined) {
     return hooks.onMonsterStartMode(m, pGame, pModeArgs, bUpdateAnim) | 0
   }
+  const mode = m.u32(pModeArgs) | 0
+  const pUnit = m.u32((pModeArgs + 0x04) >>> 0) >>> 0
+  const pTarget = m.u32((pModeArgs + 0x08) >>> 0) >>> 0
+  const tx = m.u32((pModeArgs + 0x0c) >>> 0) | 0
+  const ty = m.u32((pModeArgs + 0x10) >>> 0) | 0
   if (world !== undefined) {
-    const mode = m.u32(pModeArgs) | 0
-    const pUnit = m.u32((pModeArgs + 0x04) >>> 0) >>> 0
-    const pTarget = m.u32((pModeArgs + 0x08) >>> 0) >>> 0
-    const tx = m.u32((pModeArgs + 0x0c) >>> 0) | 0
-    const ty = m.u32((pModeArgs + 0x10) >>> 0) | 0
     return MONSTER_StartMode113c(world, pUnit, mode, pTarget, tx, ty) ? 1 : 0
   }
-  return 0
+  const pathTypeArg = m.u8((pModeArgs + 0x15) >>> 0)
+  return MONSTER_StartMode113c(m, pGame >>> 0, pUnit, mode, pTarget, tx, ty, pathTypeArg, bUpdateAnim | 0) | 0
 }
 
 /**
@@ -282,7 +285,7 @@ export function AIGENERAL_ReassignPackOnBossDeath113c(
 
   while (pWalk !== 0) {
     if (pGame === 0) {
-      throw new Error('AIGENERAL_ReassignPackOnBossDeath113c: pGame == NULL (line 723)')
+      throw new D2CommonAssertError('AiUtil.cpp', 723)
     }
     const candGuid = m.u32(pWalk) >>> 0
     pNewBoss = SUNIT_GetServerUnit113c(m, pGame, 1, candGuid)
@@ -381,7 +384,7 @@ export function AIGENERAL_BroadcastCmdToMinions113c(
   while (pMinionNode !== 0) {
     const pHashGame = m.u32((pLeaderAiGen + 0x28) >>> 0)
     if (pHashGame === 0) {
-      throw new Error('AIGENERAL_BroadcastCmdToMinions113c: pGame == NULL (line 723)')
+      throw new D2CommonAssertError('AiUtil.cpp', 723)
     }
     const minionGuid = m.u32(pMinionNode) >>> 0
     const pMinion = SUNIT_GetServerUnit113c(m, pHashGame, 1, minionGuid)
@@ -444,7 +447,7 @@ export function MONSTER_InitModeChangeStrc113c(
   hitD2GameVa113c(0x6FC95070)
   const mode = nMode | 0
   if (mode >= 0x10) {
-    throw new Error('MONSTER_InitModeChangeStrc113c: nMode >= 16 (line 1976)')
+    throw new D2CommonAssertError('MonsterMode.cpp', 1976)
   }
   SKILLS_SetUsedSkillMemPort113c(m, pUnit, 0)
   m.fill(pModeArgs, 0x20, 0)
@@ -817,7 +820,7 @@ export function AI_Skeleton113c(
     }
     const aip4 = sx16(m.u16((pMonStatsTxt + 0x68 + bDiff * 2) >>> 0))
     if (aip4 < -0x7e || aip4 > 0x7e) {
-      throw new Error('AI_Skeleton113c: out-of-bounds velocity override (line 272)')
+      throw new D2CommonAssertError('AiUtil.cpp', 272)
     }
     const pMonData =
       pUnit !== 0 && (m.u32(pUnit) | 0) === 1 ? m.u32((pUnit + 0x14) >>> 0) : 0
@@ -825,7 +828,10 @@ export function AI_Skeleton113c(
     if (aip4 !== 0) {
       m.setU32((pAiParam + 0x1c) >>> 0, aip4 >>> 0)
     }
-    const fled = world !== undefined ? AI_FleeFrom113c(world, pTarget, pUnit, 4, true) : 0
+    const fled =
+      world !== undefined
+        ? AI_FleeFrom113c(world, pTarget, pUnit, 4, true)
+        : AI_FleeFrom113c(m, pGame, pUnit, pTarget, 4, 1)
     if (!fled) {
       AI_StartAttackMode113c(m, 4, pUnit, pGame, pTarget, world, hooks)
     }
@@ -872,7 +878,7 @@ export function AI_Skeleton113c(
 
   const aip4Close = sx16(m.u16((pMonStatsTxt + 0x68 + bDiff * 2) >>> 0))
   if (aip4Close < -0x7e || aip4Close > 0x7e) {
-    throw new Error('AI_Skeleton113c: out-of-bounds velocity override (line 272)')
+    throw new D2CommonAssertError('AiUtil.cpp', 272)
   }
   const pMonDataClose =
     pUnit !== 0 && (m.u32(pUnit) | 0) === 1 ? m.u32((pUnit + 0x14) >>> 0) : 0
@@ -883,7 +889,7 @@ export function AI_Skeleton113c(
   const fledClose =
     world !== undefined
       ? AI_FleeFrom113c(world, pTarget, pUnit, 4, true)
-      : AI_FleeFrom113c(m, pGame, pUnit, pTarget, 4, 0)
+      : AI_FleeFrom113c(m, pGame, pUnit, pTarget, 4, 1)
   if (!fledClose) {
     AI_StartAttackMode113c(m, 4, pUnit, pGame, pTarget, world, hooks)
   }
@@ -1382,7 +1388,7 @@ export function SUNIT_SetUnitEventSound113c(
 ): void {
   hitD2GameVa113c(0x6FCFFFD0)
   if (pUnit === 0) {
-    throw new Error('SUNIT_SetUnitEventSound113c: pUnit == NULL (line 1368)')
+    throw new D2CommonAssertError('SUnit.cpp', 1368)
   }
   m.setU16((pUnit + 0x6e) >>> 0, wSoundId & 0xffff)
   m.setU32((pUnit + 0x70) >>> 0, pSourceUnit >>> 0)
@@ -1406,7 +1412,7 @@ export function AI_SetAiControlOverrides113c(
   hitD2GameVa113c(0x6FD11A20)
   const vel = nVelPct | 0
   if (vel < -0x7e || vel > 0x7e) {
-    throw new Error('AI_SetAiControlOverrides113c: nVelPct out of [-126..126] (line 272)')
+    throw new D2CommonAssertError('AiUtil.cpp', 272)
   }
   let pType = nPathType | 0
   if (pType === 1) pType = 7
@@ -1693,3 +1699,5 @@ export function SKILLS_CanMonsterCastAtTarget113c(
 }
 
 export { PATH_GetPosX113c as aiFallenPathPosX_113c, PATH_GetPosY113c as aiFallenPathPosY_113c }
+
+registerFreeAttackerCombatList113c(SUNITDMG_FreeAttackerCombatList113c)

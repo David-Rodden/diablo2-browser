@@ -9,9 +9,40 @@
  * - Zero DOM globals, zero Node built-ins, zero ambient RNG or wall-clock calls.
  */
 
-import { SKILLS_CATALOG } from '../../common/data/skills-catalog.ts'
-import type { CharacterClassCode } from '../../common/units/classes.ts'
-import { MONSTATS_113C_ROWS } from '../../common/units/monsters-data.ts'
+import { compute5BandScaling } from '../../common/data/calc-ast.ts'
+import { SKILLS_BY_ID, SKILLS_CATALOG } from '../../common/data/skills-catalog.ts'
+import { BELT_CODE_TO_ROWS, BELT_POTION_CATALOG, NO_BELT_ROWS } from '../../common/items/belt-model.ts'
+import { executeDropPipeline } from '../../common/items/drop-tables.ts'
+import { getEmbeddedDropTables } from '../../common/items/embedded-drop-tables.ts'
+import { canUnitEquipItem113c, type EquipCandidateItem113c } from '../../common/items/equip-req-113c.ts'
+import { getInventoryGoldLimit, getStashGoldLimit } from '../../common/items/inventory-model.ts'
+import type { Item } from '../../common/items/items.ts'
+import {
+  computeRepairAllCost113c,
+  computeTransactionCost113c,
+  getCanonicalTransactionCostTables,
+  type ItemQuality113c,
+  type TransactionCostContext,
+  type TransactionCostInput,
+  type TransactionCostStat,
+} from '../../common/items/transaction-cost.ts'
+import {
+  VENDOR_TAB_KEYS,
+  generateGambleInventory,
+  generateVendorStoreInventory,
+  resolveGambledItem,
+} from '../../common/items/vendor-generator.ts'
+import { calculateKillExperienceGain113c } from '../../common/progression/experience-113c.ts'
+import { D2Rng } from '../../common/rng/d2-rng.ts'
+import { calculateHitChance, getExperienceForLevel } from '../../common/skills/formulas.ts'
+import { isSkillAllowedInTown } from '../../common/skills/skills-meta.ts'
+import {
+  CANONICAL_CHARSTATS,
+  CHARACTER_CLASS_CODES,
+  CHARACTER_CLASS_NAMES,
+  type CharacterClassCode,
+} from '../../common/units/classes.ts'
+import { MONLVL_113C_ROWS, MONSTATS_113C_ROWS } from '../../common/units/monsters-data.ts'
 import { hasMonStats2Flag, MONSTATS2_FLAGINDEX } from '../../common/units/monstats2-flags.ts'
 import { getTownNpcDescriptorByHcIdx } from '../../common/units/npc-table.ts'
 import {
@@ -19,6 +50,8 @@ import {
   isBlockedWithUnitSize,
 } from '../../common/world/act-spawn-location.ts'
 import { WAYPOINT_CLASS_IDS_113C } from '../../common/world/objects-meta.ts'
+import { executeCubeTransmute113c, executeSocketItem113c } from '../items/cube-engine-113c.ts'
+import { domainItemToItemData113c, finalizeDroppedItem113c } from '../items/server-item-data.ts'
 import {
   DUNGEON_AddClientToRoom113c,
   DUNGEON_GetLevelIdFromRoom113c,
@@ -248,11 +281,35 @@ const STAT_GOLD = 14
 const STAT_GOLDBANK = 15
 const STAT_VELOCITYPERCENT = 67
 const STAT_ATTACKRATE = 68
+const STAT_ARMORCLASS = 31
 const STAT_ITEM_ADDCLASSSKILLS = 83
+const STAT_ITEM_REDUCEDPRICES = 87
 const STAT_ITEM_NONCLASSSKILL = 97
 const STAT_ITEM_SINGLESKILL = 107
 const STAT_ITEM_ALLSKILLS = 127
 const STAT_ITEM_ADDSKILL_TAB = 188
+
+const ITEM_FLAG_IDENTIFIED_113C = 0x00000010
+const ITEM_FLAG_DELETED_113C = 0x00000020
+const ITEM_FLAG_BROKEN_113C = 0x00000100
+const ITEM_FLAG_EAR_113C = 0x00001000
+const ITEM_FLAG_ETHEREAL_113C = 0x00400000
+const ITEM_FLAG_COMPACT_113C = 0x00200000
+
+const SOUND_IMPOSSIBLE_113C = 19
+const SOUND_CANT_CARRY_113C = 23
+const SOUND_NOT_IN_TOWN_113C = 24
+const SOUND_NEED_MANA_113C = 25
+
+const BUTTON_OPEN_STASH_113C = 0x10
+const BUTTON_CLOSE_STASH_113C = 0x11
+const BUTTON_OPEN_CUBE_113C = 0x15
+
+const OBJECT_CLASS_PORTAL_113C = 59
+const OBJECT_CLASS_STASH_113C = 267
+const ACT_TOWN_AREA_BY_INDEX_113C: readonly [number, number, number, number, number] = [
+  1, 40, 75, 103, 109,
+]
 
 const PLRMODE_WALK = 2
 const PLRMODE_RUN = 3
@@ -260,9 +317,11 @@ const PLRMODE_TOWN_NEUTRAL = 5
 const PLRMODE_TOWN_WALK = 6
 
 const UNIT_OBJECT_113C = 2
+const UNIT_ITEM_113C = 4
 const INTERACT_IMMEDIATE_RANGE_SUBTILES_113C = 8
 const INTERACT_ARRIVAL_RANGE_SUBTILES_113C = 5
 const NPC_TETHER_RANGE_SUBTILES_113C = 10
+const ITEM_PICKUP_RANGE_SUBTILES_113C = 12
 
 /** Canonical 1.13c town healers (`NPC.txt` / `D2Game.dll` `0x6FCDD810` -> `0x6FCDD490`). */
 export const TOWN_HEALER_CLASS_IDS_113C: ReadonlySet<number> = new Set([
@@ -464,6 +523,12 @@ export interface D2gsKernelBridgeOptions113c {
   readonly initialLeftSkill?: number | undefined
   /** Optional initial right-hand skill ID (`default 0`). */
   readonly initialRightSkill?: number | undefined
+  /** Optional initial active weapon swap set (`0` = I, `1` = II, `.d2s` `activeWeapon`). */
+  readonly initialWeaponSet?: 0 | 1 | undefined
+  /** Optional initial alternate weapon-swap left-hand skill ID (`.d2s` `altLeftSkill`). */
+  readonly initialAltLeftSkill?: number | undefined
+  /** Optional initial alternate weapon-swap right-hand skill ID (`.d2s` `altRightSkill`). */
+  readonly initialAltRightSkill?: number | undefined
   /** 1.13c item/stat tables for `0xA8` bitstream encoding & `D2gsAdapter` decoding. */
   readonly tables?: ItemDataTables | undefined
   /**
@@ -557,8 +622,44 @@ export interface SpawnBridgeObjectOptions113c {
 }
 
 interface PendingBridgeInteraction113c {
-  readonly kind: 'npc' | 'waypoint'
+  readonly kind: 'npc' | 'waypoint' | 'stash' | 'portal'
   readonly unitId: number
+}
+
+interface AppliedSkillBonusDelta113c {
+  readonly statId: number
+  readonly param: number
+  readonly value: number
+}
+
+interface GroundItemRecord113c {
+  readonly item: ItemData
+  readonly x: number
+  readonly y: number
+  readonly areaId: number
+}
+
+interface VendorPoolEntry113c {
+  readonly item: ItemData
+  readonly permStore: boolean
+  readonly gamble: boolean
+  readonly sourceItem?: Item | undefined
+}
+
+interface MonsterCombatMeta113c {
+  readonly classId: number
+  readonly level: number
+  readonly baseExp: number
+  readonly ac: number
+  readonly maxHp: number
+  readonly isNpc: boolean
+  readonly tcName: string
+}
+
+interface PortalTargetRecord113c {
+  readonly destAreaId: number
+  readonly destX?: number | undefined
+  readonly destY?: number | undefined
 }
 
 interface InternalClientEntry113c {
@@ -575,6 +676,16 @@ interface InternalClientEntry113c {
   activeNpcUnitId: number
   lastNpcHandshakeUnitId: number
   activeWaypointUnitId: number
+  activeVendorNpcId: number
+  activeVendorMode: 'trade' | 'gamble' | null
+  stashOpen: boolean
+  cubeOpen: boolean
+  pendingIdentifyScrollId: number
+  weaponSet: 0 | 1
+  altLeftSkill: number
+  altRightSkill: number
+  readonly ownedItems: ItemData[]
+  readonly appliedEquipSkillBonuses: AppliedSkillBonusDelta113c[]
   pendingInteraction: PendingBridgeInteraction113c | null
   closed: boolean
 }
@@ -660,7 +771,11 @@ export class D2gsKernelBridge113c {
   private readonly onPlayersXChange: ((playersX: number) => void) | undefined
   private readonly initialLeftSkill: number
   private readonly initialRightSkill: number
+  private readonly initialWeaponSet: 0 | 1
+  private readonly initialAltLeftSkill: number
+  private readonly initialAltRightSkill: number
   private playersXValue: number
+  private readonly rng: D2Rng
 
   private readonly pRecvScratch: number
   private readonly pSendScratch: number
@@ -674,6 +789,11 @@ export class D2gsKernelBridge113c {
   private readonly clients = new Map<number, InternalClientEntry113c>()
   private readonly sliceClientById = new Map<number, number>()
   private readonly sliceWorld: FallenSliceWorld113c
+  private readonly groundItems = new Map<number, GroundItemRecord113c>()
+  private readonly vendorStockByKey = new Map<string, VendorPoolEntry113c[]>()
+  private readonly spawnedUniqueIds = new Set<number>()
+  private readonly monsterMetaByUnitId = new Map<number, MonsterCombatMeta113c>()
+  private readonly portalsByObjectId = new Map<number, PortalTargetRecord113c>()
   private readonly uncompressedOutbox: UncompressedS2CPacketRecord113c[] = []
   private readonly wireOutbox: WireS2CPacketRecord113c[] = []
   private readonly uncompressedListeners = new Set<(pkt: UncompressedS2CPacketRecord113c) => void>()
@@ -714,10 +834,16 @@ export class D2gsKernelBridge113c {
     this.onPlayersXChange = options.onPlayersXChange
     this.initialLeftSkill = options.initialLeftSkill !== undefined ? options.initialLeftSkill : 0
     this.initialRightSkill = options.initialRightSkill !== undefined ? options.initialRightSkill : 0
+    this.initialWeaponSet = options.initialWeaponSet === 1 ? 1 : 0
+    this.initialAltLeftSkill =
+      options.initialAltLeftSkill !== undefined ? options.initialAltLeftSkill : 0
+    this.initialAltRightSkill =
+      options.initialAltRightSkill !== undefined ? options.initialAltRightSkill : 0
     this.playersXValue =
       options.initialPlayersX !== undefined
         ? Math.max(1, Math.min(8, Math.floor(Number(options.initialPlayersX) || 1)))
         : 1
+    this.rng = new D2Rng(((this.initSeedValue ^ 0xa5a5a5a5) >>> 0) || 1)
 
     this.packetSink = new D2NetPacketSink113c({ netMode: D2NET_MODE_SERVER_113C })
 
@@ -907,6 +1033,142 @@ export class D2gsKernelBridge113c {
   /** Current `/players 1..8` override stored in `D2GameStrc` (`+0x1D20` & `0x6FD31C1C`). */
   getPlayersX(): number {
     return this.playersXValue
+  }
+
+  /**
+   * Snapshot the live owned items (`equipment`, `inventory`, `stash`, `cube`, `belt`, `cursor`,
+   * and `socket` children) for `clientId` in canonical `.d2s` serialization order.
+   */
+  getPlayerOwnedItems(clientId: number): ItemData[] {
+    const entry = this.clients.get(clientId >>> 0)
+    if (entry === undefined) {
+      return this.initialItems !== undefined ? this.initialItems.map((item) => ({ ...item })) : []
+    }
+    return entry.ownedItems.map((item) => ({ ...item }))
+  }
+
+  /** Read live weapon-swap set (`0` = I, `1` = II) and alternate left/right skills for `clientId`. */
+  getPlayerWeaponSwapState(clientId: number): {
+    readonly activeWeapon: 0 | 1
+    readonly altLeftSkill: number
+    readonly altRightSkill: number
+  } {
+    const entry = this.clients.get(clientId >>> 0)
+    if (entry === undefined) {
+      return {
+        activeWeapon: this.initialWeaponSet,
+        altLeftSkill: this.initialAltLeftSkill,
+        altRightSkill: this.initialAltRightSkill,
+      }
+    }
+    return {
+      activeWeapon: entry.weaponSet,
+      altLeftSkill: entry.altLeftSkill,
+      altRightSkill: entry.altRightSkill,
+    }
+  }
+
+  /** List all ground items currently spawned in the active room. */
+  getGroundItems(): readonly GroundItemRecord113c[] {
+    return [...this.groundItems.values()]
+  }
+
+  /**
+   * Spawn a ground item (or gold pile) in the active room and broadcast S2C `0x9C` (`action = 0x00`
+   * or `0x02`) to all in-game clients.
+   */
+  spawnGroundItemInRoom(
+    rawItem: Partial<ItemData> & { readonly code: string },
+    x: number,
+    y: number,
+    dropAction: 'groundSpawn' | 'drop' = 'groundSpawn',
+  ): ItemData {
+    const assignedId =
+      rawItem.id !== undefined && rawItem.id > 0
+        ? rawItem.id >>> 0
+        : rawItem.itemId !== undefined && rawItem.itemId > 0
+          ? rawItem.itemId >>> 0
+          : this.allocUnitId()
+    if (assignedId >= this.nextUnitId) {
+      this.nextUnitId = (assignedId + 1) >>> 0
+    }
+    const code = rawItem.code.trim()
+    const isGold = code.toLowerCase() === 'gld'
+    const sz = this.getItemGridSize({ code, invWidth: rawItem.invWidth, invHeight: rawItem.invHeight })
+    const baseFlags = Number(rawItem.rawFlags ?? rawItem.flags ?? ITEM_FLAG_IDENTIFIED_113C)
+    const cleanFlags = ((baseFlags & ~ITEM_FLAG_DELETED_113C) | (isGold ? ITEM_FLAG_COMPACT_113C : 0)) >>> 0
+    const groundItem: ItemData = {
+      opcode: 0x9c,
+      action: dropAction === 'drop' ? 0x02 : 0x00,
+      category: 0,
+      ownerType: 0,
+      ownerId: 0,
+      version: 101,
+      bodyLoc: 0,
+      equippedSlot: 0,
+      gridX: 0,
+      gridY: 0,
+      storePage: 0,
+      storagePage: 0,
+      compact: isGold,
+      simple: isGold,
+      identified: rawItem.identified ?? true,
+      socketed: false,
+      ethereal: false,
+      runeword: false,
+      personalized: false,
+      isEar: false,
+      newItem: false,
+      starterItem: false,
+      broken: false,
+      inSocket: false,
+      equipped: false,
+      socketedChildCount: 0,
+      usedSockets: 0,
+      totalSockets: 0,
+      quality: 2,
+      stats: [],
+      setBonusStats: [],
+      runewordStats: [],
+      ...rawItem,
+      invWidth: sz.width,
+      invHeight: sz.height,
+      id: assignedId,
+      itemId: assignedId,
+      code,
+      rawCode: code.padEnd(4, ' ').slice(0, 4),
+      flags: cleanFlags,
+      rawFlags: cleanFlags,
+      location: 3,
+      container: 'ground',
+      worldX: x & 0xffff,
+      worldY: y & 0xffff,
+      x: x & 0xffff,
+      y: y & 0xffff,
+    }
+    this.groundItems.set(assignedId, {
+      item: groundItem,
+      x: x & 0xffff,
+      y: y & 0xffff,
+      areaId: this.areaId,
+    })
+    for (const entry of this.clients.values()) {
+      if (entry.closed || entry.pClient === 0) continue
+      if (this.m.u32((entry.pClient + D2ClientStrcOffsets.dwClientState) >>> 0) !== 4) continue
+      this.queueServerEventToClient(entry, {
+        type: 'ItemEvent',
+        action: dropAction,
+        itemId: assignedId,
+        code: groundItem.code,
+        x: x & 0xffff,
+        y: y & 0xffff,
+        container: 'ground',
+        item: groundItem,
+      })
+    }
+    this.flushAllClientQueuesToSink()
+    this.drainSinkToConsumers()
+    return groundItem
   }
 
   /**
@@ -1744,8 +2006,30 @@ export class D2gsKernelBridge113c {
   } {
     const unitId = opts.unitId !== undefined ? opts.unitId >>> 0 : this.allocUnitId()
     const animMode = opts.animMode !== undefined ? opts.animMode >>> 0 : 1
-    const maxHp = opts.maxHp !== undefined ? opts.maxHp : 128
-    const hp = opts.hp !== undefined ? opts.hp : maxHp
+    const diff = this.difficultyValue
+    const monRow = MONSTATS_113C_ROWS[opts.classId >>> 0]
+    const isNpc = isInteractiveNpcClassId113c(opts.classId >>> 0)
+    const mlvl = Math.max(1, Math.min(110, monRow !== undefined ? (monRow.level[diff] || 1) : 1))
+    const monLvlRow = MONLVL_113C_ROWS[mlvl]
+    let computedMaxHp = 128
+    let computedAc = 0
+    let computedBaseExp = 18
+    if (!isNpc && monRow !== undefined && monLvlRow !== undefined) {
+      const scaledMinHp = Math.max(1, Math.floor((monRow.minHP[diff] * monLvlRow.hp[diff]) / 100))
+      const scaledMaxHp = Math.max(
+        scaledMinHp,
+        Math.floor((monRow.maxHP[diff] * monLvlRow.hp[diff]) / 100),
+      )
+      const baseRolled =
+        scaledMinHp < scaledMaxHp ? this.rng.randRange(scaledMinHp, scaledMaxHp) : scaledMaxHp
+      computedMaxHp = Math.max(1, Math.floor((baseRolled * (this.playersXValue + 1)) / 2))
+      computedAc = Math.max(0, Math.floor((monRow.ac[diff] * monLvlRow.ac[diff]) / 100))
+      computedBaseExp = Math.max(1, Math.floor((monRow.exp[diff] * monLvlRow.xp[diff]) / 100))
+    }
+    const maxHp = opts.maxHp !== undefined ? Math.max(1, opts.maxHp | 0) : computedMaxHp
+    const hp = opts.hp !== undefined ? Math.max(0, opts.hp | 0) : maxHp
+    const tcIdx = diff * 4
+    const tcName = monRow !== undefined ? (monRow.tc[tcIdx] ?? monRow.tc[0] ?? '') : ''
 
     const pMonster = UNITS_Create113c(this.m, UNIT_MONSTER, opts.classId >>> 0, unitId, this.pGame)
     this.m.set(pMonster, D2UnitStrc.dwAnimMode, animMode)
@@ -1763,8 +2047,21 @@ export class D2gsKernelBridge113c {
     this.insertUnitIntoGameHash(pMonster, UNIT_MONSTER, unitId)
 
     STATLIST_CreateEx113c(this.m, pMonster, 0x80000000, this.pGame)
+    STATLIST_SetUnitStat113c(this.m, pMonster, STAT_LEVEL, mlvl, 0)
     STATLIST_SetUnitStat113c(this.m, pMonster, STAT_MAXHP, (maxHp << 8) | 0, 0)
     STATLIST_SetUnitStat113c(this.m, pMonster, STAT_HITPOINTS, (hp << 8) | 0, 0)
+    STATLIST_SetUnitStat113c(this.m, pMonster, STAT_ARMORCLASS, computedAc, 0)
+    STATLIST_SetUnitStat113c(this.m, pMonster, STAT_EXPERIENCE, computedBaseExp, 0)
+
+    this.monsterMetaByUnitId.set(unitId, {
+      classId: opts.classId >>> 0,
+      level: mlvl,
+      baseExp: computedBaseExp,
+      ac: computedAc,
+      maxHp,
+      isNpc,
+      tcName,
+    })
 
     this.syncUnitIntoSliceWorld()
 
@@ -2048,6 +2345,16 @@ export class D2gsKernelBridge113c {
       activeNpcUnitId: 0,
       lastNpcHandshakeUnitId: 0,
       activeWaypointUnitId: 0,
+      activeVendorNpcId: 0,
+      activeVendorMode: null,
+      stashOpen: false,
+      cubeOpen: false,
+      pendingIdentifyScrollId: 0,
+      weaponSet: this.initialWeaponSet,
+      altLeftSkill: this.initialAltLeftSkill,
+      altRightSkill: this.initialAltRightSkill,
+      ownedItems: [],
+      appliedEquipSkillBonuses: [],
       pendingInteraction: null,
       closed: false,
     }
@@ -2542,6 +2849,19 @@ export class D2gsKernelBridge113c {
         }
         pUnit = m.get(pUnit, D2UnitStrc.pRoomUnitNext) >>> 0
       }
+      for (const rec of this.groundItems.values()) {
+        if (rec.areaId !== this.areaId) continue
+        this.queueServerEventToClient(entry, {
+          type: 'ItemEvent',
+          action: 'groundSpawn',
+          itemId: rec.item.id,
+          code: rec.item.code,
+          x: rec.x,
+          y: rec.y,
+          container: 'ground',
+          item: rec.item,
+        })
+      }
     }
 
     // 9. `0x04 LoadDone` (1B) + `dwClientState = 4` (`0x6FC4DA98..0x6FC4DAAC`)
@@ -2549,17 +2869,17 @@ export class D2gsKernelBridge113c {
     m.setU32((entry.pClient + D2ClientStrcOffsets.dwClientState) >>> 0, 4)
   }
 
-  private emitInitialItemsToClient(
-    entry: InternalClientEntry113c,
-    flushIfNearCapacity: () => void,
-  ): void {
+  private hydrateInitialItemsForClient(entry: InternalClientEntry113c): void {
+    if (entry.ownedItems.length > 0) return
     const items = this.initialItems
     if (items === undefined || items.length === 0) return
 
-    const m = this.m
     let currentHostItemId = 0
-
-    const emitSingleItem = (rawItem: ItemData, ownerId: number, isSocketChild: boolean): number => {
+    const normalizeOwned = (
+      rawItem: ItemData,
+      ownerId: number,
+      isSocketChild: boolean,
+    ): ItemData => {
       const assignedId =
         rawItem.id !== undefined && rawItem.id > 0
           ? rawItem.id >>> 0
@@ -2570,6 +2890,10 @@ export class D2gsKernelBridge113c {
         this.nextUnitId = (assignedId + 1) >>> 0
       }
       const loc = isSocketChild ? 6 : (rawItem.location ?? 0)
+      const storePage =
+        loc === 0
+          ? (rawItem.storePage ?? rawItem.storagePage ?? 1) || 1
+          : 0
       const container =
         loc === 6
           ? 'socket'
@@ -2579,35 +2903,27 @@ export class D2gsKernelBridge113c {
               ? 'belt'
               : loc === 4
                 ? 'cursor'
-                : (rawItem.storePage ?? rawItem.storagePage) === 5
+                : storePage === 5
                   ? 'stash'
-                  : (rawItem.storePage ?? rawItem.storagePage) === 4
+                  : storePage === 4
                     ? 'cube'
                     : 'inventory'
-      const itemWithId: ItemData = {
+      const bodyLoc = loc === 1 ? (rawItem.bodyLoc ?? rawItem.equippedSlot ?? 0) : 0
+      return {
         ...rawItem,
         id: assignedId,
         itemId: assignedId,
         location: loc,
+        container,
+        bodyLoc,
+        equippedSlot: bodyLoc,
+        equipped: loc === 1,
+        inSocket: isSocketChild,
+        storePage,
+        storagePage: storePage,
         ownerType: isSocketChild ? 4 : 0,
         ownerId,
       }
-      const pkts = serverEventToS2cPackets(
-        {
-          type: 'ItemEvent',
-          action: loc === 1 ? 'equip' : 'add',
-          container,
-          ownerId,
-          itemId: assignedId,
-          item: itemWithId,
-        },
-        this.tables,
-      )
-      for (let p = 0; p < pkts.length; p++) {
-        this.queueBytesToClientBuffer(m, entry.pClient, pkts[p]!)
-        flushIfNearCapacity()
-      }
-      return assignedId
     }
 
     for (let i = 0; i < items.length; i++) {
@@ -2615,11 +2931,13 @@ export class D2gsKernelBridge113c {
       const isFlatChild = item.location === 6 || Boolean(item.inSocket)
       if (isFlatChild) {
         if (currentHostItemId !== 0) {
-          emitSingleItem(item, currentHostItemId, true)
+          entry.ownedItems.push(normalizeOwned(item, currentHostItemId, true))
         }
         continue
       }
-      currentHostItemId = emitSingleItem(item, entry.playerUnitId, false)
+      const host = normalizeOwned(item, entry.playerUnitId, false)
+      currentHostItemId = host.id
+      entry.ownedItems.push(host)
       const nested = item.socketedItems
       if (nested !== undefined && nested.length > 0) {
         const nextIsFlat =
@@ -2627,18 +2945,76 @@ export class D2gsKernelBridge113c {
           (items[i + 1]!.location === 6 || Boolean(items[i + 1]!.inSocket))
         if (!nextIsFlat) {
           for (let c = 0; c < nested.length; c++) {
-            emitSingleItem(nested[c]! as ItemData, currentHostItemId, true)
+            entry.ownedItems.push(
+              normalizeOwned(nested[c]! as ItemData, currentHostItemId, true),
+            )
           }
         }
       }
     }
   }
 
-  private applyEquippedItemSkillBonuses(pPlayer: number): void {
-    const items = this.initialItems
-    if (items === undefined || items.length === 0) return
+  private emitInitialItemsToClient(
+    entry: InternalClientEntry113c,
+    flushIfNearCapacity: () => void,
+  ): void {
+    this.hydrateInitialItemsForClient(entry)
+    const items = entry.ownedItems
+    if (items.length === 0) return
 
     const m = this.m
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i]!
+      const loc = item.location ?? 0
+      const container =
+        loc === 6
+          ? 'socket'
+          : loc === 1
+            ? 'equipment'
+            : loc === 2
+              ? 'belt'
+              : loc === 4
+                ? 'cursor'
+                : (item.storePage ?? item.storagePage) === 5
+                  ? 'stash'
+                  : (item.storePage ?? item.storagePage) === 4
+                    ? 'cube'
+                    : 'inventory'
+      const pkts = serverEventToS2cPackets(
+        {
+          type: 'ItemEvent',
+          action: loc === 1 ? 'equip' : 'add',
+          container,
+          ownerId: item.ownerId ?? entry.playerUnitId,
+          itemId: item.id,
+          item,
+        },
+        this.tables,
+      )
+      for (let p = 0; p < pkts.length; p++) {
+        this.queueBytesToClientBuffer(m, entry.pClient, pkts[p]!)
+        flushIfNearCapacity()
+      }
+    }
+  }
+
+  private recomputeEquippedItemSkillBonuses(entry: InternalClientEntry113c): void {
+    const pPlayer = entry.pPlayer >>> 0
+    if (pPlayer === 0) return
+    const m = this.m
+
+    // 1. Revert previously applied item-granted skill bonuses cleanly in `SparseMemory113c`.
+    for (let i = 0; i < entry.appliedEquipSkillBonuses.length; i++) {
+      const prev = entry.appliedEquipSkillBonuses[i]!
+      const cur = STATLIST_GetUnitStat113c(m, pPlayer, prev.statId, prev.param) | 0
+      STATLIST_SetUnitStat113c(m, pPlayer, prev.statId, (cur - prev.value) | 0, prev.param)
+    }
+    entry.appliedEquipSkillBonuses.length = 0
+
+    // 2. Accumulate skill bonuses across actively equipped items (`bodyLoc 1..10`) + their socket children.
+    const items = entry.ownedItems
+    if (items.length === 0) return
+
     const applyStats = (stats: readonly ItemStat[] | undefined): void => {
       if (stats === undefined) return
       for (let s = 0; s < stats.length; s++) {
@@ -2652,6 +3028,7 @@ export class D2gsKernelBridge113c {
             if (param > 0 && param < SKILLS_TXT_COUNT_113C) {
               const prev = STATLIST_GetUnitStat113c(m, pPlayer, st.statId, param) | 0
               STATLIST_SetUnitStat113c(m, pPlayer, st.statId, (prev + val) | 0, param)
+              entry.appliedEquipSkillBonuses.push({ statId: st.statId, param, value: val })
               if (SKILLS_GetSkillById113c(m, pPlayer, param, -1) === 0) {
                 SKILLS_SetSkillLevelOnUnit113c(m, pPlayer, param, 0, 0, 0, 0)
               }
@@ -2662,11 +3039,17 @@ export class D2gsKernelBridge113c {
           case STAT_ITEM_ADDSKILL_TAB: {
             const prev = STATLIST_GetUnitStat113c(m, pPlayer, st.statId, param) | 0
             STATLIST_SetUnitStat113c(m, pPlayer, st.statId, (prev + val) | 0, param)
+            entry.appliedEquipSkillBonuses.push({ statId: st.statId, param, value: val })
             break
           }
           case STAT_ITEM_ALLSKILLS: {
             const prev = STATLIST_GetUnitStat113c(m, pPlayer, STAT_ITEM_ALLSKILLS, 0) | 0
             STATLIST_SetUnitStat113c(m, pPlayer, STAT_ITEM_ALLSKILLS, (prev + val) | 0, 0)
+            entry.appliedEquipSkillBonuses.push({
+              statId: STAT_ITEM_ALLSKILLS,
+              param: 0,
+              value: val,
+            })
             break
           }
           default:
@@ -2675,18 +3058,16 @@ export class D2gsKernelBridge113c {
       }
     }
 
-    let currentHostEquipped = false
+    const activeHostIds = new Set<number>()
     for (let i = 0; i < items.length; i++) {
       const item = items[i]!
       const isFlatChild = item.location === 6 || Boolean(item.inSocket)
-      if (isFlatChild) {
-        if (currentHostEquipped) {
-          applyStats(item.stats)
-        }
-        continue
-      }
-      currentHostEquipped = item.location === 1 || Boolean(item.equipped)
-      if (!currentHostEquipped) continue
+      if (isFlatChild) continue
+      const bodyLoc = item.bodyLoc ?? item.equippedSlot ?? 0
+      const isActiveEquipped =
+        (item.location === 1 || Boolean(item.equipped)) && bodyLoc >= 1 && bodyLoc <= 10
+      if (!isActiveEquipped) continue
+      activeHostIds.add(item.id)
       applyStats(item.stats)
       applyStats(item.runewordStats)
       if (item.setBonusStats !== undefined) {
@@ -2694,16 +3075,13 @@ export class D2gsKernelBridge113c {
           applyStats(item.setBonusStats[sb]!.stats)
         }
       }
-      const nested = item.socketedItems
-      if (nested !== undefined && nested.length > 0) {
-        const nextIsFlat =
-          i + 1 < items.length &&
-          (items[i + 1]!.location === 6 || Boolean(items[i + 1]!.inSocket))
-        if (!nextIsFlat) {
-          for (let c = 0; c < nested.length; c++) {
-            applyStats((nested[c]! as ItemData).stats)
-          }
-        }
+    }
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i]!
+      const isFlatChild = item.location === 6 || Boolean(item.inSocket)
+      if (!isFlatChild) continue
+      if (item.ownerId !== undefined && activeHostIds.has(item.ownerId)) {
+        applyStats(item.stats)
       }
     }
   }
@@ -2819,7 +3197,9 @@ export class D2gsKernelBridge113c {
     const pSkills = SKILLS_AllocSkillList113c(m, 0) >>> 0
     m.set(pPlayer, D2UnitStrc.pSkills, pSkills)
     SKILLS_SetSkillLevelOnUnit113c(m, pPlayer, 0, 1, 1, 0, 0)
-    this.applyEquippedItemSkillBonuses(pPlayer)
+    entry.pPlayer = pPlayer
+    this.hydrateInitialItemsForClient(entry)
+    this.recomputeEquippedItemSkillBonuses(entry)
 
     if (this.initialSkillLevels !== undefined) {
       for (const [rawKey, rawLvl] of Object.entries(this.initialSkillLevels)) {
@@ -2909,6 +3289,21 @@ export class D2gsKernelBridge113c {
       rawBytes[i] = this.m.u8((pPacket + i) >>> 0)
     }
 
+    const firstOp = rawBytes[0]!
+    if (
+      firstOp >= 0x05 &&
+      firstOp <= 0x11 &&
+      firstOp !== 0x0b &&
+      entry.pPlayer !== 0 &&
+      this.m.u32((entry.pClient + D2ClientStrcOffsets.dwClientState) >>> 0) === 4
+    ) {
+      const isLocOp = firstOp === 0x05 || firstOp === 0x08 || firstOp === 0x0c || firstOp === 0x0f
+      const expectedLen = isLocOp ? 5 : 9
+      if (pktLen < expectedLen) return 3
+      this.handleC2SSkillUse(entry, firstOp, rawBytes)
+      return expectedLen
+    }
+
     const callees: C2SPacketCallees113c = {
       startPlayerModeAtCoords: (mem, _pGame, pPlayer, _nPlrMode, _nX, _nY, _bRunOrShift) => {
         entry.pendingInteraction = null
@@ -2979,6 +3374,10 @@ export class D2gsKernelBridge113c {
           if (entry.activeNpcUnitId === 0 || entry.activeNpcUnitId === npcUnitId) {
             entry.activeNpcUnitId = 0
           }
+          if (entry.activeVendorNpcId === 0 || entry.activeVendorNpcId === npcUnitId) {
+            entry.activeVendorNpcId = 0
+            entry.activeVendorMode = null
+          }
           if (entry.lastNpcHandshakeUnitId === npcUnitId) {
             entry.lastNpcHandshakeUnitId = 0
           }
@@ -2990,6 +3389,181 @@ export class D2gsKernelBridge113c {
             entry.pendingInteraction = null
           }
           return 9
+        }
+        if (opcode === 0x16 && len >= 13) {
+          const itemId = mem.u32((pktPtr + 5) >>> 0) >>> 0
+          const toCursor = (mem.u32((pktPtr + 9) >>> 0) >>> 0) !== 0
+          this.handleC2SPickItem(entry, itemId, toCursor)
+          return 13
+        }
+        if (opcode === 0x17 && len >= 5) {
+          const itemId = mem.u32((pktPtr + 1) >>> 0) >>> 0
+          this.handleC2SDropItem(entry, itemId)
+          return 5
+        }
+        if (opcode === 0x18 && len >= 17) {
+          const itemId = mem.u32((pktPtr + 1) >>> 0) >>> 0
+          const x = mem.u32((pktPtr + 5) >>> 0) >>> 0
+          const y = mem.u32((pktPtr + 9) >>> 0) >>> 0
+          const buffer = mem.u32((pktPtr + 13) >>> 0) >>> 0
+          this.handleC2SItemToBuffer(entry, itemId, x, y, buffer)
+          return 17
+        }
+        if (opcode === 0x19 && len >= 5) {
+          const itemId = mem.u32((pktPtr + 1) >>> 0) >>> 0
+          this.handleC2SRemoveFromBuffer(entry, itemId)
+          return 5
+        }
+        if ((opcode === 0x1a || opcode === 0x1b) && len >= 9) {
+          const itemId = mem.u32((pktPtr + 1) >>> 0) >>> 0
+          const bodyLoc = mem.u16((pktPtr + 5) >>> 0) & 0xffff
+          this.handleC2SEquipItem(entry, itemId, bodyLoc, opcode === 0x1b)
+          return 9
+        }
+        if (opcode === 0x1c && len >= 3) {
+          const bodyLoc = mem.u16((pktPtr + 1) >>> 0) & 0xffff
+          this.handleC2SUnequipItem(entry, bodyLoc)
+          return 3
+        }
+        if ((opcode === 0x1d || opcode === 0x1e) && len >= 9) {
+          const itemId = mem.u32((pktPtr + 1) >>> 0) >>> 0
+          const bodyLoc = mem.u16((pktPtr + 5) >>> 0) & 0xffff
+          this.handleC2SSwapEquippedItem(entry, itemId, bodyLoc)
+          return 9
+        }
+        if (opcode === 0x1f && len >= 17) {
+          const cursorItemId = mem.u32((pktPtr + 1) >>> 0) >>> 0
+          const targetItemId = mem.u32((pktPtr + 5) >>> 0) >>> 0
+          const x = mem.u32((pktPtr + 9) >>> 0) >>> 0
+          const y = mem.u32((pktPtr + 13) >>> 0) >>> 0
+          this.handleC2SSwapContainerItem(entry, cursorItemId, targetItemId, x, y)
+          return 17
+        }
+        if (opcode === 0x20 && len >= 13) {
+          const itemId = mem.u32((pktPtr + 1) >>> 0) >>> 0
+          const x = mem.u32((pktPtr + 5) >>> 0) >>> 0
+          const y = mem.u32((pktPtr + 9) >>> 0) >>> 0
+          this.handleC2SUseInventoryItem(entry, itemId, x, y)
+          return 13
+        }
+        if (opcode === 0x21 && len >= 9) {
+          const cursorItemId = mem.u32((pktPtr + 1) >>> 0) >>> 0
+          const targetItemId = mem.u32((pktPtr + 5) >>> 0) >>> 0
+          this.handleC2SStackItems(entry, cursorItemId, targetItemId)
+          return 9
+        }
+        if (opcode === 0x22 && len >= 5) {
+          const itemId = mem.u32((pktPtr + 1) >>> 0) >>> 0
+          this.handleC2SUnstackItems(entry, itemId)
+          return 5
+        }
+        if (opcode === 0x23 && len >= 9) {
+          const itemId = mem.u32((pktPtr + 1) >>> 0) >>> 0
+          const slot = mem.u32((pktPtr + 5) >>> 0) >>> 0
+          this.handleC2SItemToBelt(entry, itemId, slot)
+          return 9
+        }
+        if (opcode === 0x24 && len >= 5) {
+          const itemId = mem.u32((pktPtr + 1) >>> 0) >>> 0
+          this.handleC2SRemoveFromBelt(entry, itemId)
+          return 5
+        }
+        if (opcode === 0x25 && len >= 9) {
+          const cursorItemId = mem.u32((pktPtr + 1) >>> 0) >>> 0
+          const beltItemId = mem.u32((pktPtr + 5) >>> 0) >>> 0
+          this.handleC2SSwapBeltItem(entry, cursorItemId, beltItemId)
+          return 9
+        }
+        if (opcode === 0x26 && len >= 13) {
+          const itemId = mem.u32((pktPtr + 1) >>> 0) >>> 0
+          const shift = (mem.u32((pktPtr + 5) >>> 0) >>> 0) !== 0
+          this.handleC2SUseBeltItem(entry, itemId, shift)
+          return 13
+        }
+        if (opcode === 0x27 && len >= 9) {
+          const itemId = mem.u32((pktPtr + 1) >>> 0) >>> 0
+          const scrollId = mem.u32((pktPtr + 5) >>> 0) >>> 0
+          this.handleC2SIdentifyItem(entry, itemId, scrollId)
+          return 9
+        }
+        if (opcode === 0x28 && len >= 9) {
+          const fillerId = mem.u32((pktPtr + 1) >>> 0) >>> 0
+          const hostId = mem.u32((pktPtr + 5) >>> 0) >>> 0
+          this.handleC2SSocketItem(entry, fillerId, hostId)
+          return 9
+        }
+        if (opcode === 0x29 && len >= 9) {
+          const scrollId = mem.u32((pktPtr + 1) >>> 0) >>> 0
+          const bookId = mem.u32((pktPtr + 5) >>> 0) >>> 0
+          this.handleC2SScrollToBook(entry, scrollId, bookId)
+          return 9
+        }
+        if (opcode === 0x2a && len >= 9) {
+          const itemId = mem.u32((pktPtr + 1) >>> 0) >>> 0
+          this.handleC2SItemToCube(entry, itemId)
+          return 9
+        }
+        if (opcode === 0x31 && len >= 9) {
+          const npcId = mem.u32((pktPtr + 1) >>> 0) >>> 0
+          const messageId = mem.u16((pktPtr + 5) >>> 0) & 0xffff
+          this.handleC2SQuestMessage(entry, npcId, messageId)
+          return 9
+        }
+        if (opcode === 0x32 && len >= 17) {
+          const npcId = mem.u32((pktPtr + 1) >>> 0) >>> 0
+          const itemId = mem.u32((pktPtr + 5) >>> 0) >>> 0
+          const field3 = mem.u32((pktPtr + 9) >>> 0) >>> 0
+          const isGamble = (field3 & 0x00000002) !== 0
+          const shiftFill = (field3 & 0x80000000) !== 0
+          this.handleC2SBuyItem(entry, npcId, itemId, isGamble, shiftFill)
+          return 17
+        }
+        if (opcode === 0x33 && len >= 17) {
+          const npcId = mem.u32((pktPtr + 1) >>> 0) >>> 0
+          const itemId = mem.u32((pktPtr + 5) >>> 0) >>> 0
+          this.handleC2SSellItem(entry, npcId, itemId)
+          return 17
+        }
+        if (opcode === 0x34 && len >= 5) {
+          const npcId = mem.u32((pktPtr + 1) >>> 0) >>> 0
+          this.handleC2SCainIdentifyAll(entry, npcId)
+          return 5
+        }
+        if (opcode === 0x35 && len >= 17) {
+          const npcId = mem.u32((pktPtr + 1) >>> 0) >>> 0
+          const itemId = mem.u32((pktPtr + 5) >>> 0) >>> 0
+          const durabilityField = mem.u32((pktPtr + 13) >>> 0) >>> 0
+          const isRepairAll = (durabilityField & 0x80000000) !== 0
+          this.handleC2SRepairItem(entry, npcId, isRepairAll ? undefined : itemId)
+          return 17
+        }
+        if (opcode === 0x38 && len >= 13) {
+          const action = mem.u32((pktPtr + 1) >>> 0) >>> 0
+          const npcId = mem.u32((pktPtr + 5) >>> 0) >>> 0
+          this.handleC2SEntityAction(entry, action, npcId)
+          return 13
+        }
+        if (opcode === 0x4f && len >= 7) {
+          const buttonId = mem.u16((pktPtr + 1) >>> 0) & 0xffff
+          const amountHi = mem.u16((pktPtr + 3) >>> 0) & 0xffff
+          const amountLo = mem.u16((pktPtr + 5) >>> 0) & 0xffff
+          const amount = (((amountHi << 16) | amountLo) >>> 0)
+          this.handleC2SClickButton(entry, buttonId, amount)
+          return 7
+        }
+        if (opcode === 0x50 && len >= 9) {
+          const amount = mem.u32((pktPtr + 5) >>> 0) >>> 0
+          this.handleC2SDropGold(entry, amount)
+          return 9
+        }
+        if (opcode === 0x60 && len >= 1) {
+          this.handleC2SSwapWeapons(entry)
+          return 1
+        }
+        if (opcode === 0x63 && len >= 5) {
+          const itemId = mem.u32((pktPtr + 1) >>> 0) >>> 0
+          this.handleC2SQuickItemToBelt(entry, itemId)
+          return 5
         }
         if (opcode === 0x40 && len >= 1) {
           QUESTS_SendPlayerQuestLogPacket28_113c(this.m, pPlayer, this.pGame)
@@ -3278,7 +3852,13 @@ export class D2gsKernelBridge113c {
       if (entry.pPlayer !== 0 && entry.pClient !== 0) {
         NET_SendReassignUnitPacket15_113c(this.m, entry.pPlayer, entry.pClient, 1)
       }
-      this.executeWaypointOpen(entry, pObj)
+      if (pending.kind === 'stash') {
+        this.executeStashOpen(entry)
+      } else if (pending.kind === 'portal') {
+        this.executePortalInteract(entry, pending.unitId)
+      } else {
+        this.executeWaypointOpen(entry, pObj)
+      }
     } else if (isNeutral) {
       entry.pendingInteraction = null
     }
@@ -3315,14 +3895,26 @@ export class D2gsKernelBridge113c {
       const pObj = this.findUnitInActiveRoom(UNIT_OBJECT_113C, targetId)
       if (pObj === 0) return
       const objClassId = this.m.get(pObj, D2UnitStrc.dwClassId) >>> 0
-      if (!WAYPOINT_CLASS_IDS_113C.has(objClassId)) return
+      const isWp = WAYPOINT_CLASS_IDS_113C.has(objClassId)
+      const isStash = objClassId === OBJECT_CLASS_STASH_113C
+      const isPortal = objClassId === OBJECT_CLASS_PORTAL_113C
+      if (!isWp && !isStash && !isPortal) return
       const objX = UNITS_GetX113c(this.m, pObj) & 0xffff
       const objY = UNITS_GetY113c(this.m, pObj) & 0xffff
       if (Math.hypot(plrX - objX, plrY - objY) <= INTERACT_IMMEDIATE_RANGE_SUBTILES_113C) {
         entry.pendingInteraction = null
-        this.executeWaypointOpen(entry, pObj)
+        if (isStash) {
+          this.executeStashOpen(entry)
+        } else if (isPortal) {
+          this.executePortalInteract(entry, targetId)
+        } else {
+          this.executeWaypointOpen(entry, pObj)
+        }
       } else {
-        entry.pendingInteraction = { kind: 'waypoint', unitId: targetId }
+        entry.pendingInteraction = {
+          kind: isStash ? 'stash' : isPortal ? 'portal' : 'waypoint',
+          unitId: targetId,
+        }
         this.walkPlayerTowardTarget(entry, objX, objY)
       }
     }
@@ -3619,6 +4211,10 @@ export class D2gsKernelBridge113c {
     entry.activeWaypointUnitId = 0
     entry.activeNpcUnitId = 0
     entry.lastNpcHandshakeUnitId = 0
+    entry.activeVendorNpcId = 0
+    entry.activeVendorMode = null
+    entry.stashOpen = false
+    entry.cubeOpen = false
     entry.pendingInteraction = null
 
     const flushIfNearCapacity = (): void => {
@@ -3626,6 +4222,20 @@ export class D2gsKernelBridge113c {
         this.flushClientQueueToSink(entry)
       }
     }
+
+    // 0. Remove old room ground items (`0x0A RemoveGroundUnit` unitType=4) and reset area caches
+    for (const [gId] of this.groundItems) {
+      const pkt0a = new Uint8Array(6)
+      const dv0a = new DataView(pkt0a.buffer)
+      pkt0a[0] = 0x0a
+      pkt0a[1] = UNIT_ITEM_113C
+      dv0a.setUint32(2, gId >>> 0, true)
+      this.queueBytesToClientBuffer(m, entry.pClient, pkt0a)
+      flushIfNearCapacity()
+    }
+    this.groundItems.clear()
+    this.monsterMetaByUnitId.clear()
+    this.portalsByObjectId.clear()
 
     // 1. Remove old room non-player units (`0x0A RemoveGroundUnit`) and unlink from `SparseMemory113c`
     const pOldRoom = this.defaultRoomPtr >>> 0
@@ -3856,6 +4466,3522 @@ export class D2gsKernelBridge113c {
       this.onAreaChange(destAreaId, destActIdx)
     }
     return true
+  }
+
+  // ============================================================================
+  // Wave 3 Wire, Stat, Inventory-Grid & Pricing Helpers
+  // ============================================================================
+
+  private queueServerEventToClient(entry: InternalClientEntry113c, ev: ServerEvent): void {
+    if (entry.closed || entry.pClient === 0) return
+    const pkts = serverEventToS2cPackets(ev, this.tables)
+    for (let i = 0; i < pkts.length; i++) {
+      this.queueBytesToClientBuffer(this.m, entry.pClient, pkts[i]!)
+      if (this.getQueuedByteCount(entry.pClient) >= 0x280) {
+        this.flushClientQueueToSink(entry)
+      }
+    }
+  }
+
+  private broadcastServerEventToInGameClients(ev: ServerEvent): void {
+    const pkts = serverEventToS2cPackets(ev, this.tables)
+    if (pkts.length === 0) return
+    for (const recipient of this.clients.values()) {
+      if (recipient.closed || recipient.pClient === 0) continue
+      if (this.m.u32((recipient.pClient + D2ClientStrcOffsets.dwClientState) >>> 0) !== 4) continue
+      for (let i = 0; i < pkts.length; i++) {
+        this.queueBytesToClientBuffer(this.m, recipient.pClient, pkts[i]!)
+        if (this.getQueuedByteCount(recipient.pClient) >= 0x280) {
+          this.flushClientQueueToSink(recipient)
+        }
+      }
+    }
+  }
+
+  private sendPlaySound(entry: InternalClientEntry113c, soundId: number): void {
+    this.queueServerEventToClient(entry, {
+      type: 'PlaySound',
+      unit: { unitType: 0, id: entry.playerUnitId },
+      sound: soundId & 0xffff,
+    })
+  }
+
+  private sendPlayerStatUpdate(
+    entry: InternalClientEntry113c,
+    statId: number,
+    value: number,
+  ): void {
+    if (entry.closed || entry.pClient === 0) return
+    D2GAME_PACKET_SendStatByteWordDword113c(
+      this.m,
+      entry.pClient,
+      statId,
+      value,
+      this.gapBCallees,
+    )
+    if (this.getQueuedByteCount(entry.pClient) >= 0x280) {
+      this.flushClientQueueToSink(entry)
+    }
+  }
+
+  private sendPlayerVitals95(entry: InternalClientEntry113c): void {
+    const pPlayer = entry.pPlayer >>> 0
+    if (pPlayer === 0 || entry.pClient === 0) return
+    const hp = (STATLIST_GetUnitStat113c(this.m, pPlayer, STAT_HITPOINTS, 0) >> 8) & 0x7fff
+    const mana = (STATLIST_GetUnitStat113c(this.m, pPlayer, STAT_MANA, 0) >> 8) & 0x7fff
+    const stamina = (STATLIST_GetUnitStat113c(this.m, pPlayer, STAT_STAMINA, 0) >> 8) & 0x7fff
+    const curX = UNITS_GetX113c(this.m, pPlayer) & 0xffff
+    const curY = UNITS_GetY113c(this.m, pPlayer) & 0xffff
+    NET_SendPacket95_LifeManaStamina_6FCAB7F0_113c(
+      this.m,
+      entry.pClient,
+      hp,
+      mana,
+      stamina,
+      curX,
+      curY,
+      0,
+      0,
+    )
+    if (this.getQueuedByteCount(entry.pClient) >= 0x280) {
+      this.flushClientQueueToSink(entry)
+    }
+  }
+
+  private getItemGridSize(item: {
+    readonly code: string
+    readonly invWidth?: number | undefined
+    readonly invHeight?: number | undefined
+  }): { readonly width: number; readonly height: number } {
+    const base = getEmbeddedDropTables().getBase(item.code.trim())
+    const width = Math.max(1, base?.invWidth ?? item.invWidth ?? 1)
+    const height = Math.max(1, base?.invHeight ?? item.invHeight ?? 1)
+    return { width, height }
+  }
+
+  private getContainerGridDims(storePage: number): {
+    readonly width: number
+    readonly height: number
+    readonly container: 'inventory' | 'cube' | 'stash'
+  } | null {
+    if (storePage === 1) return { width: 10, height: 4, container: 'inventory' }
+    if (storePage === 4) return { width: 3, height: 4, container: 'cube' }
+    if (storePage === 5) return { width: 6, height: 8, container: 'stash' }
+    return null
+  }
+
+  private canFitInContainerGrid(
+    entry: InternalClientEntry113c,
+    storePage: number,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    ignoreItemId = 0,
+  ): boolean {
+    const dims = this.getContainerGridDims(storePage)
+    if (dims === null) return false
+    if (x < 0 || y < 0 || x + width > dims.width || y + height > dims.height) return false
+    for (let i = 0; i < entry.ownedItems.length; i++) {
+      const other = entry.ownedItems[i]!
+      if (other.id === ignoreItemId) continue
+      if (other.location !== 0) continue
+      const otherPage = (other.storePage ?? other.storagePage ?? 1) || 1
+      if (otherPage !== storePage) continue
+      const ox = other.gridX ?? other.x ?? 0
+      const oy = other.gridY ?? other.y ?? 0
+      const oSize = this.getItemGridSize(other)
+      const overlaps =
+        x < ox + oSize.width &&
+        x + width > ox &&
+        y < oy + oSize.height &&
+        y + height > oy
+      if (overlaps) return false
+    }
+    return true
+  }
+
+  private findFreeContainerSlot(
+    entry: InternalClientEntry113c,
+    storePage: number,
+    width: number,
+    height: number,
+  ): { readonly x: number; readonly y: number } | null {
+    const dims = this.getContainerGridDims(storePage)
+    if (dims === null) return null
+    for (let x = 0; x <= dims.width - width; x++) {
+      for (let y = 0; y <= dims.height - height; y++) {
+        if (this.canFitInContainerGrid(entry, storePage, x, y, width, height)) {
+          return { x, y }
+        }
+      }
+    }
+    return null
+  }
+
+  private getPlayerBeltMaxRows(entry: InternalClientEntry113c): number {
+    for (let i = 0; i < entry.ownedItems.length; i++) {
+      const item = entry.ownedItems[i]!
+      if (item.location === 1 && (item.bodyLoc ?? item.equippedSlot ?? 0) === 8) {
+        const rows = BELT_CODE_TO_ROWS[item.code.trim().toLowerCase()]
+        if (rows !== undefined) return rows
+      }
+    }
+    return NO_BELT_ROWS
+  }
+
+  private findAvailableBeltSlot(
+    entry: InternalClientEntry113c,
+    itemCode: string,
+  ): number | null {
+    const catalog = BELT_POTION_CATALOG[itemCode.trim().toLowerCase()]
+    if (catalog === undefined) return null
+    const maxRows = this.getPlayerBeltMaxRows(entry)
+    const occupied = new Map<number, ItemData>()
+    for (let i = 0; i < entry.ownedItems.length; i++) {
+      const item = entry.ownedItems[i]!
+      if (item.location !== 2) continue
+      const linear = (item.gridX ?? item.x ?? 0) & 0x0f
+      occupied.set(linear, item)
+    }
+    // Prefer matching column family first (row 0 defines column family)
+    for (let col = 0; col < 4; col++) {
+      const base = occupied.get(col)
+      if (base === undefined) continue
+      const baseCat = BELT_POTION_CATALOG[base.code.trim().toLowerCase()]
+      const sameFamily =
+        baseCat !== undefined &&
+        (catalog.kind === 'scroll' || baseCat.kind === 'scroll'
+          ? catalog.code === baseCat.code
+          : catalog.kind === baseCat.kind)
+      if (!sameFamily) continue
+      for (let row = 1; row < maxRows; row++) {
+        const slot = row * 4 + col
+        if (!occupied.has(slot)) return slot
+      }
+    }
+    // Otherwise pick first empty bottom slot
+    for (let col = 0; col < 4; col++) {
+      if (!occupied.has(col)) return col
+    }
+    return null
+  }
+
+  private shiftBeltColumnDown(
+    entry: InternalClientEntry113c,
+    col: number,
+    removedRow: number,
+  ): void {
+    const upper: Array<{ readonly index: number; readonly row: number }> = []
+    for (let i = 0; i < entry.ownedItems.length; i++) {
+      const item = entry.ownedItems[i]!
+      if (item.location !== 2) continue
+      const linear = (item.gridX ?? item.x ?? 0) & 0x0f
+      const itemCol = linear & 3
+      const itemRow = linear >> 2
+      if (itemCol === col && itemRow > removedRow) {
+        upper.push({ index: i, row: itemRow })
+      }
+    }
+    upper.sort((a, b) => a.row - b.row)
+    for (let k = 0; k < upper.length; k++) {
+      const idx = upper[k]!.index
+      const prev = entry.ownedItems[idx]!
+      const nextSlot = (upper[k]!.row - 1) * 4 + col
+      const shifted: ItemData = {
+        ...prev,
+        location: 2,
+        container: 'belt',
+        gridX: nextSlot,
+        gridY: 0,
+        x: nextSlot,
+        y: 0,
+      }
+      entry.ownedItems[idx] = shifted
+      this.queueServerEventToClient(entry, {
+        type: 'ItemEvent',
+        action: 'beltPut',
+        itemId: shifted.id,
+        code: shifted.code,
+        x: nextSlot,
+        y: 0,
+        container: 'belt',
+        item: shifted,
+      })
+    }
+  }
+
+  private getOwnedSocketChildren(entry: InternalClientEntry113c, hostId: number): ItemData[] {
+    const out: ItemData[] = []
+    for (let i = 0; i < entry.ownedItems.length; i++) {
+      const item = entry.ownedItems[i]!
+      if ((item.location === 6 || Boolean(item.inSocket)) && item.ownerId === hostId) {
+        out.push(item)
+      }
+    }
+    return out
+  }
+
+  private removeOwnedItemAndChildren(
+    entry: InternalClientEntry113c,
+    itemId: number,
+  ): { readonly item: ItemData; readonly children: ItemData[] } | null {
+    const idx = entry.ownedItems.findIndex((i) => i.id === itemId)
+    if (idx === -1) return null
+    const [item] = entry.ownedItems.splice(idx, 1)
+    if (item === undefined) return null
+    const children: ItemData[] = []
+    for (let i = entry.ownedItems.length - 1; i >= 0; i--) {
+      const cand = entry.ownedItems[i]!
+      if ((cand.location === 6 || Boolean(cand.inSocket)) && cand.ownerId === itemId) {
+        children.unshift(cand)
+        entry.ownedItems.splice(i, 1)
+      }
+    }
+    return { item, children }
+  }
+
+  private getEffectiveEquippedStatSum(entry: InternalClientEntry113c, statId: number): number {
+    let sum = 0
+    const activeHosts = new Set<number>()
+    for (let i = 0; i < entry.ownedItems.length; i++) {
+      const item = entry.ownedItems[i]!
+      if (item.location !== 1) continue
+      const bodyLoc = item.bodyLoc ?? item.equippedSlot ?? 0
+      if (bodyLoc < 1 || bodyLoc > 10) continue
+      activeHosts.add(item.id)
+      for (const st of item.stats ?? []) {
+        if (st.statId === statId) sum += st.value | 0
+      }
+      for (const st of item.runewordStats ?? []) {
+        if (st.statId === statId) sum += st.value | 0
+      }
+    }
+    for (let i = 0; i < entry.ownedItems.length; i++) {
+      const item = entry.ownedItems[i]!
+      if (item.location === 6 && item.ownerId !== undefined && activeHosts.has(item.ownerId)) {
+        for (const st of item.stats ?? []) {
+          if (st.statId === statId) sum += st.value | 0
+        }
+      }
+    }
+    return sum
+  }
+
+  private findWalkableDropCoord(originX: number, originY: number): { readonly x: number; readonly y: number } {
+    const room = this.sliceWorld.roomByPtr.get(this.defaultRoomPtr)
+    if (room === undefined) {
+      return { x: originX & 0xffff, y: originY & 0xffff }
+    }
+    const free = collisionGetFreeCoordinates(
+      (x, y) => (room.grid.get(x, y) & 0x1c09) === 0,
+      originX,
+      originY,
+      8,
+      1,
+    )
+    if (free !== null) {
+      return { x: free.x & 0xffff, y: free.y & 0xffff }
+    }
+    return { x: originX & 0xffff, y: originY & 0xffff }
+  }
+
+  // ============================================================================
+  // Wave 3 Part 1: Combat, Skill Casting (0x05..0x11), XP/Level-Up & Drops
+  // ============================================================================
+
+  private computeSkillManaCost256(skillId: number, slvl: number): number {
+    const entry = SKILLS_BY_ID[skillId]
+    if (entry === undefined) return 0
+    const raw = (entry.mana + entry.lvlmana * Math.max(0, slvl - 1)) << entry.manashift
+    const min256 = entry.minmana << 8
+    return Math.max(0, Math.max(min256, raw))
+  }
+
+  private handleC2SSkillUse(
+    entry: InternalClientEntry113c,
+    opcode: number,
+    rawBytes: Uint8Array,
+  ): void {
+    const m = this.m
+    const pPlayer = entry.pPlayer >>> 0
+    if (pPlayer === 0 || entry.pClient === 0) return
+
+    const isLeft = opcode <= 0x0a
+    const isLocation =
+      opcode === 0x05 || opcode === 0x08 || opcode === 0x0c || opcode === 0x0f
+    const dv = new DataView(rawBytes.buffer, rawBytes.byteOffset, rawBytes.byteLength)
+
+    // 1. Resolve active hand skill from `D2SkillListStrc` in `SparseMemory113c`
+    const pSkills = m.get(pPlayer, D2UnitStrc.pSkills) >>> 0
+    let pSk = 0
+    if (pSkills !== 0) {
+      pSk = isLeft
+        ? (SKILLS_GetLeftSkillFromSkillList113c(m, pSkills) >>> 0)
+        : (m.get(pSkills, D2SkillListStrc.pRightSkill) >>> 0)
+    }
+    const skillId = pSk !== 0 ? (SKILLS_GetSkillIdFromSkill113c(m, pSk, 0, 0) | 0) : 0
+    const effectiveLevel =
+      pSk !== 0 ? (SKILLS_GetSkillLevel113c(m, pPlayer, pSk, 1) | 0) : skillId === 0 ? 1 : 0
+    if (skillId > 0 && effectiveLevel <= 0) {
+      this.sendPlaySound(entry, SOUND_IMPOSSIBLE_113C)
+      return
+    }
+
+    // 2. Validate `Skills.txt` `InTown` (`#54 Teleport` & combat skills forbidden in towns 1,40,75,103,109)
+    const inTown =
+      TOWN_AREA_IDS_113C.has(this.areaId) ||
+      DUNGEON_CheckRoomIsTown113c(m, this.defaultRoomPtr) !== 0
+    if (inTown && !isSkillAllowedInTown(skillId)) {
+      this.sendPlaySound(entry, SOUND_NOT_IN_TOWN_113C)
+      return
+    }
+
+    // 3. Check 1.13c mana requirement before mutating state
+    const slvl = Math.max(1, effectiveLevel)
+    const manaCost256 = this.computeSkillManaCost256(skillId, slvl)
+    const curMana256 = STATLIST_GetUnitStat113c(m, pPlayer, STAT_MANA, 0) | 0
+    if (manaCost256 > 0 && curMana256 < manaCost256) {
+      this.sendPlaySound(entry, SOUND_NEED_MANA_113C)
+      return
+    }
+
+    entry.pendingInteraction = null
+    entry.activeWaypointUnitId = 0
+
+    let targetUnitType = 0
+    let targetUnitId = 0
+    let targetX = UNITS_GetX113c(m, pPlayer) & 0xffff
+    let targetY = UNITS_GetY113c(m, pPlayer) & 0xffff
+    if (isLocation) {
+      targetX = dv.getUint16(1, true) & 0xffff
+      targetY = dv.getUint16(3, true) & 0xffff
+    } else {
+      targetUnitType = dv.getUint32(1, true) >>> 0
+      targetUnitId = dv.getUint32(5, true) >>> 0
+      const pTarget = this.findUnitInActiveRoom(targetUnitType, targetUnitId)
+      if (pTarget !== 0) {
+        targetX = UNITS_GetX113c(m, pTarget) & 0xffff
+        targetY = UNITS_GetY113c(m, pTarget) & 0xffff
+      }
+    }
+
+    // 4. Special-case `#54 Teleport`: validate walkable non-town destination, spend mana, reassign (`0x15`) + vitals (`0x95`)
+    if (skillId === 54) {
+      const room = this.sliceWorld.roomByPtr.get(this.defaultRoomPtr)
+      if (room === undefined || this.defaultRoomPtr === 0) {
+        this.sendPlaySound(entry, SOUND_IMPOSSIBLE_113C)
+        return
+      }
+      const minX = m.get(this.defaultRoomPtr, D2ActiveRoomStrc.nSubtileX) | 0
+      const minY = m.get(this.defaultRoomPtr, D2ActiveRoomStrc.nSubtileY) | 0
+      const subW = m.get(this.defaultRoomPtr, D2ActiveRoomStrc.nSubtileWidth) | 0
+      const subH = m.get(this.defaultRoomPtr, D2ActiveRoomStrc.nSubtileHeight) | 0
+      const maxX = minX + subW - 1
+      const maxY = minY + subH - 1
+      if (targetX < minX || targetY < minY || targetX > maxX || targetY > maxY) {
+        this.sendPlaySound(entry, SOUND_IMPOSSIBLE_113C)
+        return
+      }
+      let destX = targetX
+      let destY = targetY
+      if ((room.grid.get(destX, destY) & 0x1c09) !== 0) {
+        const free = collisionGetFreeCoordinates(
+          (x, y) =>
+            x >= minX &&
+            y >= minY &&
+            x <= maxX &&
+            y <= maxY &&
+            (room.grid.get(x, y) & 0x1c09) === 0,
+          destX,
+          destY,
+          5,
+          1,
+        )
+        if (free === null) {
+          this.sendPlaySound(entry, SOUND_IMPOSSIBLE_113C)
+          return
+        }
+        destX = free.x & 0xffff
+        destY = free.y & 0xffff
+      }
+
+      if (manaCost256 > 0) {
+        STATLIST_SetUnitStat113c(m, pPlayer, STAT_MANA, Math.max(0, curMana256 - manaCost256), 0)
+      }
+
+      this.broadcastServerEventToInGameClients({
+        type: 'SkillCast',
+        caster: { unitType: 0, id: entry.playerUnitId },
+        skill: skillId,
+        level: slvl,
+        target: { x: destX, y: destY },
+      })
+
+      m.set(pPlayer, D2UnitStrc.dwAnimMode, PLRMODE_NEUTRAL)
+      const pPath = m.get(pPlayer, D2UnitStrc.pPath) >>> 0
+      if (pPath !== 0) {
+        m.set(pPath, D2DynamicPathStrc.wOffsetX, 0x8000)
+        m.set(pPath, D2DynamicPathStrc.wPosX, destX & 0xffff)
+        m.set(pPath, D2DynamicPathStrc.wOffsetY, 0x8000)
+        m.set(pPath, D2DynamicPathStrc.wPosY, destY & 0xffff)
+        m.set(pPath, D2DynamicPathStrc.wTargetX, destX & 0xffff)
+        m.set(pPath, D2DynamicPathStrc.wTargetY, destY & 0xffff)
+        m.set(pPath, D2DynamicPathStrc.pTargetUnit, 0)
+        m.set(pPath, D2DynamicPathStrc.nDist, 0)
+        m.set(pPath, D2DynamicPathStrc.nStepNum, 0)
+        m.set(pPath, D2DynamicPathStrc.nDistance, 0)
+      }
+      const pu = this.sliceWorld.pathUnitByPtr.get(pPlayer)
+      if (pu !== undefined) {
+        pu.dwAnimMode = PLRMODE_NEUTRAL
+      }
+      NET_SendReassignUnitPacket15_113c(m, pPlayer, entry.pClient, 1)
+      this.sendPlayerVitals95(entry)
+      return
+    }
+
+    // 5. General combat / offensive / utility skill cast
+    this.stopPlayerMovementInPlace(entry)
+    if (manaCost256 > 0) {
+      STATLIST_SetUnitStat113c(m, pPlayer, STAT_MANA, Math.max(0, curMana256 - manaCost256), 0)
+    }
+
+    if (!isLocation && targetUnitId !== 0) {
+      this.broadcastServerEventToInGameClients({
+        type: 'SkillCast',
+        caster: { unitType: 0, id: entry.playerUnitId },
+        skill: skillId,
+        level: slvl,
+        target: { unitType: targetUnitType as 0 | 1 | 2 | 3 | 4 | 5, id: targetUnitId },
+      })
+    } else {
+      this.broadcastServerEventToInGameClients({
+        type: 'SkillCast',
+        caster: { unitType: 0, id: entry.playerUnitId },
+        skill: skillId,
+        level: slvl,
+        target: { x: targetX, y: targetY },
+      })
+    }
+    this.sendPlayerVitals95(entry)
+
+    // 6. Resolve hit hostile monster(s) in active room
+    const hitMonsters: number[] = []
+    if (!isLocation && targetUnitType === UNIT_MONSTER && targetUnitId !== 0) {
+      const pMon = this.findUnitInActiveRoom(UNIT_MONSTER, targetUnitId)
+      if (pMon !== 0 && this.isAliveHostileMonster(pMon)) {
+        hitMonsters.push(pMon)
+      }
+    } else {
+      const pRoom = this.defaultRoomPtr >>> 0
+      if (pRoom !== 0) {
+        const isAoeSkill = this.isAreaEffectSkill113c(skillId)
+        const radius = isAoeSkill ? 8 : 5
+        let bestSingle = 0
+        let bestDist = radius + 1
+        let pWalk = m.get(pRoom, D2ActiveRoomStrc.pUnitFirst) >>> 0
+        let guard = 0
+        while (pWalk !== 0 && guard++ < 2048) {
+          if (
+            (m.get(pWalk, D2UnitStrc.dwUnitType) >>> 0) === UNIT_MONSTER &&
+            this.isAliveHostileMonster(pWalk)
+          ) {
+            const mx = UNITS_GetX113c(m, pWalk) & 0xffff
+            const my = UNITS_GetY113c(m, pWalk) & 0xffff
+            const d = Math.hypot(mx - targetX, my - targetY)
+            if (d <= radius) {
+              if (isAoeSkill) {
+                hitMonsters.push(pWalk)
+              } else if (d < bestDist) {
+                bestDist = d
+                bestSingle = pWalk
+              }
+            }
+          }
+          pWalk = m.get(pWalk, D2UnitStrc.pRoomUnitNext) >>> 0
+        }
+        if (!isAoeSkill && bestSingle !== 0) {
+          hitMonsters.push(bestSingle)
+        }
+      }
+    }
+
+    for (let i = 0; i < hitMonsters.length; i++) {
+      this.applyPlayerSkillDamageToMonster(entry, skillId, slvl, hitMonsters[i]!)
+    }
+  }
+
+  private isAliveHostileMonster(pMon: number): boolean {
+    const m = this.m
+    const classId = m.get(pMon, D2UnitStrc.dwClassId) >>> 0
+    if (isInteractiveNpcClassId113c(classId)) return false
+    const mode = m.get(pMon, D2UnitStrc.dwAnimMode) >>> 0
+    if (mode === 0 || mode === 12) return false
+    const hp256 = STATLIST_GetUnitStat113c(m, pMon, STAT_HITPOINTS, 0) | 0
+    return hp256 > 0
+  }
+
+  private isAreaEffectSkill113c(skillId: number): boolean {
+    return (
+      skillId === 44 || // Frost Nova
+      skillId === 47 || // Fire Ball
+      skillId === 48 || // Nova
+      skillId === 51 || // Fire Wall
+      skillId === 55 || // Glacial Spike
+      skillId === 56 || // Meteor
+      skillId === 59 || // Blizzard
+      skillId === 64 || // Frozen Orb
+      skillId === 74 || // Corpse Explosion
+      skillId === 92 || // Poison Nova
+      skillId === 112 || // Blessed Hammer
+      skillId === 132 || // Leap
+      skillId === 151 || // Whirlwind
+      skillId === 154 || // War Cry
+      skillId === 225 || // Firestorm
+      skillId === 234 || // Fissure
+      skillId === 245 // Tornado
+    )
+  }
+
+  private computeWeaponDamageRange113c(entry: InternalClientEntry113c): {
+    readonly min: number
+    readonly max: number
+  } {
+    const tables = getEmbeddedDropTables()
+    for (let i = 0; i < entry.ownedItems.length; i++) {
+      const item = entry.ownedItems[i]!
+      if (item.location !== 1) continue
+      const slot = item.bodyLoc ?? item.equippedSlot ?? 0
+      if (slot !== 4 && slot !== 5) continue
+      const wBase = tables.weapons.get(item.code.trim())
+      if (wBase === undefined) continue
+      const rawMin = Math.max(1, wBase.mindam || wBase.twoHandedMindam || 1)
+      const rawMax = Math.max(rawMin, wBase.maxdam || wBase.twoHandedMaxdam || rawMin)
+      let edPct = 0
+      let addMin = 0
+      let addMax = 0
+      for (const st of item.stats ?? []) {
+        if (st.statId === 17 || st.statId === 18) edPct += st.value | 0
+        else if (st.statId === 21 || st.statId === 23) addMin += st.value | 0
+        else if (st.statId === 22 || st.statId === 24) addMax += st.value | 0
+      }
+      const scaledMin = Math.max(1, Math.floor((rawMin * (100 + edPct)) / 100) + addMin)
+      const scaledMax = Math.max(scaledMin, Math.floor((rawMax * (100 + edPct)) / 100) + addMax)
+      return { min: scaledMin, max: scaledMax }
+    }
+    return { min: 1, max: 2 }
+  }
+
+  private applyPlayerSkillDamageToMonster(
+    entry: InternalClientEntry113c,
+    skillId: number,
+    slvl: number,
+    pMon: number,
+  ): void {
+    const m = this.m
+    const pPlayer = entry.pPlayer >>> 0
+    const monId = m.get(pMon, D2UnitStrc.dwUnitId) >>> 0
+    const monClassId = m.get(pMon, D2UnitStrc.dwClassId) >>> 0
+    const monRow = MONSTATS_113C_ROWS[monClassId]
+    const meta = this.monsterMetaByUnitId.get(monId)
+    const diff = this.difficultyValue
+
+    const clvl = Math.max(1, STATLIST_GetUnitStat113c(m, pPlayer, STAT_LEVEL, 0) | 0)
+    const mlvl = Math.max(1, meta?.level ?? (STATLIST_GetUnitStat113c(m, pMon, STAT_LEVEL, 0) | 0))
+    const monAc = meta?.ac ?? (STATLIST_GetUnitStat113c(m, pMon, STAT_ARMORCLASS, 0) | 0)
+
+    const catalog = SKILLS_BY_ID[skillId]
+    const isSpell =
+      catalog !== undefined &&
+      catalog.srcDamage === 0 &&
+      (catalog.eMin > 0 || catalog.eMax > 0 || catalog.minDam > 0 || catalog.maxDam > 0)
+
+    // 1. 1.13c To-Hit check for physical attacks (spells auto-hit)
+    if (!isSpell) {
+      const classCode = CHARACTER_CLASS_CODES[entry.charClass] ?? 'sor'
+      const charStats = CANONICAL_CHARSTATS[classCode]
+      const dex =
+        (STATLIST_GetUnitStat113c(m, pPlayer, STAT_DEXTERITY, 0) | 0) +
+        this.getEffectiveEquippedStatSum(entry, STAT_DEXTERITY)
+      const itemAr = this.getEffectiveEquippedStatSum(entry, 19)
+      const skillToHitPct =
+        catalog !== undefined && (catalog.toHit > 0 || catalog.toHitLev > 0)
+          ? catalog.toHit + catalog.toHitLev * Math.max(0, slvl - 1)
+          : 0
+      const baseAr = Math.max(5, dex * 5 - 35 + charStats.toHitFactor + itemAr)
+      const effectiveAr = Math.max(5, Math.floor((baseAr * (100 + skillToHitPct)) / 100))
+      const hitChance = calculateHitChance(effectiveAr, monAc, clvl, mlvl)
+      if (this.rng.rand(100) >= hitChance) {
+        return
+      }
+    }
+
+    // 2. 1.13c Damage calculation (5-band skill scaling + weapon/str physical + MonStats resistances)
+    const str =
+      (STATLIST_GetUnitStat113c(m, pPlayer, STAT_STRENGTH, 0) | 0) +
+      this.getEffectiveEquippedStatSum(entry, STAT_STRENGTH)
+    let physMin = 0
+    let physMax = 0
+    let elemMin = 0
+    let elemMax = 0
+    let eType = ''
+
+    if (catalog !== undefined) {
+      const shift = catalog.hitshift
+      if (catalog.minDam > 0 || catalog.maxDam > 0) {
+        const rawMin = compute5BandScaling(
+          slvl,
+          catalog.minDam,
+          catalog.minLevDam[0] ?? 0,
+          catalog.minLevDam[1] ?? 0,
+          catalog.minLevDam[2] ?? 0,
+          catalog.minLevDam[3] ?? 0,
+          catalog.minLevDam[4] ?? 0,
+        )
+        const rawMax = compute5BandScaling(
+          slvl,
+          catalog.maxDam,
+          catalog.maxLevDam[0] ?? 0,
+          catalog.maxLevDam[1] ?? 0,
+          catalog.maxLevDam[2] ?? 0,
+          catalog.maxLevDam[3] ?? 0,
+          catalog.maxLevDam[4] ?? 0,
+        )
+        physMin += Math.max(0, (rawMin << shift) >> 8)
+        physMax += Math.max(physMin, (rawMax << shift) >> 8)
+      }
+      if (catalog.eMin > 0 || catalog.eMax > 0) {
+        eType = catalog.eType.trim().toLowerCase()
+        const rawEMin = compute5BandScaling(
+          slvl,
+          catalog.eMin,
+          catalog.eMinLev[0] ?? 0,
+          catalog.eMinLev[1] ?? 0,
+          catalog.eMinLev[2] ?? 0,
+          catalog.eMinLev[3] ?? 0,
+          catalog.eMinLev[4] ?? 0,
+        )
+        const rawEMax = compute5BandScaling(
+          slvl,
+          catalog.eMax,
+          catalog.eMaxLev[0] ?? 0,
+          catalog.eMaxLev[1] ?? 0,
+          catalog.eMaxLev[2] ?? 0,
+          catalog.eMaxLev[3] ?? 0,
+          catalog.eMaxLev[4] ?? 0,
+        )
+        elemMin = Math.max(1, (rawEMin << shift) >> 8)
+        elemMax = Math.max(elemMin, (rawEMax << shift) >> 8)
+      }
+      if (catalog.srcDamage > 0) {
+        const w = this.computeWeaponDamageRange113c(entry)
+        const strScaledMin = Math.max(1, Math.floor((w.min * (100 + str)) / 100))
+        const strScaledMax = Math.max(strScaledMin, Math.floor((w.max * (100 + str)) / 100))
+        physMin += Math.max(1, Math.floor((strScaledMin * catalog.srcDamage) / 128))
+        physMax += Math.max(physMin, Math.floor((strScaledMax * catalog.srcDamage) / 128))
+      }
+    } else {
+      const w = this.computeWeaponDamageRange113c(entry)
+      physMin = Math.max(1, Math.floor((w.min * (100 + str)) / 100))
+      physMax = Math.max(physMin, Math.floor((w.max * (100 + str)) / 100))
+    }
+
+    const rollPhys =
+      physMax > 0
+        ? physMin < physMax
+          ? this.rng.randRange(physMin, physMax)
+          : physMax
+        : 0
+    const rollElem =
+      elemMax > 0
+        ? elemMin < elemMax
+          ? this.rng.randRange(elemMin, elemMax)
+          : elemMax
+        : 0
+
+    const resPhys = monRow !== undefined ? (monRow.resDm[diff] ?? 0) : 0
+    const resElem =
+      monRow === undefined
+        ? 0
+        : eType === 'fire'
+          ? (monRow.resFi[diff] ?? 0)
+          : eType === 'ltng'
+            ? (monRow.resLi[diff] ?? 0)
+            : eType === 'cold'
+              ? (monRow.resCo[diff] ?? 0)
+              : eType === 'pois'
+                ? (monRow.resPo[diff] ?? 0)
+                : eType === 'mag'
+                  ? (monRow.resMa[diff] ?? 0)
+                  : 0
+
+    const netPhys =
+      rollPhys > 0 && resPhys < 100
+        ? Math.max(1, Math.floor((rollPhys * (100 - resPhys)) / 100))
+        : 0
+    const netElem =
+      rollElem > 0 && resElem < 100
+        ? Math.max(1, Math.floor((rollElem * (100 - resElem)) / 100))
+        : 0
+    const totalDamage = netPhys + netElem
+    if (totalDamage <= 0) return
+
+    const curHp256 = STATLIST_GetUnitStat113c(m, pMon, STAT_HITPOINTS, 0) | 0
+    const maxHp256 = Math.max(256, STATLIST_GetUnitStat113c(m, pMon, STAT_MAXHP, 0) | 0)
+    const nextHp256 = Math.max(0, curHp256 - (totalDamage << 8))
+    STATLIST_SetUnitStat113c(m, pMon, STAT_HITPOINTS, nextHp256, 0)
+
+    if (nextHp256 > 0) {
+      const lifePct = Math.max(1, Math.min(128, Math.ceil((nextHp256 * 128) / maxHp256)))
+      this.broadcastServerEventToInGameClients({
+        type: 'UnitMode',
+        unitType: 1,
+        id: monId,
+        hitClass: 0x01,
+        lifePct,
+      })
+      return
+    }
+
+    // 3. Monster death: `mode = 12` (`MONMODE_DEAD`), S2C `0x69`, 1.13c kill XP + level-up + drops!
+    m.set(pMon, D2UnitStrc.dwAnimMode, 12)
+    const puMon = this.sliceWorld.pathUnitByPtr.get(pMon)
+    if (puMon !== undefined) {
+      puMon.dwAnimMode = 12
+    }
+    const monX = UNITS_GetX113c(m, pMon) & 0xffff
+    const monY = UNITS_GetY113c(m, pMon) & 0xffff
+    this.broadcastServerEventToInGameClients({
+      type: 'UnitMode',
+      unitType: 1,
+      id: monId,
+      mode: 12,
+      at: { x: monX, y: monY },
+      lifePct: 0,
+    })
+
+    // 4. Grant 1.13c kill XP (`STAT_EXPERIENCE` + S2C `0x1A`/`0x1B`/`0x1C` + level-up)
+    const rawBaseExp =
+      meta?.baseExp ?? Math.max(1, STATLIST_GetUnitStat113c(m, pMon, STAT_EXPERIENCE, 0) | 0)
+    const scaledBaseExp = Math.max(1, Math.floor((rawBaseExp * (this.playersXValue + 1)) / 2))
+    const addExpPct = this.getEffectiveEquippedStatSum(entry, 85)
+    const expGain = calculateKillExperienceGain113c({
+      rawExp: scaledBaseExp,
+      clvl,
+      mlvl,
+      addExpPct,
+    })
+    if (expGain > 0) {
+      this.grantPlayerExperience113c(entry, expGain)
+    }
+
+    // 5. Roll 1.13c monster TreasureClass drop and spawn ground gold/items (`S2C 0x9C` action `0x00`)
+    this.rollAndSpawnMonsterDrops113c(monX, monY, mlvl, meta?.tcName ?? '')
+  }
+
+  private grantPlayerExperience113c(entry: InternalClientEntry113c, expGain: number): void {
+    const m = this.m
+    const pPlayer = entry.pPlayer >>> 0
+    if (pPlayer === 0 || expGain <= 0) return
+
+    const curLevel = Math.max(1, STATLIST_GetUnitStat113c(m, pPlayer, STAT_LEVEL, 0) | 0)
+    if (curLevel >= 99) return
+    const curExp = STATLIST_GetUnitStat113c(m, pPlayer, STAT_EXPERIENCE, 0) >>> 0
+    const nextExp = (curExp + (expGain >>> 0)) >>> 0
+    STATLIST_SetUnitStat113c(m, pPlayer, STAT_EXPERIENCE, nextExp | 0, 0)
+
+    if (expGain <= 0xffff) {
+      this.queueServerEventToClient(entry, {
+        type: 'Experience',
+        value: expGain,
+        isDelta: true,
+      })
+    } else {
+      this.queueServerEventToClient(entry, {
+        type: 'Experience',
+        value: nextExp,
+        isDelta: false,
+      })
+    }
+
+    const className = CHARACTER_CLASS_NAMES[entry.charClass] ?? 'Sorceress'
+    const classCode = CHARACTER_CLASS_CODES[entry.charClass] ?? 'sor'
+    const charStats = CANONICAL_CHARSTATS[classCode]
+
+    let level = curLevel
+    let leveledUp = false
+    while (level < 99) {
+      const nextThreshold = getExperienceForLevel(level + 1, className)
+      if (nextThreshold <= 0 || nextExp < nextThreshold) break
+      level++
+      leveledUp = true
+
+      const nextStatPts =
+        (STATLIST_GetUnitStat113c(m, pPlayer, STAT_STATPTS, 0) | 0) + charStats.perLevel.statPoints
+      const nextSkillPts = (STATLIST_GetUnitStat113c(m, pPlayer, STAT_NEWSKILLS, 0) | 0) + 1
+      const nextMaxHp =
+        (STATLIST_GetUnitStat113c(m, pPlayer, STAT_MAXHP, 0) | 0) +
+        Math.round(charStats.perLevel.life * 256)
+      const nextMaxMana =
+        (STATLIST_GetUnitStat113c(m, pPlayer, STAT_MAXMANA, 0) | 0) +
+        Math.round(charStats.perLevel.mana * 256)
+      const nextMaxStam =
+        (STATLIST_GetUnitStat113c(m, pPlayer, STAT_MAXSTAMINA, 0) | 0) +
+        Math.round(charStats.perLevel.stamina * 256)
+
+      STATLIST_SetUnitStat113c(m, pPlayer, STAT_LEVEL, level, 0)
+      STATLIST_SetUnitStat113c(m, pPlayer, STAT_STATPTS, nextStatPts, 0)
+      STATLIST_SetUnitStat113c(m, pPlayer, STAT_NEWSKILLS, nextSkillPts, 0)
+      STATLIST_SetUnitStat113c(m, pPlayer, STAT_MAXHP, nextMaxHp, 0)
+      STATLIST_SetUnitStat113c(m, pPlayer, STAT_HITPOINTS, nextMaxHp, 0)
+      STATLIST_SetUnitStat113c(m, pPlayer, STAT_MAXMANA, nextMaxMana, 0)
+      STATLIST_SetUnitStat113c(m, pPlayer, STAT_MANA, nextMaxMana, 0)
+      STATLIST_SetUnitStat113c(m, pPlayer, STAT_MAXSTAMINA, nextMaxStam, 0)
+      STATLIST_SetUnitStat113c(m, pPlayer, STAT_STAMINA, nextMaxStam, 0)
+    }
+
+    if (leveledUp) {
+      for (const statId of [
+        STAT_LEVEL,
+        STAT_STATPTS,
+        STAT_NEWSKILLS,
+        STAT_MAXHP,
+        STAT_HITPOINTS,
+        STAT_MAXMANA,
+        STAT_MANA,
+        STAT_MAXSTAMINA,
+        STAT_STAMINA,
+      ]) {
+        const val = STATLIST_GetUnitStat113c(m, pPlayer, statId, 0) | 0
+        this.sendPlayerStatUpdate(entry, statId, val)
+      }
+      this.sendPlayerVitals95(entry)
+    }
+  }
+
+  private rollAndSpawnMonsterDrops113c(
+    monX: number,
+    monY: number,
+    mlvl: number,
+    tcName: string,
+  ): void {
+    const tables = getEmbeddedDropTables()
+    const diffName =
+      this.difficultyValue === 2 ? 'hell' : this.difficultyValue === 1 ? 'nightmare' : 'normal'
+    const effectiveTc = tcName.trim() !== '' ? tcName.trim() : 'Act 1 H2H A'
+    const dropped = executeDropPipeline(tables, {
+      tcName: effectiveTc,
+      nLevel: mlvl,
+      difficulty: diffName,
+      gamePlayers: this.playersXValue,
+      partyPlayers: 1,
+      monsterRng: this.rng,
+    })
+
+    let spawnedCount = 0
+    for (let i = 0; i < dropped.length; i++) {
+      const raw = finalizeDroppedItem113c(dropped[i]!)
+      const code = (raw.code ?? raw.base.id).trim()
+      const baseMeta = this.tables.getItemBaseMeta(code)
+      const unitId = this.allocUnitId()
+      const itemData = domainItemToItemData113c(raw, tables, {
+        unitId,
+        compactSave: Boolean(baseMeta?.compactSave) && raw.base.kind === 'misc' && code !== 'tbk' && code !== 'ibk',
+      })
+      const pos = this.findWalkableDropCoord(monX, monY)
+      this.spawnGroundItemInRoom(itemData, pos.x, pos.y, 'groundSpawn')
+      spawnedCount++
+    }
+
+    if (spawnedCount === 0) {
+      const goldAmount = Math.max(1, mlvl * 5 + this.rng.rand(Math.max(5, mlvl * 10)))
+      const pos = this.findWalkableDropCoord(monX, monY)
+      this.spawnGroundItemInRoom(
+        {
+          code: 'gld',
+          goldAmount,
+          quantity: goldAmount,
+          compact: true,
+          simple: true,
+          identified: true,
+          quality: 2,
+        },
+        pos.x,
+        pos.y,
+        'groundSpawn',
+      )
+    }
+  }
+
+  // ============================================================================
+  // Wave 3 Part 2: Ground, Inventory, Equipment, Belt, Consumables, Gold & Swap
+  // ============================================================================
+
+  private handleC2SPickItem(
+    entry: InternalClientEntry113c,
+    itemId: number,
+    toCursor: boolean,
+  ): void {
+    const m = this.m
+    const pPlayer = entry.pPlayer >>> 0
+    if (pPlayer === 0) return
+
+    const gRec = this.groundItems.get(itemId)
+    if (gRec === undefined || gRec.areaId !== this.areaId) return
+
+    const plrX = UNITS_GetX113c(m, pPlayer) & 0xffff
+    const plrY = UNITS_GetY113c(m, pPlayer) & 0xffff
+    if (Math.hypot(plrX - gRec.x, plrY - gRec.y) > ITEM_PICKUP_RANGE_SUBTILES_113C) {
+      return
+    }
+
+    const codeLower = gRec.item.code.trim().toLowerCase()
+    if (codeLower === 'gld') {
+      const goldAmt = Math.max(1, Math.trunc(gRec.item.goldAmount ?? gRec.item.quantity ?? 1))
+      const clvl = Math.max(1, STATLIST_GetUnitStat113c(m, pPlayer, STAT_LEVEL, 0) | 0)
+      const curGold = STATLIST_GetUnitStat113c(m, pPlayer, STAT_GOLD, 0) >>> 0
+      const cap = getInventoryGoldLimit(clvl)
+      const added = Math.min(goldAmt, Math.max(0, cap - curGold))
+      const overflow = goldAmt - added
+
+      this.groundItems.delete(itemId)
+      this.broadcastServerEventToInGameClients({
+        type: 'UnitRemove',
+        unitType: UNIT_ITEM_113C,
+        id: itemId,
+        unitId: itemId,
+      })
+
+      if (added > 0) {
+        const nextGold = (curGold + added) >>> 0
+        STATLIST_SetUnitStat113c(m, pPlayer, STAT_GOLD, nextGold | 0, 0)
+        this.sendPlayerStatUpdate(entry, STAT_GOLD, nextGold)
+      }
+      if (overflow > 0) {
+        this.spawnGroundItemInRoom(
+          {
+            code: 'gld',
+            goldAmount: overflow,
+            quantity: overflow,
+            compact: true,
+            simple: true,
+            identified: true,
+            quality: 2,
+          },
+          plrX,
+          plrY,
+          'drop',
+        )
+      }
+      return
+    }
+
+    if (toCursor && entry.ownedItems.some((i) => i.location === 4)) {
+      this.sendPlaySound(entry, SOUND_IMPOSSIBLE_113C)
+      return
+    }
+
+    const size = this.getItemGridSize(gRec.item)
+    const freeSlot = !toCursor
+      ? this.findFreeContainerSlot(entry, 1, size.width, size.height)
+      : null
+    if (!toCursor && freeSlot === null) {
+      this.sendPlaySound(entry, SOUND_CANT_CARRY_113C)
+      return
+    }
+
+    this.groundItems.delete(itemId)
+    this.broadcastServerEventToInGameClients({
+      type: 'UnitRemove',
+      unitType: UNIT_ITEM_113C,
+      id: itemId,
+      unitId: itemId,
+    })
+
+    const cleanFlags =
+      (Number(gRec.item.rawFlags ?? gRec.item.flags ?? ITEM_FLAG_IDENTIFIED_113C) &
+        ~ITEM_FLAG_DELETED_113C) >>>
+      0
+    const pickedItem: ItemData = toCursor
+      ? {
+          ...gRec.item,
+          flags: cleanFlags,
+          rawFlags: cleanFlags,
+          location: 4,
+          container: 'cursor',
+          bodyLoc: 0,
+          equippedSlot: 0,
+          equipped: false,
+          storePage: 0,
+          storagePage: 0,
+          gridX: 0,
+          gridY: 0,
+          x: 0,
+          y: 0,
+          worldX: 0,
+          worldY: 0,
+          ownerType: 0,
+          ownerId: entry.playerUnitId,
+        }
+      : {
+          ...gRec.item,
+          flags: cleanFlags,
+          rawFlags: cleanFlags,
+          location: 0,
+          container: 'inventory',
+          bodyLoc: 0,
+          equippedSlot: 0,
+          equipped: false,
+          storePage: 1,
+          storagePage: 1,
+          gridX: freeSlot!.x,
+          gridY: freeSlot!.y,
+          x: freeSlot!.x,
+          y: freeSlot!.y,
+          worldX: 0,
+          worldY: 0,
+          ownerType: 0,
+          ownerId: entry.playerUnitId,
+        }
+    entry.ownedItems.push(pickedItem)
+    this.queueServerEventToClient(entry, {
+      type: 'ItemEvent',
+      action: 'pickup',
+      itemId: pickedItem.id,
+      code: pickedItem.code,
+      x: pickedItem.gridX ?? 0,
+      y: pickedItem.gridY ?? 0,
+      container: toCursor ? 'cursor' : 'inventory',
+      ownerId: entry.playerUnitId,
+      item: pickedItem,
+    })
+  }
+
+  private handleC2SDropItem(entry: InternalClientEntry113c, itemId: number): void {
+    const pPlayer = entry.pPlayer >>> 0
+    if (pPlayer === 0) return
+
+    const cursorIdx = entry.ownedItems.findIndex((i) => i.id === itemId && i.location === 4)
+    if (cursorIdx === -1) return
+
+    const removed = this.removeOwnedItemAndChildren(entry, itemId)
+    if (removed === null) return
+
+    const plrX = UNITS_GetX113c(this.m, pPlayer) & 0xffff
+    const plrY = UNITS_GetY113c(this.m, pPlayer) & 0xffff
+    const dropPos = this.findWalkableDropCoord(plrX, plrY)
+
+    this.spawnGroundItemInRoom(
+      {
+        ...removed.item,
+        ...(removed.children.length > 0 ? { socketedItems: removed.children } : {}),
+      },
+      dropPos.x,
+      dropPos.y,
+      'drop',
+    )
+  }
+
+  private handleC2SItemToBuffer(
+    entry: InternalClientEntry113c,
+    itemId: number,
+    x: number,
+    y: number,
+    buffer: number,
+  ): void {
+    const storePage = buffer === 4 ? 5 : buffer === 3 ? 4 : buffer === 0 ? 1 : 0
+    const dims = this.getContainerGridDims(storePage)
+    if (dims === null) return
+
+    const idx = entry.ownedItems.findIndex((i) => i.id === itemId && i.location === 4)
+    if (idx === -1) return
+    const cur = entry.ownedItems[idx]!
+    // Prevent placing Horadric Cube (`box`) inside itself (`storePage === 4`)
+    if (storePage === 4 && cur.code.trim().toLowerCase() === 'box') {
+      this.sendPlaySound(entry, SOUND_IMPOSSIBLE_113C)
+      return
+    }
+    const size = this.getItemGridSize(cur)
+    if (!this.canFitInContainerGrid(entry, storePage, x, y, size.width, size.height, itemId)) {
+      this.sendPlaySound(entry, SOUND_IMPOSSIBLE_113C)
+      return
+    }
+
+    const cleanFlags =
+      (Number(cur.rawFlags ?? cur.flags ?? ITEM_FLAG_IDENTIFIED_113C) & ~ITEM_FLAG_DELETED_113C) >>>
+      0
+    const placed: ItemData = {
+      ...cur,
+      flags: cleanFlags,
+      rawFlags: cleanFlags,
+      location: 0,
+      container: dims.container,
+      storePage,
+      storagePage: storePage,
+      gridX: x,
+      gridY: y,
+      x,
+      y,
+      bodyLoc: 0,
+      equippedSlot: 0,
+      equipped: false,
+      ownerType: 0,
+      ownerId: entry.playerUnitId,
+    }
+    entry.ownedItems[idx] = placed
+    this.queueServerEventToClient(entry, {
+      type: 'ItemEvent',
+      action: 'add',
+      itemId: placed.id,
+      code: placed.code,
+      x,
+      y,
+      container: dims.container,
+      ownerId: entry.playerUnitId,
+      item: placed,
+    })
+  }
+
+  private handleC2SRemoveFromBuffer(entry: InternalClientEntry113c, itemId: number): void {
+    if (entry.ownedItems.some((i) => i.location === 4)) {
+      this.sendPlaySound(entry, SOUND_IMPOSSIBLE_113C)
+      return
+    }
+    const idx = entry.ownedItems.findIndex((i) => i.id === itemId && i.location === 0)
+    if (idx === -1) return
+    const cur = entry.ownedItems[idx]!
+    const cleanFlags =
+      (Number(cur.rawFlags ?? cur.flags ?? ITEM_FLAG_IDENTIFIED_113C) & ~ITEM_FLAG_DELETED_113C) >>>
+      0
+    const onCursor: ItemData = {
+      ...cur,
+      flags: cleanFlags,
+      rawFlags: cleanFlags,
+      location: 4,
+      container: 'cursor',
+      storePage: 0,
+      storagePage: 0,
+      gridX: 0,
+      gridY: 0,
+      x: 0,
+      y: 0,
+      bodyLoc: 0,
+      equippedSlot: 0,
+      equipped: false,
+    }
+    entry.ownedItems[idx] = onCursor
+    this.queueServerEventToClient(entry, {
+      type: 'ItemEvent',
+      action: 0x05,
+      itemId: onCursor.id,
+      code: onCursor.code,
+      x: 0,
+      y: 0,
+      container: 'cursor',
+      ownerId: entry.playerUnitId,
+      item: onCursor,
+    })
+  }
+
+  private toEquipCandidate113c(
+    entry: InternalClientEntry113c,
+    item: ItemData,
+  ): EquipCandidateItem113c {
+    const children = this.getOwnedSocketChildren(entry, item.id)
+    return {
+      unitId: item.id,
+      id: item.id,
+      code: item.code.trim(),
+      bodyLoc: item.bodyLoc ?? item.equippedSlot ?? 0,
+      quality: item.quality,
+      ilvl: item.ilvl,
+      identified: item.identified,
+      ethereal: item.ethereal,
+      broken: item.broken,
+      durability: item.curDurability ?? item.durability,
+      maxDurability: item.maxDurability,
+      stats: item.stats,
+      runewordStats: item.runewordStats,
+      socketedItems: children.map((c) => ({
+        unitId: c.id,
+        id: c.id,
+        code: c.code.trim(),
+        stats: c.stats,
+      })),
+      rawItemData: item,
+    }
+  }
+
+  private validatePlayerEquip113c(
+    entry: InternalClientEntry113c,
+    candidateItem: ItemData,
+    targetBodyLoc: number,
+  ): ReturnType<typeof canUnitEquipItem113c> {
+    const m = this.m
+    const pPlayer = entry.pPlayer >>> 0
+    const clvl = Math.max(1, STATLIST_GetUnitStat113c(m, pPlayer, STAT_LEVEL, 0) | 0)
+    const baseStr = STATLIST_GetUnitStat113c(m, pPlayer, STAT_STRENGTH, 0) | 0
+    const baseDex = STATLIST_GetUnitStat113c(m, pPlayer, STAT_DEXTERITY, 0) | 0
+    const bonusStr = this.getEffectiveEquippedStatSum(entry, STAT_STRENGTH)
+    const bonusDex = this.getEffectiveEquippedStatSum(entry, STAT_DEXTERITY)
+    const classCode = CHARACTER_CLASS_CODES[entry.charClass] ?? 'sor'
+    const equippedCandidates: EquipCandidateItem113c[] = []
+    for (let i = 0; i < entry.ownedItems.length; i++) {
+      const it = entry.ownedItems[i]!
+      if (it.location !== 1) continue
+      const bLoc = it.bodyLoc ?? it.equippedSlot ?? 0
+      if (bLoc < 1 || bLoc > 10) continue
+      equippedCandidates.push(this.toEquipCandidate113c(entry, it))
+    }
+    return canUnitEquipItem113c(
+      {
+        kind: 'player',
+        level: clvl,
+        baseStrength: baseStr,
+        baseDexterity: baseDex,
+        bonusStrength: bonusStr,
+        bonusDexterity: bonusDex,
+        classCode,
+      },
+      this.toEquipCandidate113c(entry, candidateItem),
+      targetBodyLoc,
+      equippedCandidates,
+      { dropTables: getEmbeddedDropTables() },
+    )
+  }
+
+  private handleC2SEquipItem(
+    entry: InternalClientEntry113c,
+    itemId: number,
+    bodyLoc: number,
+    allowOppositeDisplace = false,
+  ): void {
+    if (bodyLoc < 1 || bodyLoc > 10) return
+    const idx = entry.ownedItems.findIndex((i) => i.id === itemId && i.location === 4)
+    if (idx === -1) return
+    const candidate = entry.ownedItems[idx]!
+
+    const check = this.validatePlayerEquip113c(entry, candidate, bodyLoc)
+    if (!check.allowed) {
+      this.sendPlaySound(entry, SOUND_IMPOSSIBLE_113C)
+      return
+    }
+    if (check.displacedTargetItem !== undefined) {
+      this.sendPlaySound(entry, SOUND_IMPOSSIBLE_113C)
+      return
+    }
+    if (check.displacedOppositeItem !== undefined && !allowOppositeDisplace) {
+      this.sendPlaySound(entry, SOUND_IMPOSSIBLE_113C)
+      return
+    }
+
+    if (check.displacedOppositeItem !== undefined) {
+      const oppId = check.displacedOppositeItem.id ?? check.displacedOppositeItem.unitId ?? 0
+      const oppIdx = entry.ownedItems.findIndex((i) => i.id === oppId && i.location === 1)
+      if (oppIdx !== -1) {
+        const oppPrev = entry.ownedItems[oppIdx]!
+        const oppCleanFlags =
+          (Number(oppPrev.rawFlags ?? oppPrev.flags ?? ITEM_FLAG_IDENTIFIED_113C) &
+            ~ITEM_FLAG_DELETED_113C) >>>
+          0
+        const oppCursor: ItemData = {
+          ...oppPrev,
+          flags: oppCleanFlags,
+          rawFlags: oppCleanFlags,
+          location: 4,
+          container: 'cursor',
+          bodyLoc: 0,
+          equippedSlot: 0,
+          equipped: false,
+        }
+        entry.ownedItems[oppIdx] = oppCursor
+        this.queueServerEventToClient(entry, {
+          type: 'ItemEvent',
+          action: 'unequip',
+          itemId: oppCursor.id,
+          code: oppCursor.code,
+          container: 'cursor',
+          ownerId: entry.playerUnitId,
+          item: oppCursor,
+        })
+      }
+    }
+
+    const cleanFlags =
+      (Number(candidate.rawFlags ?? candidate.flags ?? ITEM_FLAG_IDENTIFIED_113C) &
+        ~ITEM_FLAG_DELETED_113C) >>>
+      0
+    const equippedItem: ItemData = {
+      ...candidate,
+      flags: cleanFlags,
+      rawFlags: cleanFlags,
+      location: 1,
+      container: 'equipment',
+      bodyLoc,
+      equippedSlot: bodyLoc,
+      equipped: true,
+      storePage: 0,
+      storagePage: 0,
+      gridX: 0,
+      gridY: 0,
+      x: 0,
+      y: 0,
+      ownerType: 0,
+      ownerId: entry.playerUnitId,
+    }
+    entry.ownedItems[idx] = equippedItem
+    this.recomputeEquippedItemSkillBonuses(entry)
+
+    this.queueServerEventToClient(entry, {
+      type: 'ItemEvent',
+      action: 'equip',
+      itemId: equippedItem.id,
+      code: equippedItem.code,
+      bodyLoc,
+      container: 'equipment',
+      ownerId: entry.playerUnitId,
+      item: equippedItem,
+    })
+    this.sendPlayerVitals95(entry)
+  }
+
+  private handleC2SUnequipItem(entry: InternalClientEntry113c, bodyLoc: number): void {
+    if (bodyLoc < 1 || bodyLoc > 10) return
+    if (entry.ownedItems.some((i) => i.location === 4)) {
+      this.sendPlaySound(entry, SOUND_IMPOSSIBLE_113C)
+      return
+    }
+    const idx = entry.ownedItems.findIndex(
+      (i) => i.location === 1 && (i.bodyLoc ?? i.equippedSlot ?? 0) === bodyLoc,
+    )
+    if (idx === -1) return
+    const prev = entry.ownedItems[idx]!
+    const cleanFlags =
+      (Number(prev.rawFlags ?? prev.flags ?? ITEM_FLAG_IDENTIFIED_113C) &
+        ~ITEM_FLAG_DELETED_113C) >>>
+      0
+    const onCursor: ItemData = {
+      ...prev,
+      flags: cleanFlags,
+      rawFlags: cleanFlags,
+      location: 4,
+      container: 'cursor',
+      bodyLoc: 0,
+      equippedSlot: 0,
+      equipped: false,
+      storePage: 0,
+      storagePage: 0,
+      gridX: 0,
+      gridY: 0,
+      x: 0,
+      y: 0,
+    }
+    entry.ownedItems[idx] = onCursor
+    this.recomputeEquippedItemSkillBonuses(entry)
+
+    this.queueServerEventToClient(entry, {
+      type: 'ItemEvent',
+      action: 'unequip',
+      itemId: onCursor.id,
+      code: onCursor.code,
+      container: 'cursor',
+      ownerId: entry.playerUnitId,
+      item: onCursor,
+    })
+    this.sendPlayerVitals95(entry)
+  }
+
+  private handleC2SSwapEquippedItem(
+    entry: InternalClientEntry113c,
+    itemId: number,
+    bodyLoc: number,
+  ): void {
+    if (bodyLoc < 1 || bodyLoc > 10) return
+    const curIdx = entry.ownedItems.findIndex((i) => i.id === itemId && i.location === 4)
+    if (curIdx === -1) return
+    const candidate = entry.ownedItems[curIdx]!
+
+    const check = this.validatePlayerEquip113c(entry, candidate, bodyLoc)
+    if (!check.allowed) {
+      this.sendPlaySound(entry, SOUND_IMPOSSIBLE_113C)
+      return
+    }
+
+    const displaced = check.displacedItems
+    if (displaced.length > 2) {
+      this.sendPlaySound(entry, SOUND_IMPOSSIBLE_113C)
+      return
+    }
+
+    // If 2 items are displaced (dual 1H replaced by 2H), second displaced item must fit in inventory
+    let secondDisplacedSlot: { readonly x: number; readonly y: number } | null = null
+    if (displaced.length === 2) {
+      const secondId = displaced[1]!.id ?? displaced[1]!.unitId ?? 0
+      const secondItem = entry.ownedItems.find((i) => i.id === secondId)
+      if (secondItem !== undefined) {
+        const sz = this.getItemGridSize(secondItem)
+        secondDisplacedSlot = this.findFreeContainerSlot(entry, 1, sz.width, sz.height)
+        if (secondDisplacedSlot === null) {
+          this.sendPlaySound(entry, SOUND_CANT_CARRY_113C)
+          return
+        }
+      }
+    }
+
+    for (let d = 0; d < displaced.length; d++) {
+      const dispId = displaced[d]!.id ?? displaced[d]!.unitId ?? 0
+      const dispIdx = entry.ownedItems.findIndex((i) => i.id === dispId && i.location === 1)
+      if (dispIdx === -1) continue
+      const dispPrev = entry.ownedItems[dispIdx]!
+      const cleanFlags =
+        (Number(dispPrev.rawFlags ?? dispPrev.flags ?? ITEM_FLAG_IDENTIFIED_113C) &
+          ~ITEM_FLAG_DELETED_113C) >>>
+        0
+      if (d === 0) {
+        const toCursor: ItemData = {
+          ...dispPrev,
+          flags: cleanFlags,
+          rawFlags: cleanFlags,
+          location: 4,
+          container: 'cursor',
+          bodyLoc: 0,
+          equippedSlot: 0,
+          equipped: false,
+        }
+        entry.ownedItems[dispIdx] = toCursor
+        this.queueServerEventToClient(entry, {
+          type: 'ItemEvent',
+          action: 'unequip',
+          itemId: toCursor.id,
+          code: toCursor.code,
+          container: 'cursor',
+          ownerId: entry.playerUnitId,
+          item: toCursor,
+        })
+      } else if (secondDisplacedSlot !== null) {
+        const toInv: ItemData = {
+          ...dispPrev,
+          flags: cleanFlags,
+          rawFlags: cleanFlags,
+          location: 0,
+          container: 'inventory',
+          storePage: 1,
+          storagePage: 1,
+          gridX: secondDisplacedSlot.x,
+          gridY: secondDisplacedSlot.y,
+          x: secondDisplacedSlot.x,
+          y: secondDisplacedSlot.y,
+          bodyLoc: 0,
+          equippedSlot: 0,
+          equipped: false,
+        }
+        entry.ownedItems[dispIdx] = toInv
+        this.queueServerEventToClient(entry, {
+          type: 'ItemEvent',
+          action: 'add',
+          itemId: toInv.id,
+          code: toInv.code,
+          x: secondDisplacedSlot.x,
+          y: secondDisplacedSlot.y,
+          container: 'inventory',
+          ownerId: entry.playerUnitId,
+          item: toInv,
+        })
+      }
+    }
+
+    const candFlags =
+      (Number(candidate.rawFlags ?? candidate.flags ?? ITEM_FLAG_IDENTIFIED_113C) &
+        ~ITEM_FLAG_DELETED_113C) >>>
+      0
+    const nextEquipped: ItemData = {
+      ...candidate,
+      flags: candFlags,
+      rawFlags: candFlags,
+      location: 1,
+      container: 'equipment',
+      bodyLoc,
+      equippedSlot: bodyLoc,
+      equipped: true,
+      storePage: 0,
+      storagePage: 0,
+      gridX: 0,
+      gridY: 0,
+      x: 0,
+      y: 0,
+      ownerType: 0,
+      ownerId: entry.playerUnitId,
+    }
+    entry.ownedItems[curIdx] = nextEquipped
+    this.recomputeEquippedItemSkillBonuses(entry)
+
+    this.queueServerEventToClient(entry, {
+      type: 'ItemEvent',
+      action: 'equip',
+      itemId: nextEquipped.id,
+      code: nextEquipped.code,
+      bodyLoc,
+      container: 'equipment',
+      ownerId: entry.playerUnitId,
+      item: nextEquipped,
+    })
+    this.sendPlayerVitals95(entry)
+  }
+
+  private handleC2SSwapContainerItem(
+    entry: InternalClientEntry113c,
+    cursorItemId: number,
+    targetItemId: number,
+    x: number,
+    y: number,
+  ): void {
+    const curIdx = entry.ownedItems.findIndex((i) => i.id === cursorItemId && i.location === 4)
+    const tgtIdx = entry.ownedItems.findIndex((i) => i.id === targetItemId && i.location === 0)
+    if (curIdx === -1 || tgtIdx === -1) return
+
+    const curItem = entry.ownedItems[curIdx]!
+    const tgtItem = entry.ownedItems[tgtIdx]!
+    const storePage = (tgtItem.storePage ?? tgtItem.storagePage ?? 1) || 1
+    const dims = this.getContainerGridDims(storePage)
+    if (dims === null) return
+
+    if (storePage === 4 && curItem.code.trim().toLowerCase() === 'box') {
+      this.sendPlaySound(entry, SOUND_IMPOSSIBLE_113C)
+      return
+    }
+    const sz = this.getItemGridSize(curItem)
+    if (!this.canFitInContainerGrid(entry, storePage, x, y, sz.width, sz.height, targetItemId)) {
+      this.sendPlaySound(entry, SOUND_IMPOSSIBLE_113C)
+      return
+    }
+
+    const tgtFlags =
+      (Number(tgtItem.rawFlags ?? tgtItem.flags ?? ITEM_FLAG_IDENTIFIED_113C) &
+        ~ITEM_FLAG_DELETED_113C) >>>
+      0
+    const nextCursor: ItemData = {
+      ...tgtItem,
+      flags: tgtFlags,
+      rawFlags: tgtFlags,
+      location: 4,
+      container: 'cursor',
+      storePage: 0,
+      storagePage: 0,
+      gridX: 0,
+      gridY: 0,
+      x: 0,
+      y: 0,
+    }
+    const curFlags =
+      (Number(curItem.rawFlags ?? curItem.flags ?? ITEM_FLAG_IDENTIFIED_113C) &
+        ~ITEM_FLAG_DELETED_113C) >>>
+      0
+    const nextPlaced: ItemData = {
+      ...curItem,
+      flags: curFlags,
+      rawFlags: curFlags,
+      location: 0,
+      container: dims.container,
+      storePage,
+      storagePage: storePage,
+      gridX: x,
+      gridY: y,
+      x,
+      y,
+      ownerType: 0,
+      ownerId: entry.playerUnitId,
+    }
+
+    entry.ownedItems[tgtIdx] = nextCursor
+    entry.ownedItems[curIdx] = nextPlaced
+
+    this.queueServerEventToClient(entry, {
+      type: 'ItemEvent',
+      action: 0x05,
+      itemId: nextCursor.id,
+      code: nextCursor.code,
+      x: 0,
+      y: 0,
+      container: 'cursor',
+      ownerId: entry.playerUnitId,
+      item: nextCursor,
+    })
+    this.queueServerEventToClient(entry, {
+      type: 'ItemEvent',
+      action: 'add',
+      itemId: nextPlaced.id,
+      code: nextPlaced.code,
+      x,
+      y,
+      container: dims.container,
+      ownerId: entry.playerUnitId,
+      item: nextPlaced,
+    })
+  }
+
+  private applyPotionEffect113c(entry: InternalClientEntry113c, codeLower: string): boolean {
+    const m = this.m
+    const pPlayer = entry.pPlayer >>> 0
+    if (pPlayer === 0) return false
+    const catalog = BELT_POTION_CATALOG[codeLower]
+    if (catalog === undefined) return false
+
+    const curHp = STATLIST_GetUnitStat113c(m, pPlayer, STAT_HITPOINTS, 0) | 0
+    const maxHp = Math.max(256, STATLIST_GetUnitStat113c(m, pPlayer, STAT_MAXHP, 0) | 0)
+    const curMana = STATLIST_GetUnitStat113c(m, pPlayer, STAT_MANA, 0) | 0
+    const maxMana = Math.max(0, STATLIST_GetUnitStat113c(m, pPlayer, STAT_MAXMANA, 0) | 0)
+    const maxStam = Math.max(0, STATLIST_GetUnitStat113c(m, pPlayer, STAT_MAXSTAMINA, 0) | 0)
+
+    if (catalog.kind === 'hp') {
+      const nextHp = Math.min(maxHp, curHp + (catalog.healHp << 8))
+      STATLIST_SetUnitStat113c(m, pPlayer, STAT_HITPOINTS, nextHp, 0)
+      this.sendPlayerStatUpdate(entry, STAT_HITPOINTS, nextHp)
+      this.sendPlayerVitals95(entry)
+      return true
+    }
+    if (catalog.kind === 'mana') {
+      const nextMana = Math.min(maxMana, curMana + (catalog.healMana << 8))
+      STATLIST_SetUnitStat113c(m, pPlayer, STAT_MANA, nextMana, 0)
+      this.sendPlayerStatUpdate(entry, STAT_MANA, nextMana)
+      this.sendPlayerVitals95(entry)
+      return true
+    }
+    if (catalog.kind === 'rejuv') {
+      const pct = codeLower === 'rvl' ? 100 : 35
+      const nextHp = Math.min(maxHp, curHp + Math.floor((maxHp * pct) / 100))
+      const nextMana = Math.min(maxMana, curMana + Math.floor((maxMana * pct) / 100))
+      STATLIST_SetUnitStat113c(m, pPlayer, STAT_HITPOINTS, nextHp, 0)
+      STATLIST_SetUnitStat113c(m, pPlayer, STAT_MANA, nextMana, 0)
+      this.sendPlayerStatUpdate(entry, STAT_HITPOINTS, nextHp)
+      this.sendPlayerStatUpdate(entry, STAT_MANA, nextMana)
+      this.sendPlayerVitals95(entry)
+      return true
+    }
+    if (catalog.kind === 'stamina') {
+      STATLIST_SetUnitStat113c(m, pPlayer, STAT_STAMINA, maxStam, 0)
+      this.sendPlayerStatUpdate(entry, STAT_STAMINA, maxStam)
+      this.setUnitStateAndSync(pPlayer, 15, true)
+      this.sendPlayerVitals95(entry)
+      return true
+    }
+    if (catalog.kind === 'antidote') {
+      if (STATES_CheckState113c(m, pPlayer, 2) !== 0) {
+        this.setUnitStateAndSync(pPlayer, 2, false)
+      }
+      this.setUnitStateAndSync(pPlayer, 178, true)
+      this.sendPlayerVitals95(entry)
+      return true
+    }
+    if (catalog.kind === 'thawing') {
+      if (STATES_CheckState113c(m, pPlayer, 1) !== 0) {
+        this.setUnitStateAndSync(pPlayer, 1, false)
+      }
+      if (STATES_CheckState113c(m, pPlayer, 11) !== 0) {
+        this.setUnitStateAndSync(pPlayer, 11, false)
+      }
+      this.setUnitStateAndSync(pPlayer, 179, true)
+      this.sendPlayerVitals95(entry)
+      return true
+    }
+    return false
+  }
+
+  private openTownPortalForPlayer(entry: InternalClientEntry113c): boolean {
+    const m = this.m
+    const pPlayer = entry.pPlayer >>> 0
+    if (pPlayer === 0) return false
+    const inTown =
+      TOWN_AREA_IDS_113C.has(this.areaId) ||
+      DUNGEON_CheckRoomIsTown113c(m, this.defaultRoomPtr) !== 0
+    if (inTown) {
+      this.sendPlaySound(entry, SOUND_NOT_IN_TOWN_113C)
+      return false
+    }
+    const plrX = UNITS_GetX113c(m, pPlayer) & 0xffff
+    const plrY = UNITS_GetY113c(m, pPlayer) & 0xffff
+    const pos = this.findWalkableDropCoord(plrX + 2, plrY)
+    const spawned = this.spawnObjectInRoom({
+      classId: OBJECT_CLASS_PORTAL_113C,
+      x: pos.x,
+      y: pos.y,
+      mode: 2,
+    })
+    const townAreaId = ACT_TOWN_AREA_BY_INDEX_113C[this.actIdx] ?? 1
+    this.portalsByObjectId.set(spawned.unitId, { destAreaId: townAreaId })
+    return true
+  }
+
+  private handleC2SUseInventoryItem(
+    entry: InternalClientEntry113c,
+    itemId: number,
+    _x: number,
+    _y: number,
+  ): void {
+    const idx = entry.ownedItems.findIndex(
+      (i) => i.id === itemId && i.location === 0 && ((i.storePage ?? i.storagePage ?? 1) || 1) === 1,
+    )
+    if (idx === -1) return
+    const item = entry.ownedItems[idx]!
+    const codeLower = item.code.trim().toLowerCase()
+
+    // Horadric Cube (`box`) -> emit `S2C 0x77` `UPDATEUI_OPENCUBE (0x15)`
+    if (codeLower === 'box') {
+      entry.cubeOpen = true
+      entry.stashOpen = false
+      this.queueServerEventToClient(entry, {
+        type: 'Trade',
+        action: BUTTON_OPEN_CUBE_113C,
+      })
+      return
+    }
+
+    // Identify Scroll (`isc`) or Tome of Identify (`ibk`) -> emit `S2C 0x3F` cursor identify mode
+    if (codeLower === 'isc' || codeLower === 'ibk') {
+      if (codeLower === 'ibk' && Math.max(0, Math.trunc(item.quantity ?? 0)) <= 0) {
+        this.sendPlaySound(entry, SOUND_IMPOSSIBLE_113C)
+        return
+      }
+      entry.pendingIdentifyScrollId = item.id
+      this.queueServerEventToClient(entry, {
+        type: 'ActiveSkill',
+        unitId: 1,
+        hand: 'right',
+        skill: codeLower === 'ibk' ? 218 : 217,
+        itemId: item.id,
+        isUseStackableItem: true,
+      } as ServerEvent)
+      return
+    }
+
+    // Town Portal Scroll (`tsc`) or Tome of Town Portal (`tbk`)
+    if (codeLower === 'tsc' || codeLower === 'tbk') {
+      if (codeLower === 'tbk' && Math.max(0, Math.trunc(item.quantity ?? 0)) <= 0) {
+        this.sendPlaySound(entry, SOUND_IMPOSSIBLE_113C)
+        return
+      }
+      if (!this.openTownPortalForPlayer(entry)) return
+      if (codeLower === 'tsc') {
+        const delFlags =
+          (Number(item.rawFlags ?? item.flags ?? ITEM_FLAG_IDENTIFIED_113C) |
+            ITEM_FLAG_DELETED_113C) >>>
+          0
+        entry.ownedItems.splice(idx, 1)
+        this.queueServerEventToClient(entry, {
+          type: 'ItemEvent',
+          action: 'remove',
+          itemId: item.id,
+          code: item.code,
+          x: item.gridX ?? 0,
+          y: item.gridY ?? 0,
+          container: 'inventory',
+          item: { ...item, flags: delFlags, rawFlags: delFlags },
+        })
+      } else {
+        const nextQty = Math.max(0, Math.trunc(item.quantity ?? 1) - 1)
+        const updated: ItemData = { ...item, quantity: nextQty }
+        entry.ownedItems[idx] = updated
+        this.queueServerEventToClient(entry, {
+          type: 'ItemEvent',
+          action: 'update',
+          itemId: updated.id,
+          code: updated.code,
+          x: updated.gridX ?? 0,
+          y: updated.gridY ?? 0,
+          container: 'inventory',
+          item: updated,
+        })
+      }
+      return
+    }
+
+    // Potions (`hp1..5`, `mp1..5`, `rvs`, `rvl`, `vps`, `yps`, `wms`, classic potions)
+    const catalog = BELT_POTION_CATALOG[codeLower]
+    if (catalog !== undefined && catalog.kind !== 'scroll') {
+      const delFlags =
+        (Number(item.rawFlags ?? item.flags ?? ITEM_FLAG_IDENTIFIED_113C) |
+          ITEM_FLAG_DELETED_113C) >>>
+        0
+      entry.ownedItems.splice(idx, 1)
+      this.queueServerEventToClient(entry, {
+        type: 'ItemEvent',
+        action: 'remove',
+        itemId: item.id,
+        code: item.code,
+        x: item.gridX ?? 0,
+        y: item.gridY ?? 0,
+        container: 'inventory',
+        item: { ...item, flags: delFlags, rawFlags: delFlags },
+      })
+      this.applyPotionEffect113c(entry, codeLower)
+    }
+  }
+
+  private handleC2SStackItems(
+    entry: InternalClientEntry113c,
+    cursorItemId: number,
+    targetItemId: number,
+  ): void {
+    const curIdx = entry.ownedItems.findIndex((i) => i.id === cursorItemId && i.location === 4)
+    const tgtIdx = entry.ownedItems.findIndex((i) => i.id === targetItemId && i.location === 0)
+    if (curIdx === -1 || tgtIdx === -1) return
+    const cur = entry.ownedItems[curIdx]!
+    const tgt = entry.ownedItems[tgtIdx]!
+    const code = cur.code.trim().toLowerCase()
+    if (code !== tgt.code.trim().toLowerCase()) return
+    const maxStack =
+      code === 'key'
+        ? 12
+        : code === 'aqv'
+          ? 350
+          : code === 'cqv'
+            ? 250
+            : code === 'tbk' || code === 'ibk'
+              ? 20
+              : 0
+    if (maxStack <= 0) return
+    const curQty = Math.max(1, Math.trunc(cur.quantity ?? 1))
+    const tgtQty = Math.max(1, Math.trunc(tgt.quantity ?? 1))
+    const add = Math.min(curQty, Math.max(0, maxStack - tgtQty))
+    if (add <= 0) return
+
+    const updatedTgt: ItemData = { ...tgt, quantity: tgtQty + add }
+    entry.ownedItems[tgtIdx] = updatedTgt
+    const tgtContainer =
+      (updatedTgt.storePage ?? updatedTgt.storagePage) === 5
+        ? 'stash'
+        : (updatedTgt.storePage ?? updatedTgt.storagePage) === 4
+          ? 'cube'
+          : 'inventory'
+    this.queueServerEventToClient(entry, {
+      type: 'ItemEvent',
+      action: 'update',
+      itemId: updatedTgt.id,
+      code: updatedTgt.code,
+      x: updatedTgt.gridX ?? 0,
+      y: updatedTgt.gridY ?? 0,
+      container: tgtContainer,
+      item: updatedTgt,
+    })
+
+    const rem = curQty - add
+    if (rem <= 0) {
+      const delFlags =
+        (Number(cur.rawFlags ?? cur.flags ?? ITEM_FLAG_IDENTIFIED_113C) | ITEM_FLAG_DELETED_113C) >>>
+        0
+      entry.ownedItems.splice(curIdx, 1)
+      this.queueServerEventToClient(entry, {
+        type: 'ItemEvent',
+        action: 'remove',
+        itemId: cur.id,
+        code: cur.code,
+        container: 'cursor',
+        item: { ...cur, flags: delFlags, rawFlags: delFlags },
+      })
+      this.queueServerEventToClient(entry, {
+        type: 'CursorClear',
+        unitType: 0,
+        id: entry.playerUnitId,
+      })
+    } else {
+      const updatedCur: ItemData = { ...cur, quantity: rem }
+      entry.ownedItems[curIdx] = updatedCur
+      this.queueServerEventToClient(entry, {
+        type: 'ItemEvent',
+        action: 'update',
+        itemId: updatedCur.id,
+        code: updatedCur.code,
+        container: 'cursor',
+        item: updatedCur,
+      })
+    }
+  }
+
+  private handleC2SUnstackItems(entry: InternalClientEntry113c, itemId: number): void {
+    if (entry.ownedItems.some((i) => i.location === 4)) return
+    const idx = entry.ownedItems.findIndex((i) => i.id === itemId && i.location === 0)
+    if (idx === -1) return
+    const cur = entry.ownedItems[idx]!
+    const qty = Math.max(1, Math.trunc(cur.quantity ?? 1))
+    if (qty <= 1) return
+
+    const updated: ItemData = { ...cur, quantity: qty - 1 }
+    entry.ownedItems[idx] = updated
+    const newId = this.allocUnitId()
+    const splitItem: ItemData = {
+      ...cur,
+      id: newId,
+      itemId: newId,
+      quantity: 1,
+      location: 4,
+      container: 'cursor',
+      storePage: 0,
+      storagePage: 0,
+      gridX: 0,
+      gridY: 0,
+      x: 0,
+      y: 0,
+    }
+    entry.ownedItems.push(splitItem)
+    const container =
+      (updated.storePage ?? updated.storagePage) === 5
+        ? 'stash'
+        : (updated.storePage ?? updated.storagePage) === 4
+          ? 'cube'
+          : 'inventory'
+    this.queueServerEventToClient(entry, {
+      type: 'ItemEvent',
+      action: 'update',
+      itemId: updated.id,
+      code: updated.code,
+      x: updated.gridX ?? 0,
+      y: updated.gridY ?? 0,
+      container,
+      item: updated,
+    })
+    this.queueServerEventToClient(entry, {
+      type: 'ItemEvent',
+      action: 'pickup',
+      itemId: splitItem.id,
+      code: splitItem.code,
+      container: 'cursor',
+      item: splitItem,
+    })
+  }
+
+  private handleC2SItemToBelt(
+    entry: InternalClientEntry113c,
+    itemId: number,
+    rawSlot: number,
+  ): void {
+    const idx = entry.ownedItems.findIndex((i) => i.id === itemId)
+    if (idx === -1) return
+    const item = entry.ownedItems[idx]!
+    const codeLower = item.code.trim().toLowerCase()
+    if (BELT_POTION_CATALOG[codeLower] === undefined) {
+      this.sendPlaySound(entry, SOUND_IMPOSSIBLE_113C)
+      return
+    }
+    const slot = Math.max(0, Math.min(15, Math.trunc(rawSlot)))
+    const row = slot >> 2
+    if (row >= this.getPlayerBeltMaxRows(entry)) {
+      this.sendPlaySound(entry, SOUND_IMPOSSIBLE_113C)
+      return
+    }
+    const occupied = entry.ownedItems.some(
+      (other) =>
+        other.id !== item.id &&
+        other.location === 2 &&
+        ((other.gridX ?? other.x ?? 0) & 0x0f) === slot,
+    )
+    if (occupied) {
+      this.sendPlaySound(entry, SOUND_IMPOSSIBLE_113C)
+      return
+    }
+
+    const cleanFlags =
+      (Number(item.rawFlags ?? item.flags ?? ITEM_FLAG_IDENTIFIED_113C) &
+        ~ITEM_FLAG_DELETED_113C) >>>
+      0
+    const placed: ItemData = {
+      ...item,
+      flags: cleanFlags,
+      rawFlags: cleanFlags,
+      location: 2,
+      container: 'belt',
+      storePage: 0,
+      storagePage: 0,
+      gridX: slot,
+      gridY: 0,
+      x: slot,
+      y: 0,
+      bodyLoc: 0,
+      equippedSlot: 0,
+      equipped: false,
+      ownerType: 0,
+      ownerId: entry.playerUnitId,
+    }
+    entry.ownedItems[idx] = placed
+    this.queueServerEventToClient(entry, {
+      type: 'ItemEvent',
+      action: 'beltPut',
+      itemId: placed.id,
+      code: placed.code,
+      x: slot,
+      y: 0,
+      container: 'belt',
+      ownerId: entry.playerUnitId,
+      item: placed,
+    })
+  }
+
+  private handleC2SQuickItemToBelt(entry: InternalClientEntry113c, itemId: number): void {
+    const item = entry.ownedItems.find((i) => i.id === itemId && i.location === 0)
+    if (item === undefined) return
+    const slot = this.findAvailableBeltSlot(entry, item.code)
+    if (slot === null) {
+      this.sendPlaySound(entry, SOUND_CANT_CARRY_113C)
+      return
+    }
+    this.handleC2SItemToBelt(entry, itemId, slot)
+  }
+
+  private handleC2SRemoveFromBelt(entry: InternalClientEntry113c, itemId: number): void {
+    if (entry.ownedItems.some((i) => i.location === 4)) {
+      this.sendPlaySound(entry, SOUND_IMPOSSIBLE_113C)
+      return
+    }
+    const idx = entry.ownedItems.findIndex((i) => i.id === itemId && i.location === 2)
+    if (idx === -1) return
+    const prev = entry.ownedItems[idx]!
+    const linear = (prev.gridX ?? prev.x ?? 0) & 0x0f
+    const col = linear & 3
+    const row = linear >> 2
+    const cleanFlags =
+      (Number(prev.rawFlags ?? prev.flags ?? ITEM_FLAG_IDENTIFIED_113C) &
+        ~ITEM_FLAG_DELETED_113C) >>>
+      0
+    const onCursor: ItemData = {
+      ...prev,
+      flags: cleanFlags,
+      rawFlags: cleanFlags,
+      location: 4,
+      container: 'cursor',
+      storePage: 0,
+      storagePage: 0,
+      gridX: 0,
+      gridY: 0,
+      x: 0,
+      y: 0,
+    }
+    entry.ownedItems[idx] = onCursor
+    this.queueServerEventToClient(entry, {
+      type: 'ItemEvent',
+      action: 0x0f,
+      itemId: onCursor.id,
+      code: onCursor.code,
+      x: 0,
+      y: 0,
+      container: 'cursor',
+      ownerId: entry.playerUnitId,
+      item: onCursor,
+    })
+    this.shiftBeltColumnDown(entry, col, row)
+  }
+
+  private handleC2SSwapBeltItem(
+    entry: InternalClientEntry113c,
+    cursorItemId: number,
+    beltItemId: number,
+  ): void {
+    const curIdx = entry.ownedItems.findIndex((i) => i.id === cursorItemId && i.location === 4)
+    const beltIdx = entry.ownedItems.findIndex((i) => i.id === beltItemId && i.location === 2)
+    if (curIdx === -1 || beltIdx === -1) return
+    const cur = entry.ownedItems[curIdx]!
+    const belt = entry.ownedItems[beltIdx]!
+    if (BELT_POTION_CATALOG[cur.code.trim().toLowerCase()] === undefined) {
+      this.sendPlaySound(entry, SOUND_IMPOSSIBLE_113C)
+      return
+    }
+    const slot = (belt.gridX ?? belt.x ?? 0) & 0x0f
+    const beltCleanFlags =
+      (Number(belt.rawFlags ?? belt.flags ?? ITEM_FLAG_IDENTIFIED_113C) &
+        ~ITEM_FLAG_DELETED_113C) >>>
+      0
+    const curCleanFlags =
+      (Number(cur.rawFlags ?? cur.flags ?? ITEM_FLAG_IDENTIFIED_113C) &
+        ~ITEM_FLAG_DELETED_113C) >>>
+      0
+    const nextCursor: ItemData = {
+      ...belt,
+      flags: beltCleanFlags,
+      rawFlags: beltCleanFlags,
+      location: 4,
+      container: 'cursor',
+      gridX: 0,
+      gridY: 0,
+      x: 0,
+      y: 0,
+    }
+    const nextBelt: ItemData = {
+      ...cur,
+      flags: curCleanFlags,
+      rawFlags: curCleanFlags,
+      location: 2,
+      container: 'belt',
+      gridX: slot,
+      gridY: 0,
+      x: slot,
+      y: 0,
+    }
+    entry.ownedItems[beltIdx] = nextCursor
+    entry.ownedItems[curIdx] = nextBelt
+
+    this.queueServerEventToClient(entry, {
+      type: 'ItemEvent',
+      action: 0x0f,
+      itemId: nextCursor.id,
+      code: nextCursor.code,
+      container: 'cursor',
+      item: nextCursor,
+    })
+    this.queueServerEventToClient(entry, {
+      type: 'ItemEvent',
+      action: 'beltPut',
+      itemId: nextBelt.id,
+      code: nextBelt.code,
+      x: slot,
+      y: 0,
+      container: 'belt',
+      item: nextBelt,
+    })
+  }
+
+  private handleC2SUseBeltItem(
+    entry: InternalClientEntry113c,
+    itemId: number,
+    _shiftUseOnMerc: boolean,
+  ): void {
+    const idx = entry.ownedItems.findIndex((i) => i.id === itemId && i.location === 2)
+    if (idx === -1) return
+    const item = entry.ownedItems[idx]!
+    const codeLower = item.code.trim().toLowerCase()
+    const linear = (item.gridX ?? item.x ?? 0) & 0x0f
+    const col = linear & 3
+    const row = linear >> 2
+
+    if (codeLower === 'isc') {
+      entry.pendingIdentifyScrollId = item.id
+      this.queueServerEventToClient(entry, {
+        type: 'ActiveSkill',
+        unitId: 1,
+        hand: 'right',
+        skill: 217,
+        itemId: item.id,
+        isUseStackableItem: true,
+      } as ServerEvent)
+      return
+    }
+    if (codeLower === 'tsc') {
+      if (!this.openTownPortalForPlayer(entry)) return
+    }
+
+    const delFlags =
+      (Number(item.rawFlags ?? item.flags ?? ITEM_FLAG_IDENTIFIED_113C) | ITEM_FLAG_DELETED_113C) >>>
+      0
+    entry.ownedItems.splice(idx, 1)
+    this.queueServerEventToClient(entry, {
+      type: 'ItemEvent',
+      action: 0x0f,
+      itemId: item.id,
+      code: item.code,
+      x: linear,
+      y: 0,
+      container: 'belt',
+      ownerId: entry.playerUnitId,
+      item: { ...item, location: 2, container: 'belt', flags: delFlags, rawFlags: delFlags },
+    })
+    this.shiftBeltColumnDown(entry, col, row)
+
+    if (codeLower !== 'tsc') {
+      this.applyPotionEffect113c(entry, codeLower)
+    }
+  }
+
+  private handleC2SIdentifyItem(
+    entry: InternalClientEntry113c,
+    targetItemId: number,
+    scrollItemId: number,
+  ): void {
+    const scrollIdx = entry.ownedItems.findIndex((i) => i.id === scrollItemId)
+    const targetIdx = entry.ownedItems.findIndex((i) => i.id === targetItemId)
+    if (scrollIdx === -1 || targetIdx === -1) return
+    const scroll = entry.ownedItems[scrollIdx]!
+    const target = entry.ownedItems[targetIdx]!
+    const sCode = scroll.code.trim().toLowerCase()
+    if (sCode !== 'isc' && sCode !== 'ibk') return
+    if (target.identified) return
+
+    if (sCode === 'ibk') {
+      const qty = Math.max(0, Math.trunc(scroll.quantity ?? 0))
+      if (qty <= 0) return
+      const updatedBook: ItemData = { ...scroll, quantity: qty - 1 }
+      entry.ownedItems[scrollIdx] = updatedBook
+      this.queueServerEventToClient(entry, {
+        type: 'ItemEvent',
+        action: 'update',
+        itemId: updatedBook.id,
+        code: updatedBook.code,
+        x: updatedBook.gridX ?? 0,
+        y: updatedBook.gridY ?? 0,
+        container: 'inventory',
+        item: updatedBook,
+      })
+    } else {
+      const wasBelt = scroll.location === 2
+      const linear = (scroll.gridX ?? scroll.x ?? 0) & 0x0f
+      const delFlags =
+        (Number(scroll.rawFlags ?? scroll.flags ?? ITEM_FLAG_IDENTIFIED_113C) |
+          ITEM_FLAG_DELETED_113C) >>>
+        0
+      entry.ownedItems.splice(scrollIdx, 1)
+      if (wasBelt) {
+        this.queueServerEventToClient(entry, {
+          type: 'ItemEvent',
+          action: 0x0f,
+          itemId: scroll.id,
+          code: scroll.code,
+          x: linear,
+          y: 0,
+          container: 'belt',
+          item: { ...scroll, flags: delFlags, rawFlags: delFlags },
+        })
+        this.shiftBeltColumnDown(entry, linear & 3, linear >> 2)
+      } else {
+        this.queueServerEventToClient(entry, {
+          type: 'ItemEvent',
+          action: 'remove',
+          itemId: scroll.id,
+          code: scroll.code,
+          x: scroll.gridX ?? 0,
+          y: scroll.gridY ?? 0,
+          container: 'inventory',
+          item: { ...scroll, flags: delFlags, rawFlags: delFlags },
+        })
+      }
+    }
+
+    const realTargetIdx = entry.ownedItems.findIndex((i) => i.id === targetItemId)
+    if (realTargetIdx === -1) return
+    const curTarget = entry.ownedItems[realTargetIdx]!
+    const idFlags =
+      (Number(curTarget.rawFlags ?? curTarget.flags ?? 0) | ITEM_FLAG_IDENTIFIED_113C) >>> 0
+    const identified: ItemData = {
+      ...curTarget,
+      identified: true,
+      flags: idFlags,
+      rawFlags: idFlags,
+    }
+    entry.ownedItems[realTargetIdx] = identified
+    entry.pendingIdentifyScrollId = 0
+    const container =
+      identified.location === 1
+        ? 'equipment'
+        : (identified.storePage ?? identified.storagePage) === 5
+          ? 'stash'
+          : (identified.storePage ?? identified.storagePage) === 4
+            ? 'cube'
+            : 'inventory'
+    this.queueServerEventToClient(entry, {
+      type: 'ItemEvent',
+      action: 'identify',
+      itemId: identified.id,
+      code: identified.code,
+      x: identified.gridX ?? 0,
+      y: identified.gridY ?? 0,
+      container,
+      ownerId: entry.playerUnitId,
+      item: identified,
+    })
+  }
+
+  private handleC2SSocketItem(
+    entry: InternalClientEntry113c,
+    fillerId: number,
+    hostId: number,
+  ): void {
+    const fillerIdx = entry.ownedItems.findIndex((i) => i.id === fillerId && i.location === 4)
+    const hostIdx = entry.ownedItems.findIndex(
+      (i) => i.id === hostId && (i.location === 0 || i.location === 1),
+    )
+    if (fillerIdx === -1 || hostIdx === -1) return
+    const filler = entry.ownedItems[fillerIdx]!
+    const host = entry.ownedItems[hostIdx]!
+    const existingChildren = this.getOwnedSocketChildren(entry, host.id)
+    const pPlayer = entry.pPlayer >>> 0
+    const clvl = Math.max(1, STATLIST_GetUnitStat113c(this.m, pPlayer, STAT_LEVEL, 0) | 0)
+
+    const result = executeSocketItem113c({
+      host: { ...host, socketedItems: existingChildren },
+      filler,
+      rng: this.rng,
+      playerLevel: clvl,
+      isHostEquipped: host.location === 1,
+      isLadder: true,
+      tables: getEmbeddedDropTables(),
+    })
+    if (!result.ok) {
+      this.sendPlaySound(entry, SOUND_IMPOSSIBLE_113C)
+      return
+    }
+
+    entry.ownedItems.splice(fillerIdx, 1)
+    const newHostIdx = entry.ownedItems.findIndex((i) => i.id === hostId)
+    if (newHostIdx === -1) return
+    entry.ownedItems[newHostIdx] = result.hostItem
+    entry.ownedItems.splice(newHostIdx + 1, 0, result.socketChild)
+    if (result.hostItem.location === 1) {
+      this.recomputeEquippedItemSkillBonuses(entry)
+    }
+
+    const hostContainer =
+      result.hostItem.location === 1
+        ? 'equipment'
+        : (result.hostItem.storePage ?? result.hostItem.storagePage) === 5
+          ? 'stash'
+          : (result.hostItem.storePage ?? result.hostItem.storagePage) === 4
+            ? 'cube'
+            : 'inventory'
+    this.queueServerEventToClient(entry, {
+      type: 'ItemEvent',
+      action: 0x0a,
+      itemId: result.socketChild.id,
+      code: result.socketChild.code,
+      container: 'socket',
+      ownerId: result.hostItem.id,
+      item: result.socketChild,
+    })
+    this.queueServerEventToClient(entry, {
+      type: 'ItemEvent',
+      action: 'update',
+      itemId: result.hostItem.id,
+      code: result.hostItem.code,
+      x: result.hostItem.gridX ?? 0,
+      y: result.hostItem.gridY ?? 0,
+      container: hostContainer,
+      ownerId: entry.playerUnitId,
+      item: result.hostItem,
+    })
+  }
+
+  private handleC2SScrollToBook(
+    entry: InternalClientEntry113c,
+    scrollId: number,
+    bookId: number,
+  ): void {
+    const scrollIdx = entry.ownedItems.findIndex((i) => i.id === scrollId)
+    const bookIdx = entry.ownedItems.findIndex((i) => i.id === bookId)
+    if (scrollIdx === -1 || bookIdx === -1) return
+    const scroll = entry.ownedItems[scrollIdx]!
+    const book = entry.ownedItems[bookIdx]!
+    const sCode = scroll.code.trim().toLowerCase()
+    const bCode = book.code.trim().toLowerCase()
+    const compatible = (sCode === 'tsc' && bCode === 'tbk') || (sCode === 'isc' && bCode === 'ibk')
+    if (!compatible) return
+    const curQty = Math.max(0, Math.trunc(book.quantity ?? 0))
+    if (curQty >= 20) return
+
+    const updatedBook: ItemData = { ...book, quantity: curQty + 1 }
+    entry.ownedItems[bookIdx] = updatedBook
+    const delFlags =
+      (Number(scroll.rawFlags ?? scroll.flags ?? ITEM_FLAG_IDENTIFIED_113C) |
+        ITEM_FLAG_DELETED_113C) >>>
+      0
+    entry.ownedItems.splice(scrollIdx, 1)
+
+    this.queueServerEventToClient(entry, {
+      type: 'ItemEvent',
+      action: 'remove',
+      itemId: scroll.id,
+      code: scroll.code,
+      container: scroll.location === 4 ? 'cursor' : 'inventory',
+      item: { ...scroll, flags: delFlags, rawFlags: delFlags },
+    })
+    this.queueServerEventToClient(entry, {
+      type: 'ItemEvent',
+      action: 'update',
+      itemId: updatedBook.id,
+      code: updatedBook.code,
+      x: updatedBook.gridX ?? 0,
+      y: updatedBook.gridY ?? 0,
+      container: 'inventory',
+      item: updatedBook,
+    })
+  }
+
+  private handleC2SItemToCube(entry: InternalClientEntry113c, itemId: number): void {
+    const cur = entry.ownedItems.find((i) => i.id === itemId && i.location === 4)
+    if (cur === undefined) return
+    if (cur.code.trim().toLowerCase() === 'box') {
+      this.sendPlaySound(entry, SOUND_IMPOSSIBLE_113C)
+      return
+    }
+    const sz = this.getItemGridSize(cur)
+    const slot = this.findFreeContainerSlot(entry, 4, sz.width, sz.height)
+    if (slot === null) {
+      this.sendPlaySound(entry, SOUND_CANT_CARRY_113C)
+      return
+    }
+    this.handleC2SItemToBuffer(entry, itemId, slot.x, slot.y, 3)
+  }
+
+  private handleC2SDropGold(entry: InternalClientEntry113c, rawAmount: number): void {
+    const m = this.m
+    const pPlayer = entry.pPlayer >>> 0
+    if (pPlayer === 0) return
+    const amount = Math.floor(rawAmount) >>> 0
+    const curGold = STATLIST_GetUnitStat113c(m, pPlayer, STAT_GOLD, 0) >>> 0
+    if (amount === 0 || amount > curGold) return
+
+    const nextGold = (curGold - amount) >>> 0
+    STATLIST_SetUnitStat113c(m, pPlayer, STAT_GOLD, nextGold | 0, 0)
+    this.sendPlayerStatUpdate(entry, STAT_GOLD, nextGold)
+
+    const plrX = UNITS_GetX113c(m, pPlayer) & 0xffff
+    const plrY = UNITS_GetY113c(m, pPlayer) & 0xffff
+    const dropPos = this.findWalkableDropCoord(plrX, plrY)
+    this.spawnGroundItemInRoom(
+      {
+        code: 'gld',
+        goldAmount: amount,
+        quantity: amount,
+        compact: true,
+        simple: true,
+        identified: true,
+        quality: 2,
+      },
+      dropPos.x,
+      dropPos.y,
+      'drop',
+    )
+  }
+
+  private handleC2SSwapWeapons(entry: InternalClientEntry113c): void {
+    const m = this.m
+    const pPlayer = entry.pPlayer >>> 0
+    if (pPlayer === 0 || entry.pClient === 0) return
+
+    const movedItems: ItemData[] = []
+    for (let i = 0; i < entry.ownedItems.length; i++) {
+      const item = entry.ownedItems[i]!
+      if (item.location !== 1) continue
+      const slot = item.bodyLoc ?? item.equippedSlot ?? 0
+      let nextSlot = 0
+      if (slot === 4) nextSlot = 11
+      else if (slot === 11) nextSlot = 4
+      else if (slot === 5) nextSlot = 12
+      else if (slot === 12) nextSlot = 5
+      if (nextSlot === 0) continue
+
+      const moved: ItemData = {
+        ...item,
+        bodyLoc: nextSlot,
+        equippedSlot: nextSlot,
+      }
+      entry.ownedItems[i] = moved
+      movedItems.push(moved)
+    }
+
+    entry.weaponSet = entry.weaponSet === 1 ? 0 : 1
+
+    // Swap live active left/right hand skills with alternate set
+    const pSkills = m.get(pPlayer, D2UnitStrc.pSkills) >>> 0
+    let prevLeft = 0
+    let prevRight = 0
+    if (pSkills !== 0) {
+      const pLeft = SKILLS_GetLeftSkillFromSkillList113c(m, pSkills) >>> 0
+      if (pLeft !== 0) prevLeft = SKILLS_GetSkillIdFromSkill113c(m, pLeft, 0, 0) | 0
+      const pRight = m.get(pSkills, D2SkillListStrc.pRightSkill) >>> 0
+      if (pRight !== 0) prevRight = SKILLS_GetSkillIdFromSkill113c(m, pRight, 0, 0) | 0
+    }
+    const nextLeft = entry.altLeftSkill
+    const nextRight = entry.altRightSkill
+    entry.altLeftSkill = prevLeft
+    entry.altRightSkill = prevRight
+
+    this.recomputeEquippedItemSkillBonuses(entry)
+
+    const resolveHandSkill = (skId: number): number => {
+      if (skId <= 0 || skId >= SKILLS_TXT_COUNT_113C) return 0
+      const pSk = SKILLS_GetSkillById113c(m, pPlayer, skId, -1) >>> 0
+      if (pSk === 0) return 0
+      return SKILLS_GetSkillLevel113c(m, pPlayer, pSk, 1) > 0 ? skId : 0
+    }
+    const finalLeft = resolveHandSkill(nextLeft)
+    const finalRight = resolveHandSkill(nextRight)
+    SKILLS_SetLeftSkill113c(m, pPlayer, finalLeft, -1)
+    SKILLS_SetRightSkill113c(m, pPlayer, finalRight, -1)
+    PLAYER_StoreLeftSkill113c(m, pPlayer)
+    PLAYER_StoreRightSkill113c(m, pPlayer)
+
+    for (let i = 0; i < movedItems.length; i++) {
+      const moved = movedItems[i]!
+      this.queueServerEventToClient(entry, {
+        type: 'ItemEvent',
+        action: 0x17,
+        itemId: moved.id,
+        code: moved.code,
+        bodyLoc: moved.bodyLoc,
+        container: 'equipment',
+        ownerId: entry.playerUnitId,
+        item: moved,
+      })
+    }
+
+    this.queueServerEventToClient(entry, { type: 'WeaponSwitch' })
+
+    if (finalLeft !== prevLeft) {
+      NET_SendPacket0x23_AssignSkill113c(
+        m,
+        UNIT_PLAYER,
+        entry.playerUnitId,
+        entry.pClient,
+        1,
+        finalLeft,
+        -1,
+        {
+          queuePacket: (mem, cli, pktPtr, pktSize) => {
+            NET_QueuePacketToClientBuffer113c(mem, cli, 1, pktPtr, pktSize)
+          },
+        },
+      )
+    }
+    if (finalRight !== prevRight) {
+      NET_SendPacket0x23_AssignSkill113c(
+        m,
+        UNIT_PLAYER,
+        entry.playerUnitId,
+        entry.pClient,
+        0,
+        finalRight,
+        -1,
+        {
+          queuePacket: (mem, cli, pktPtr, pktSize) => {
+            NET_QueuePacketToClientBuffer113c(mem, cli, 1, pktPtr, pktSize)
+          },
+        },
+      )
+    }
+    this.sendPlayerVitals95(entry)
+  }
+
+  // ============================================================================
+  // Wave 3 Part 3: Vendor, Repair, IdentifyAll, QuestMessage, Stash & ClickButton
+  // ============================================================================
+
+  private executeStashOpen(entry: InternalClientEntry113c): void {
+    this.stopPlayerMovementInPlace(entry)
+    entry.stashOpen = true
+    entry.cubeOpen = false
+    entry.activeNpcUnitId = 0
+    entry.activeVendorNpcId = 0
+    entry.activeVendorMode = null
+    this.queueServerEventToClient(entry, {
+      type: 'Trade',
+      action: BUTTON_OPEN_STASH_113C,
+    })
+  }
+
+  private executePortalInteract(entry: InternalClientEntry113c, portalObjId: number): void {
+    const rec = this.portalsByObjectId.get(portalObjId)
+    if (rec === undefined) return
+    this.stopPlayerMovementInPlace(entry)
+    this.warpClientToArea(entry, rec.destAreaId)
+  }
+
+  private buildTransactionCostContext(
+    entry: InternalClientEntry113c,
+    npcClassId: number,
+  ): TransactionCostContext {
+    const m = this.m
+    const pPlayer = entry.pPlayer >>> 0
+    const clvl = Math.max(1, STATLIST_GetUnitStat113c(m, pPlayer, STAT_LEVEL, 0) | 0)
+    const reducedPricesPct = Math.min(
+      99,
+      Math.max(
+        0,
+        (STATLIST_GetUnitStat113c(m, pPlayer, STAT_ITEM_REDUCEDPRICES, 0) | 0) +
+          this.getEffectiveEquippedStatSum(entry, STAT_ITEM_REDUCEDPRICES),
+      ),
+    )
+    const pQuestRec = this.getPlayerQuestRecordPtr(entry.clientId, this.difficultyValue)
+    return {
+      playerLevel: clvl,
+      playerReducedPricesPct: reducedPricesPct,
+      difficulty: this.difficultyValue,
+      npcClass: npcClassId,
+      isQuestFlagSet: (questId: number, state: 0 | 1): boolean => {
+        if (pQuestRec === 0) return false
+        const pBuf = m.u32(pQuestRec) >>> 0
+        if (pBuf === 0) return false
+        const bitIdx = ((questId << 4) + state) | 0
+        if (bitIdx < 0 || (bitIdx >> 3) >= 96) return false
+        return ((m.u8((pBuf + (bitIdx >> 3)) >>> 0) >>> (bitIdx & 7)) & 1) !== 0
+      },
+      tables: getCanonicalTransactionCostTables(),
+    }
+  }
+
+  private itemDataToTransactionCostInput(
+    entry: InternalClientEntry113c,
+    item: ItemData,
+  ): TransactionCostInput {
+    const acc = new Map<string, { statId: number; param: number; value: number; base: number }>()
+    const add = (statId: number, param: number, value: number, isBase: boolean): void => {
+      const k = `${statId}:${param}`
+      const cur = acc.get(k) ?? { statId, param, value: 0, base: 0 }
+      cur.value += value
+      if (isBase) cur.base += value
+      acc.set(k, cur)
+    }
+    const maxDur = item.maxDurability
+    const curDur = item.curDurability ?? item.durability
+    const qty = item.quantity
+    if (item.defense !== undefined) add(31, 0, item.defense, true)
+    if (maxDur !== undefined) add(73, 0, maxDur, true)
+    if (curDur !== undefined) add(72, 0, curDur, true)
+    if (qty !== undefined) add(70, 0, qty, true)
+    for (const s of item.stats ?? []) {
+      if (s.statId === 72 && curDur !== undefined) continue
+      if (s.statId === 73 && maxDur !== undefined) continue
+      if (s.statId === 70 && qty !== undefined) continue
+      add(s.statId, s.param ?? 0, s.value, false)
+    }
+    for (const s of item.runewordStats ?? []) {
+      add(s.statId, s.param ?? 0, s.value, false)
+    }
+
+    const code = item.code.trim()
+    const codeLower = code.toLowerCase()
+    let bookId = item.tomeData
+    if (bookId === undefined && codeLower === 'tbk') bookId = 0
+    if (bookId === undefined && codeLower === 'ibk') bookId = 1
+
+    const rawQuality = typeof item.quality === 'number' ? item.quality : 2
+    const quality = Math.max(1, Math.min(9, Math.trunc(rawQuality))) as ItemQuality113c
+    const ra = item.rareAffixes
+    const rarePrefixIds: readonly [number, number, number] =
+      ra !== undefined && ra.length >= 6 ? [ra[0] ?? 0, ra[2] ?? 0, ra[4] ?? 0] : [0, 0, 0]
+    const rareSuffixIds: readonly [number, number, number] =
+      ra !== undefined && ra.length >= 6 ? [ra[1] ?? 0, ra[3] ?? 0, ra[5] ?? 0] : [0, 0, 0]
+    const children = this.getOwnedSocketChildren(entry, item.id)
+
+    const stats: TransactionCostStat[] = [...acc.values()]
+    return {
+      code,
+      itemFormat: item.version ?? 101,
+      quality,
+      identified: item.identified !== false || quality < 4,
+      ethereal: Boolean(item.ethereal),
+      starterItem: Boolean(item.starterItem),
+      isEar: Boolean(item.isEar),
+      earLevel: item.earLevel ?? 0,
+      bodyPartMonsterClass: item.bodyPartMonsterClass ?? 0,
+      ...(bookId !== undefined ? { bookId } : {}),
+      magicPrefixId: item.magicPrefixId ?? 0,
+      magicSuffixId: item.magicSuffixId ?? 0,
+      ...(item.autoAffixId !== undefined ? { autoAffixId: item.autoAffixId } : {}),
+      uniqueItemId: item.uniqueItemId ?? -1,
+      setItemId: item.setItemId ?? -1,
+      rarePrefixIds,
+      rareSuffixIds,
+      stats,
+      socketedChildCodes: children.map((c) => c.code.trim()).filter((c) => c.length > 0),
+    }
+  }
+
+  private spendPlayerGold(entry: InternalClientEntry113c, cost: number): boolean {
+    const m = this.m
+    const pPlayer = entry.pPlayer >>> 0
+    if (pPlayer === 0 || cost < 0) return false
+    const amt = Math.trunc(cost)
+    if (amt === 0) return true
+    const curGold = STATLIST_GetUnitStat113c(m, pPlayer, STAT_GOLD, 0) >>> 0
+    const curBank = STATLIST_GetUnitStat113c(m, pPlayer, STAT_GOLDBANK, 0) >>> 0
+    if (curGold + curBank < amt) return false
+
+    const fromInv = Math.min(curGold, amt)
+    const fromBank = amt - fromInv
+    const nextGold = (curGold - fromInv) >>> 0
+    const nextBank = (curBank - fromBank) >>> 0
+
+    if (fromInv > 0) {
+      STATLIST_SetUnitStat113c(m, pPlayer, STAT_GOLD, nextGold | 0, 0)
+      this.sendPlayerStatUpdate(entry, STAT_GOLD, nextGold)
+    }
+    if (fromBank > 0) {
+      STATLIST_SetUnitStat113c(m, pPlayer, STAT_GOLDBANK, nextBank | 0, 0)
+      this.sendPlayerStatUpdate(entry, STAT_GOLDBANK, nextBank)
+    }
+    return true
+  }
+
+  private addPlayerGold(entry: InternalClientEntry113c, amount: number): boolean {
+    const m = this.m
+    const pPlayer = entry.pPlayer >>> 0
+    if (pPlayer === 0 || amount < 0) return false
+    const amt = Math.trunc(amount)
+    if (amt === 0) return true
+    const clvl = Math.max(1, STATLIST_GetUnitStat113c(m, pPlayer, STAT_LEVEL, 0) | 0)
+    const curGold = STATLIST_GetUnitStat113c(m, pPlayer, STAT_GOLD, 0) >>> 0
+    const curBank = STATLIST_GetUnitStat113c(m, pPlayer, STAT_GOLDBANK, 0) >>> 0
+    const invRoom = Math.max(0, getInventoryGoldLimit(clvl) - curGold)
+    const bankRoom = Math.max(0, getStashGoldLimit(clvl) - curBank)
+    if (amt > invRoom + bankRoom) return false
+
+    const toInv = Math.min(amt, invRoom)
+    const toBank = amt - toInv
+    if (toInv > 0) {
+      const nextGold = (curGold + toInv) >>> 0
+      STATLIST_SetUnitStat113c(m, pPlayer, STAT_GOLD, nextGold | 0, 0)
+      this.sendPlayerStatUpdate(entry, STAT_GOLD, nextGold)
+    }
+    if (toBank > 0) {
+      const nextBank = (curBank + toBank) >>> 0
+      STATLIST_SetUnitStat113c(m, pPlayer, STAT_GOLDBANK, nextBank | 0, 0)
+      this.sendPlayerStatUpdate(entry, STAT_GOLDBANK, nextBank)
+    }
+    return true
+  }
+
+  private getOrCreateVendorPool(
+    entry: InternalClientEntry113c,
+    npcUnitId: number,
+    npcClassId: number,
+    gamble: boolean,
+  ): VendorPoolEntry113c[] {
+    const desc = getTownNpcDescriptorByHcIdx(npcClassId)
+    if (desc === undefined || desc.vendorId === null) return []
+    if (gamble ? !desc.canGamble : !desc.canTrade) return []
+
+    const poolKey = `${this.areaId}:${npcUnitId}:${gamble ? 'gamble' : 'trade'}`
+    if (!gamble) {
+      const existing = this.vendorStockByKey.get(poolKey)
+      if (existing !== undefined && existing.length > 0) return existing
+    }
+
+    const tables = getEmbeddedDropTables()
+    const pPlayer = entry.pPlayer >>> 0
+    const clvl = Math.max(1, STATLIST_GetUnitStat113c(this.m, pPlayer, STAT_LEVEL, 0) | 0)
+    const poolRng = new D2Rng(this.rng.rand(0x7fffffff) || 1)
+    const pool: VendorPoolEntry113c[] = []
+
+    if (gamble) {
+      const grid = generateGambleInventory({
+        vendorId: desc.vendorId,
+        cLvl: clvl,
+        isExpansion: true,
+        tables,
+        rng: poolRng,
+      })
+      for (const placed of grid.items) {
+        const unitId = this.allocUnitId()
+        const itemData = domainItemToItemData113c(placed.item, tables, {
+          unitId,
+          compactSave: false,
+        })
+        const shopItem: ItemData = {
+          ...itemData,
+          location: 0,
+          container: 'shop',
+          storePage: 1,
+          storagePage: 1,
+          gridX: placed.x,
+          gridY: placed.y,
+          x: placed.x,
+          y: placed.y,
+          ownerType: 1,
+          ownerId: npcUnitId,
+        }
+        pool.push({ item: shopItem, permStore: false, gamble: true, sourceItem: placed.item })
+      }
+      this.vendorStockByKey.set(poolKey, pool)
+      return pool
+    }
+
+    const store = generateVendorStoreInventory({
+      vendorId: desc.vendorId,
+      difficulty: this.difficultyValue,
+      cLvl: clvl,
+      actIndex: desc.actIndex,
+      isExpansion: true,
+      tables,
+      rng: poolRng,
+    })
+    for (let tabIdx = 0; tabIdx < VENDOR_TAB_KEYS.length; tabIdx++) {
+      const tabKey = VENDOR_TAB_KEYS[tabIdx]!
+      const storePage = tabIdx + 1
+      for (const placed of store.tabs[tabKey].items) {
+        const finalized = finalizeDroppedItem113c(placed.item)
+        const code = (finalized.code ?? finalized.base.id).trim()
+        const baseMeta = this.tables.getItemBaseMeta(code)
+        const unitId = this.allocUnitId()
+        const itemData = domainItemToItemData113c(finalized, tables, {
+          unitId,
+          compactSave:
+            Boolean(baseMeta?.compactSave) &&
+            finalized.base.kind === 'misc' &&
+            code !== 'tbk' &&
+            code !== 'ibk',
+        })
+        const shopItem: ItemData = {
+          ...itemData,
+          identified: true,
+          flags: ((itemData.rawFlags ?? itemData.flags ?? 0) | ITEM_FLAG_IDENTIFIED_113C) >>> 0,
+          rawFlags: ((itemData.rawFlags ?? itemData.flags ?? 0) | ITEM_FLAG_IDENTIFIED_113C) >>> 0,
+          location: 0,
+          container: 'shop',
+          storePage,
+          storagePage: storePage,
+          gridX: placed.x,
+          gridY: placed.y,
+          x: placed.x,
+          y: placed.y,
+          ownerType: 1,
+          ownerId: npcUnitId,
+        }
+        pool.push({
+          item: shopItem,
+          permStore: Boolean(finalized.base.permStoreItem),
+          gamble: false,
+          sourceItem: finalized,
+        })
+      }
+    }
+    this.vendorStockByKey.set(poolKey, pool)
+    return pool
+  }
+
+  private handleC2SQuestMessage(
+    entry: InternalClientEntry113c,
+    npcId: number,
+    messageId: number,
+  ): void {
+    const pNpc = this.findUnitInActiveRoom(UNIT_MONSTER, npcId)
+    if (pNpc === 0) return
+    this.queueServerEventToClient(entry, {
+      type: 'Npc',
+      kind: 'info',
+      unitType: 1,
+      npcId,
+      count: 1,
+      messages: [{ menu: 0, stringId: messageId & 0xffff }],
+    })
+  }
+
+  private handleC2SEntityAction(
+    entry: InternalClientEntry113c,
+    action: number,
+    npcId: number,
+  ): void {
+    const m = this.m
+    const pPlayer = entry.pPlayer >>> 0
+    if (pPlayer === 0) return
+    const pNpc = this.findUnitInActiveRoom(UNIT_MONSTER, npcId)
+    if (pNpc === 0) return
+    const npcClassId = m.get(pNpc, D2UnitStrc.dwClassId) >>> 0
+    const plrX = UNITS_GetX113c(m, pPlayer) & 0xffff
+    const plrY = UNITS_GetY113c(m, pPlayer) & 0xffff
+    const npcX = UNITS_GetX113c(m, pNpc) & 0xffff
+    const npcY = UNITS_GetY113c(m, pNpc) & 0xffff
+    if (Math.hypot(plrX - npcX, plrY - npcY) > NPC_TETHER_RANGE_SUBTILES_113C) return
+
+    if (action !== 1 && action !== 2) return
+    const gamble = action === 2
+    const desc = getTownNpcDescriptorByHcIdx(npcClassId)
+    if (desc === undefined || desc.vendorId === null) return
+    if (gamble ? !desc.canGamble : !desc.canTrade) return
+
+    this.stopPlayerMovementInPlace(entry)
+    entry.activeNpcUnitId = npcId
+    entry.activeVendorNpcId = npcId
+    entry.activeVendorMode = gamble ? 'gamble' : 'trade'
+
+    const pool = this.getOrCreateVendorPool(entry, npcId, npcClassId, gamble)
+    for (let i = 0; i < pool.length; i++) {
+      const vEntry = pool[i]!
+      this.queueServerEventToClient(entry, {
+        type: 'ItemEvent',
+        action: 'vendorPool',
+        itemId: vEntry.item.id,
+        code: vEntry.item.code,
+        x: vEntry.item.gridX ?? 0,
+        y: vEntry.item.gridY ?? 0,
+        container: 'shop',
+        ownerId: npcId,
+        item: vEntry.item,
+      })
+    }
+
+    this.queueServerEventToClient(entry, {
+      type: 'Npc',
+      kind: 'info',
+      unitType: 1,
+      npcId,
+      count: 0,
+      messages: [],
+    })
+  }
+
+  private handleC2SBuyItem(
+    entry: InternalClientEntry113c,
+    npcId: number,
+    itemId: number,
+    isGamble: boolean,
+    _shiftFill: boolean,
+  ): void {
+    const m = this.m
+    const pPlayer = entry.pPlayer >>> 0
+    if (pPlayer === 0) return
+    if (entry.activeVendorNpcId !== npcId || entry.activeVendorMode === null) return
+    if ((entry.activeVendorMode === 'gamble') !== isGamble) return
+
+    const pNpc = this.findUnitInActiveRoom(UNIT_MONSTER, npcId)
+    if (pNpc === 0) return
+    const npcClassId = m.get(pNpc, D2UnitStrc.dwClassId) >>> 0
+    const plrX = UNITS_GetX113c(m, pPlayer) & 0xffff
+    const plrY = UNITS_GetY113c(m, pPlayer) & 0xffff
+    const npcX = UNITS_GetX113c(m, pNpc) & 0xffff
+    const npcY = UNITS_GetY113c(m, pNpc) & 0xffff
+    if (Math.hypot(plrX - npcX, plrY - npcY) > NPC_TETHER_RANGE_SUBTILES_113C) return
+
+    const poolKey = `${this.areaId}:${npcId}:${isGamble ? 'gamble' : 'trade'}`
+    const pool = this.vendorStockByKey.get(poolKey)
+    if (pool === undefined) return
+    const poolIdx = pool.findIndex((e) => e.item.id === itemId)
+    if (poolIdx === -1) return
+    const vEntry = pool[poolIdx]!
+
+    const txCtx = this.buildTransactionCostContext(entry, npcClassId)
+    let cost = 0
+    try {
+      cost = computeTransactionCost113c(
+        this.itemDataToTransactionCostInput(entry, vEntry.item),
+        txCtx,
+        isGamble ? 2 : 0,
+      )
+    } catch {
+      return
+    }
+
+    const curGold = STATLIST_GetUnitStat113c(m, pPlayer, STAT_GOLD, 0) >>> 0
+    const curBank = STATLIST_GetUnitStat113c(m, pPlayer, STAT_GOLDBANK, 0) >>> 0
+    if (curGold + curBank < cost) {
+      this.queueServerEventToClient(entry, {
+        type: 'NpcTransaction',
+        flag: 0,
+        result: 0x0c,
+        itemId,
+        gold: curGold,
+      })
+      return
+    }
+
+    const tables = getEmbeddedDropTables()
+    let deliveredBaseItem: ItemData
+    if (isGamble && vEntry.sourceItem !== undefined) {
+      const clvl = Math.max(1, STATLIST_GetUnitStat113c(m, pPlayer, STAT_LEVEL, 0) | 0)
+      const revealed = finalizeDroppedItem113c(
+        resolveGambledItem({
+          mysteryItem: vEntry.sourceItem,
+          cLvl: clvl,
+          isExpansion: true,
+          tables,
+          rng: this.rng,
+          spawnedUniqueIds: this.spawnedUniqueIds,
+        }),
+      )
+      const rCode = (revealed.code ?? revealed.base.id).trim()
+      const baseMeta = this.tables.getItemBaseMeta(rCode)
+      deliveredBaseItem = domainItemToItemData113c(revealed, tables, {
+        unitId: this.allocUnitId(),
+        compactSave: Boolean(baseMeta?.compactSave) && revealed.base.kind === 'misc',
+      })
+    } else {
+      const newUnitId = vEntry.permStore ? this.allocUnitId() : vEntry.item.id
+      deliveredBaseItem = {
+        ...vEntry.item,
+        id: newUnitId,
+        itemId: newUnitId,
+      }
+    }
+
+    const codeLower = deliveredBaseItem.code.trim().toLowerCase()
+    const beltSlot =
+      BELT_POTION_CATALOG[codeLower] !== undefined
+        ? this.findAvailableBeltSlot(entry, codeLower)
+        : null
+    const sz = this.getItemGridSize(deliveredBaseItem)
+    const invSlot =
+      beltSlot === null ? this.findFreeContainerSlot(entry, 1, sz.width, sz.height) : null
+
+    if (beltSlot === null && invSlot === null) {
+      this.queueServerEventToClient(entry, {
+        type: 'NpcTransaction',
+        flag: 0,
+        result: 0x01,
+        itemId,
+        gold: curGold,
+      })
+      return
+    }
+
+    if (!this.spendPlayerGold(entry, cost)) return
+
+    if (!vEntry.permStore || isGamble) {
+      pool.splice(poolIdx, 1)
+      this.queueServerEventToClient(entry, {
+        type: 'UnitRemove',
+        unitType: UNIT_ITEM_113C,
+        id: itemId,
+        unitId: itemId,
+      })
+    }
+
+    const cleanFlags =
+      ((Number(deliveredBaseItem.rawFlags ?? deliveredBaseItem.flags ?? 0) |
+        ITEM_FLAG_IDENTIFIED_113C) &
+        ~ITEM_FLAG_DELETED_113C) >>>
+      0
+    const purchased: ItemData =
+      beltSlot !== null
+        ? {
+            ...deliveredBaseItem,
+            identified: true,
+            flags: cleanFlags,
+            rawFlags: cleanFlags,
+            location: 2,
+            container: 'belt',
+            storePage: 0,
+            storagePage: 0,
+            gridX: beltSlot,
+            gridY: 0,
+            x: beltSlot,
+            y: 0,
+            bodyLoc: 0,
+            equippedSlot: 0,
+            equipped: false,
+            ownerType: 0,
+            ownerId: entry.playerUnitId,
+          }
+        : {
+            ...deliveredBaseItem,
+            identified: true,
+            flags: cleanFlags,
+            rawFlags: cleanFlags,
+            location: 0,
+            container: 'inventory',
+            storePage: 1,
+            storagePage: 1,
+            gridX: invSlot!.x,
+            gridY: invSlot!.y,
+            x: invSlot!.x,
+            y: invSlot!.y,
+            bodyLoc: 0,
+            equippedSlot: 0,
+            equipped: false,
+            ownerType: 0,
+            ownerId: entry.playerUnitId,
+          }
+
+    entry.ownedItems.push(purchased)
+    this.queueServerEventToClient(entry, {
+      type: 'ItemEvent',
+      action: beltSlot !== null ? 'beltPut' : 'add',
+      itemId: purchased.id,
+      code: purchased.code,
+      x: purchased.gridX ?? 0,
+      y: purchased.gridY ?? 0,
+      container: beltSlot !== null ? 'belt' : 'inventory',
+      ownerId: entry.playerUnitId,
+      item: purchased,
+    })
+
+    const nextGold = STATLIST_GetUnitStat113c(m, pPlayer, STAT_GOLD, 0) >>> 0
+    this.queueServerEventToClient(entry, {
+      type: 'NpcTransaction',
+      flag: 0,
+      result: 0,
+      itemId: purchased.id,
+      gold: nextGold,
+    })
+  }
+
+  private handleC2SSellItem(
+    entry: InternalClientEntry113c,
+    npcId: number,
+    itemId: number,
+  ): void {
+    const m = this.m
+    const pPlayer = entry.pPlayer >>> 0
+    if (pPlayer === 0) return
+    if (entry.activeVendorNpcId !== npcId || entry.activeVendorMode !== 'trade') return
+
+    const pNpc = this.findUnitInActiveRoom(UNIT_MONSTER, npcId)
+    if (pNpc === 0) return
+    const npcClassId = m.get(pNpc, D2UnitStrc.dwClassId) >>> 0
+    const plrX = UNITS_GetX113c(m, pPlayer) & 0xffff
+    const plrY = UNITS_GetY113c(m, pPlayer) & 0xffff
+    const npcX = UNITS_GetX113c(m, pNpc) & 0xffff
+    const npcY = UNITS_GetY113c(m, pNpc) & 0xffff
+    if (Math.hypot(plrX - npcX, plrY - npcY) > NPC_TETHER_RANGE_SUBTILES_113C) return
+
+    const sold = entry.ownedItems.find(
+      (i) =>
+        i.id === itemId &&
+        (i.location === 4 ||
+          (i.location === 0 && ((i.storePage ?? i.storagePage ?? 1) || 1) === 1)),
+    )
+    if (sold === undefined) return
+
+    const tables = getEmbeddedDropTables()
+    const base = tables.getBase(sold.code.trim())
+    const codeLower = sold.code.trim().toLowerCase()
+    const rawFlags = Number(sold.rawFlags ?? sold.flags ?? 0)
+    const isUnsellable =
+      (base?.quest ?? 0) > 0 ||
+      base?.type?.trim().toLowerCase() === 'ques' ||
+      codeLower === 'box' ||
+      codeLower === 'play' ||
+      Boolean(sold.isEar) ||
+      (rawFlags & ITEM_FLAG_EAR_113C) !== 0
+    const curGold = STATLIST_GetUnitStat113c(m, pPlayer, STAT_GOLD, 0) >>> 0
+    if (isUnsellable) {
+      this.queueServerEventToClient(entry, {
+        type: 'NpcTransaction',
+        flag: 0,
+        result: 0x09,
+        itemId,
+        gold: curGold,
+      })
+      return
+    }
+
+    const txCtx = this.buildTransactionCostContext(entry, npcClassId)
+    let sellValue = 0
+    try {
+      sellValue = computeTransactionCost113c(
+        this.itemDataToTransactionCostInput(entry, sold),
+        txCtx,
+        1,
+      )
+    } catch {
+      return
+    }
+
+    if (!this.addPlayerGold(entry, sellValue)) {
+      this.queueServerEventToClient(entry, {
+        type: 'NpcTransaction',
+        flag: 0,
+        result: 0x0c,
+        itemId,
+        gold: curGold,
+      })
+      return
+    }
+
+    this.removeOwnedItemAndChildren(entry, itemId)
+    const delFlags = (rawFlags | ITEM_FLAG_DELETED_113C) >>> 0
+    this.queueServerEventToClient(entry, {
+      type: 'ItemEvent',
+      action: 'sell',
+      itemId: sold.id,
+      code: sold.code,
+      x: sold.gridX ?? 0,
+      y: sold.gridY ?? 0,
+      container: sold.location === 4 ? 'cursor' : 'inventory',
+      item: { ...sold, flags: delFlags, rawFlags: delFlags },
+    })
+
+    const nextGold = STATLIST_GetUnitStat113c(m, pPlayer, STAT_GOLD, 0) >>> 0
+    this.queueServerEventToClient(entry, {
+      type: 'NpcTransaction',
+      flag: 3,
+      result: 1,
+      itemId: sold.id,
+      gold: nextGold,
+    })
+  }
+
+  private handleC2SCainIdentifyAll(entry: InternalClientEntry113c, npcId: number): void {
+    const pNpc = this.findUnitInActiveRoom(UNIT_MONSTER, npcId)
+    if (pNpc === 0) return
+    const npcClassId = this.m.get(pNpc, D2UnitStrc.dwClassId) >>> 0
+    const desc = getTownNpcDescriptorByHcIdx(npcClassId)
+    if (desc === undefined || !desc.canIdentify) return
+
+    const targets: number[] = []
+    for (let i = 0; i < entry.ownedItems.length; i++) {
+      const it = entry.ownedItems[i]!
+      if (
+        !it.identified &&
+        (it.location === 1 ||
+          (it.location === 0 && ((it.storePage ?? it.storagePage ?? 1) || 1) === 1))
+      ) {
+        targets.push(i)
+      }
+    }
+    if (targets.length === 0) return
+
+    const freeIdentify = npcClassId === 146
+    if (!freeIdentify) {
+      if (!this.spendPlayerGold(entry, targets.length * 100)) return
+    }
+
+    for (let k = 0; k < targets.length; k++) {
+      const idx = targets[k]!
+      const prev = entry.ownedItems[idx]!
+      const idFlags =
+        (Number(prev.rawFlags ?? prev.flags ?? 0) | ITEM_FLAG_IDENTIFIED_113C) >>> 0
+      const updated: ItemData = {
+        ...prev,
+        identified: true,
+        flags: idFlags,
+        rawFlags: idFlags,
+      }
+      entry.ownedItems[idx] = updated
+      this.queueServerEventToClient(entry, {
+        type: 'ItemEvent',
+        action: 'identify',
+        itemId: updated.id,
+        code: updated.code,
+        x: updated.gridX ?? 0,
+        y: updated.gridY ?? 0,
+        container: updated.location === 1 ? 'equipment' : 'inventory',
+        ownerId: entry.playerUnitId,
+        item: updated,
+      })
+    }
+  }
+
+  private doesItemNeedRepair113c(item: ItemData): boolean {
+    if (item.ethereal || ((Number(item.rawFlags ?? item.flags ?? 0) & ITEM_FLAG_ETHEREAL_113C) !== 0)) {
+      return false
+    }
+    const maxDur = item.maxDurability ?? 0
+    if (maxDur <= 0) return false
+    const curDur = item.curDurability ?? item.durability ?? maxDur
+    return curDur < maxDur || Boolean(item.broken)
+  }
+
+  private handleC2SRepairItem(
+    entry: InternalClientEntry113c,
+    npcId: number,
+    singleItemId?: number,
+  ): void {
+    const m = this.m
+    const pPlayer = entry.pPlayer >>> 0
+    if (pPlayer === 0) return
+    const pNpc = this.findUnitInActiveRoom(UNIT_MONSTER, npcId)
+    if (pNpc === 0) return
+    const npcClassId = m.get(pNpc, D2UnitStrc.dwClassId) >>> 0
+    const desc = getTownNpcDescriptorByHcIdx(npcClassId)
+    if (desc === undefined || !desc.canRepair) return
+
+    const plrX = UNITS_GetX113c(m, pPlayer) & 0xffff
+    const plrY = UNITS_GetY113c(m, pPlayer) & 0xffff
+    const npcX = UNITS_GetX113c(m, pNpc) & 0xffff
+    const npcY = UNITS_GetY113c(m, pNpc) & 0xffff
+    if (Math.hypot(plrX - npcX, plrY - npcY) > NPC_TETHER_RANGE_SUBTILES_113C) return
+
+    const txCtx = this.buildTransactionCostContext(entry, npcClassId)
+    const targetIndices: number[] = []
+    let totalCost = 0
+
+    if (singleItemId === undefined) {
+      const slots: (TransactionCostInput | null)[] = new Array(13).fill(null)
+      for (let i = 0; i < entry.ownedItems.length; i++) {
+        const it = entry.ownedItems[i]!
+        if (it.location !== 1) continue
+        targetIndices.push(i)
+        const bLoc = it.bodyLoc ?? it.equippedSlot ?? 0
+        const txIn = this.itemDataToTransactionCostInput(entry, it)
+        if (bLoc > 0 && bLoc < 13) slots[bLoc] = txIn
+        else slots.push(txIn)
+      }
+      totalCost = computeRepairAllCost113c(slots, txCtx)
+    } else {
+      const idx = entry.ownedItems.findIndex((i) => i.id === singleItemId)
+      if (idx === -1) return
+      const it = entry.ownedItems[idx]!
+      if (!this.doesItemNeedRepair113c(it)) return
+      targetIndices.push(idx)
+      try {
+        totalCost = computeTransactionCost113c(
+          this.itemDataToTransactionCostInput(entry, it),
+          txCtx,
+          3,
+        )
+      } catch {
+        return
+      }
+    }
+
+    if (totalCost <= 0) return
+    if (!this.spendPlayerGold(entry, totalCost)) return
+
+    for (let k = 0; k < targetIndices.length; k++) {
+      const idx = targetIndices[k]!
+      const prev = entry.ownedItems[idx]!
+      if (!this.doesItemNeedRepair113c(prev)) continue
+      const maxDur = prev.maxDurability ?? 0
+      const cleanFlags =
+        (Number(prev.rawFlags ?? prev.flags ?? ITEM_FLAG_IDENTIFIED_113C) &
+          ~ITEM_FLAG_BROKEN_113C) >>>
+        0
+      const repaired: ItemData = {
+        ...prev,
+        durability: maxDur,
+        curDurability: maxDur,
+        broken: false,
+        flags: cleanFlags,
+        rawFlags: cleanFlags,
+      }
+      entry.ownedItems[idx] = repaired
+      const container =
+        repaired.location === 1
+          ? 'equipment'
+          : repaired.location === 4
+            ? 'cursor'
+            : (repaired.storePage ?? repaired.storagePage) === 5
+              ? 'stash'
+              : (repaired.storePage ?? repaired.storagePage) === 4
+                ? 'cube'
+                : 'inventory'
+      this.queueServerEventToClient(entry, {
+        type: 'ItemEvent',
+        action: 'repair',
+        itemId: repaired.id,
+        code: repaired.code,
+        x: repaired.gridX ?? 0,
+        y: repaired.gridY ?? 0,
+        container,
+        ownerId: entry.playerUnitId,
+        item: repaired,
+      })
+    }
+  }
+
+  private handleC2SClickButton(
+    entry: InternalClientEntry113c,
+    buttonId: number,
+    rawAmount: number,
+  ): void {
+    const m = this.m
+    const pPlayer = entry.pPlayer >>> 0
+    if (pPlayer === 0) return
+    const amount = Math.max(0, Math.floor(rawAmount))
+
+    if (buttonId === 0x12) {
+      entry.stashOpen = false
+      this.queueServerEventToClient(entry, {
+        type: 'Trade',
+        action: BUTTON_CLOSE_STASH_113C,
+      })
+      return
+    }
+    if (buttonId === 0x17) {
+      entry.cubeOpen = false
+      return
+    }
+    if (buttonId === 0x13) {
+      // WithdrawGold: stash -> inventory (`STAT_GOLDBANK` -> `STAT_GOLD`)
+      const clvl = Math.max(1, STATLIST_GetUnitStat113c(m, pPlayer, STAT_LEVEL, 0) | 0)
+      const curGold = STATLIST_GetUnitStat113c(m, pPlayer, STAT_GOLD, 0) >>> 0
+      const curBank = STATLIST_GetUnitStat113c(m, pPlayer, STAT_GOLDBANK, 0) >>> 0
+      if (amount <= 0 || amount > curBank) return
+      if (curGold + amount > getInventoryGoldLimit(clvl)) return
+      const nextGold = (curGold + amount) >>> 0
+      const nextBank = (curBank - amount) >>> 0
+      STATLIST_SetUnitStat113c(m, pPlayer, STAT_GOLD, nextGold | 0, 0)
+      STATLIST_SetUnitStat113c(m, pPlayer, STAT_GOLDBANK, nextBank | 0, 0)
+      this.sendPlayerStatUpdate(entry, STAT_GOLD, nextGold)
+      this.sendPlayerStatUpdate(entry, STAT_GOLDBANK, nextBank)
+      return
+    }
+    if (buttonId === 0x14) {
+      // DepositGold: inventory -> stash (`STAT_GOLD` -> `STAT_GOLDBANK`)
+      const clvl = Math.max(1, STATLIST_GetUnitStat113c(m, pPlayer, STAT_LEVEL, 0) | 0)
+      const curGold = STATLIST_GetUnitStat113c(m, pPlayer, STAT_GOLD, 0) >>> 0
+      const curBank = STATLIST_GetUnitStat113c(m, pPlayer, STAT_GOLDBANK, 0) >>> 0
+      if (amount <= 0 || amount > curGold) return
+      const deposit = Math.min(amount, Math.max(0, getStashGoldLimit(clvl) - curBank))
+      if (deposit <= 0) return
+      const nextGold = (curGold - deposit) >>> 0
+      const nextBank = (curBank + deposit) >>> 0
+      STATLIST_SetUnitStat113c(m, pPlayer, STAT_GOLD, nextGold | 0, 0)
+      STATLIST_SetUnitStat113c(m, pPlayer, STAT_GOLDBANK, nextBank | 0, 0)
+      this.sendPlayerStatUpdate(entry, STAT_GOLD, nextGold)
+      this.sendPlayerStatUpdate(entry, STAT_GOLDBANK, nextBank)
+      return
+    }
+    if (buttonId === 0x18) {
+      // Horadric Cube Transmute (`Cubemain.txt` via `executeCubeTransmute113c`)
+      const cubeItems = entry.ownedItems.filter(
+        (i) => i.location === 0 && (i.storePage ?? i.storagePage ?? 0) === 4,
+      )
+      if (cubeItems.length === 0) return
+      const clvl = Math.max(1, STATLIST_GetUnitStat113c(m, pPlayer, STAT_LEVEL, 0) | 0)
+      const classCode = CHARACTER_CLASS_CODES[entry.charClass] ?? 'sor'
+      const result = executeCubeTransmute113c({
+        cubeItems,
+        playerLevel: clvl,
+        playerClassCode: classCode,
+        difficulty: this.difficultyValue,
+        areaId: this.areaId,
+        isExpansion: true,
+        isLadder: true,
+        rng: this.rng,
+        allocateUnitId: () => this.allocUnitId(),
+        tables: getEmbeddedDropTables(),
+      })
+      if (!result.matched) return
+
+      for (let i = 0; i < result.consumedItemIds.length; i++) {
+        const cid = result.consumedItemIds[i]!
+        const removed = this.removeOwnedItemAndChildren(entry, cid)
+        if (removed !== null) {
+          const delFlags =
+            (Number(removed.item.rawFlags ?? removed.item.flags ?? ITEM_FLAG_IDENTIFIED_113C) |
+              ITEM_FLAG_DELETED_113C) >>>
+            0
+          this.queueServerEventToClient(entry, {
+            type: 'ItemEvent',
+            action: 'remove',
+            itemId: removed.item.id,
+            code: removed.item.code,
+            x: removed.item.gridX ?? 0,
+            y: removed.item.gridY ?? 0,
+            container: 'cube',
+            item: { ...removed.item, flags: delFlags, rawFlags: delFlags },
+          })
+        }
+      }
+      for (let i = 0; i < result.createdItems.length; i++) {
+        const createdEntry = result.createdItems[i]!
+        const createdItem = createdEntry.item
+        const sz = this.getItemGridSize(createdItem)
+        const slot = this.findFreeContainerSlot(entry, 4, sz.width, sz.height) ?? {
+          x: createdEntry.x,
+          y: createdEntry.y,
+        }
+        const placed: ItemData = {
+          ...createdItem,
+          location: 0,
+          container: 'cube',
+          storePage: 4,
+          storagePage: 4,
+          gridX: slot.x,
+          gridY: slot.y,
+          x: slot.x,
+          y: slot.y,
+          ownerType: 0,
+          ownerId: entry.playerUnitId,
+        }
+        entry.ownedItems.push(placed)
+        this.queueServerEventToClient(entry, {
+          type: 'ItemEvent',
+          action: 'add',
+          itemId: placed.id,
+          code: placed.code,
+          x: slot.x,
+          y: slot.y,
+          container: 'cube',
+          ownerId: entry.playerUnitId,
+          item: placed,
+        })
+      }
+    }
   }
 
   private broadcastPlayerMove0F(pPlayer: number, animMode: number): void {

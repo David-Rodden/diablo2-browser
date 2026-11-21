@@ -443,22 +443,25 @@ export function OBJECTS_SpawnRandomObjectInRoom113c(
 }
 
 /**
- * `@va D2Game:0x6FC4E7D0` (`OBJECTS_AllocInteractStrc`, `eax = pUnit`, `edx = pObjectsTxt`, `ecx = pMemPool`).
+ * `@va D2Game:0x6FC4E7D0` (`OBJECTS_AllocInteractStrc`, `edi = pGame`, returns 2x8-byte sentinel list head).
  */
 export function OBJECTS_AllocInteractStrc113c(
   m: Memory113c,
-  pUnit: number,
-  pObjectsTxt: number,
-): void {
+  pGame: number,
+  _pObjectsTxt = 0,
+): number {
   hitD2GameVa113c(0x6FC4E7D0)
-  if (pObjectsTxt === 0) return
-  if (m.u8((pObjectsTxt + 0x168) >>> 0) !== 1) return
-  const pObjData = pUnit !== 0 ? m.u32((pUnit + 0x14) >>> 0) : 0
-  if (pObjData === 0) return
-  if (m.u32((pObjData + 0x08) >>> 0) !== 0) return
-  const pInteract = m.alloc(0x88)
-  m.fill(pInteract, 0x88, 0)
-  m.setU32((pObjData + 0x08) >>> 0, pInteract >>> 0)
+  if (pGame !== 0) {
+    m.u32((pGame + 0x1c) >>> 0)
+  }
+  const pHead = m.alloc(0x08) >>> 0
+  m.setU32(pHead, 0)
+  m.setU32((pHead + 0x04) >>> 0, 0xffffffff)
+  const pTail = m.alloc(0x08) >>> 0
+  m.setU32(pTail, 0xffffffff)
+  m.setU32((pTail + 0x04) >>> 0, 0)
+  m.setU32(pHead, pTail)
+  return pHead
 }
 
 /**
@@ -890,7 +893,7 @@ export function OBJECTS_InitObjectUnit113c(
     }
   }
 
-  OBJECTS_AllocInteractStrc113c(m, pUnit, pObjectsTxt)
-  UNITS_SetField7C_113c(m, pUnit, m.u32((pUnit + 0x7c) >>> 0))
+  const pInteractList = OBJECTS_AllocInteractStrc113c(m, pGame, pObjectsTxt)
+  UNITS_SetField7C_113c(m, pUnit, pInteractList)
 }
 

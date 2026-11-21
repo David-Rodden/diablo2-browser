@@ -4,6 +4,7 @@
  */
 
 import { UNITS_GetPlayerData113c } from '../common/composit.ts'
+import { D2CommonAssertError } from '../common/inline-helpers.ts'
 import { imul32, mulDiv113c, sdiv32 } from '../common/int-math.ts'
 import { ITEMS_DecodeItemCompactBitstreamV96_113c } from '../common/inventory.ts'
 import {
@@ -280,11 +281,7 @@ import { AITARGET_ScanUnitsByModeTable113c } from './town-runtime-gap-113c.ts'
 import { hitD2GameVa113c } from '../va-trace-113c.ts'
 
 export type D2KernMemory113c = Memory113c
-export class D2CommonAssertError extends Error {
-  constructor(file: string, line = 0) {
-    super(file + ':' + line)
-  }
-}
+export { D2CommonAssertError }
 
 const K2_W7B1_STACK_BASE_VA_113C = 0x7fd80000
 let k2W7B1StackPtr = K2_W7B1_STACK_BASE_VA_113C
@@ -484,9 +481,22 @@ export function STORM_TSHashTableInsertOrCreateNode_6FC22090_113c(
     const pVtable = m.u32(tbl) >>> 0
     const pfnInternalNew = pVtable !== 0 ? m.u32((pVtable + 0x04) >>> 0) >>> 0 : 0
     if (pfnInternalNew !== 0) {
-      const allocBytes = Math.max(0x1d80, ((nExtraBytes >>> 0) + 0x40) >>> 0)
+      // Matches Storm TSHashTable<D2GameStrc>::InternalNew (0x6FAB2400 / d2host-113c.c):
+      // allocates `0x1DF4 + extraBytes`, zeroes it, and links `node + 0x04` into `pBucketHead`.
+      const allocBytes = (0x1df4 + (nExtraBytes >>> 0)) >>> 0
       pNode = m.alloc(allocBytes) >>> 0
       m.fill(pNode, allocBytes, 0)
+      const headAddr = (pBucketHead + 0x04) >>> 0
+      const prevPtr = m.u32(headAddr) >>> 0
+      const linkOff = i32(m, pBucketHead)
+      const prevNextField =
+        prevPtr === headAddr
+          ? ((pBucketHead + 0x08) >>> 0)
+          : ((prevPtr + linkOff + 4) >>> 0)
+      m.setU32((pNode + 0x04) >>> 0, prevPtr)
+      m.setU32((pNode + 0x08) >>> 0, m.u32(prevNextField) >>> 0)
+      m.setU32(prevNextField, pNode)
+      m.setU32(headAddr, pNode)
     }
   }
   const pLink =
@@ -1446,12 +1456,20 @@ function AURA_ForEachHostileTargetInRadius_6FCC0C70_113c(
     (mm, pAuraCtx, pTarget) => AURAS_ApplyRadialSkillDamageCallback_6FCC1210_113c(mm, pAuraCtx, pTarget),
   )
 }
+let lastW7B1AssertLine = 0
 function FOG_GetErrorLocation113c(_m: D2KernMemory113c, line: number): number {
+  lastW7B1AssertLine = line | 0
   return line | 0
 }
-function FOG_DisplayAssert113c(_m: D2KernMemory113c, _msgPtr: number, _loc: number): void {}
+function FOG_DisplayAssert113c(_m: D2KernMemory113c, _msgPtr: number, loc: number): void {
+  if (loc !== 0) {
+    lastW7B1AssertLine = loc | 0
+  }
+}
 function msvc_exit113c(_m: D2KernMemory113c, code: number): never {
-  throw new D2CommonAssertError("exit " + code)
+  const line = lastW7B1AssertLine
+  lastW7B1AssertLine = 0
+  throw new D2CommonAssertError('0x6fd19ff9', line !== 0 ? line : code)
 }
 function user32_wsprintfA113c(
   m: D2KernMemory113c,

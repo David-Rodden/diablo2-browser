@@ -361,7 +361,10 @@ describe('K2 Wave 3 Batch 3 (w3b3: 45 functions across 0x6FC533D0..0x6FC5FED0)',
     MISSILE_SetRemainingFrames113c(m, pMissile, 6)
     expect(w3b3.MISSILES_SrvDo17_RedemptionLifeHealOnFrame_6FC5FED0_113c(m, pGame, pMissile)).toBeTypeOf('number')
 
-    const fnKeys = Object.keys(w3b3).filter((k) => typeof (w3b3 as Record<string, unknown>)[k] === 'function')
+    // Count the 45 VA-bound functions (`*_6FC*`, excluding non-VA helper `registerK4QuestStatusFilterDispatcher113c`).
+    const fnKeys = Object.keys(w3b3).filter(
+      (k) => typeof (w3b3 as Record<string, unknown>)[k] === 'function' && k.includes('_6FC'),
+    )
     expect(fnKeys.length).toBe(45)
   })
 })

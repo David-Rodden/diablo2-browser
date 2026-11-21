@@ -499,7 +499,8 @@ describe('K2 Wave 4 Batch 4 (w4b4): 45 D2Game.dll functions', () => {
     m.setU32((pItem + 0x14) >>> 0, pItemData)
     m.setU32((pItem + 0x2c) >>> 0, pItemPath)
     m.setU32((pItemData + 0x18) >>> 0, 0x10)
-    expect(NET_SendPacket7D_SetItemFlags_6FCAADE0_113c(m, pPlayer, pItem, pClient, 0x04, 1)).toBe(1)
+    // D2Game.dll@0x6FCAA3E0 returns queued byte count (`nPacketSize`) on success.
+    expect(NET_SendPacket7D_SetItemFlags_6FCAADE0_113c(m, pPlayer, pItem, pClient, 0x04, 1)).toBe(18)
 
     // [33/45] 0x6FCAB0F0 NET_SendPacket9D_ItemActionOwned_6FCAB0F0_113c
     m.setU32((pItem + 0x04) >>> 0, 1)
@@ -512,51 +513,51 @@ describe('K2 Wave 4 Batch 4 (w4b4): 45 D2Game.dll functions', () => {
     m.setU8(pChatMsg, 0x26)
     m.setU8((pChatMsg + 0x0a) >>> 0, 0x41)
     m.setU8((pChatMsg + 0x1a) >>> 0, 0x48)
-    expect(NET_SendPacket26_ChatMessage_6FCAB470_113c(m, pChatMsg, pClient)).toBe(1)
+    expect(NET_SendPacket26_ChatMessage_6FCAB470_113c(m, pChatMsg, pClient)).toBe(14)
 
     // [35/45] 0x6FCAB750 NET_SendPacket96_WalkVerify_6FCAB750_113c
-    expect(NET_SendPacket96_WalkVerify_6FCAB750_113c(m, pClient, 100, 120, 140, 4, 8)).toBe(1)
+    expect(NET_SendPacket96_WalkVerify_6FCAB750_113c(m, pClient, 100, 120, 140, 4, 8)).toBe(9)
 
     // [36/45] 0x6FCAB7F0 NET_SendPacket95_LifeManaStamina_6FCAB7F0_113c
     expect(
       NET_SendPacket95_LifeManaStamina_6FCAB7F0_113c(m, pClient, 200, 150, 100, 500, 600, 0, 0),
-    ).toBe(1)
+    ).toBe(13)
 
     // [37/45] 0x6FCAB8C0 NET_SendPacket18_HpManaPot_6FCAB8C0_113c
     expect(
       NET_SendPacket18_HpManaPot_6FCAB8C0_113c(m, pClient, 250, 180, 120, 10, 5, 500, 600, 2, -2),
-    ).toBe(1)
+    ).toBe(15)
 
     // [38/45] 0x6FCABA90 NET_SendPacketA3_AuraTargetSkill_6FCABA90_113c
     expect(
       NET_SendPacketA3_AuraTargetSkill_6FCABA90_113c(m, 0, 98, pClient, 5, 1, 11, 0, 22, 510, 610),
-    ).toBe(1)
+    ).toBe(24)
 
     // [39/45] 0x6FCABB10 NET_SendPacketA0A1A2_StatDelta_6FCABB10_113c
-    expect(NET_SendPacketA0A1A2_StatDelta_6FCABB10_113c(m, pClient, 0, 10, 0, pPlayer)).toBe(1)
-    expect(NET_SendPacketA0A1A2_StatDelta_6FCABB10_113c(m, pClient, 0, 1000, 0, pPlayer)).toBe(1)
-    expect(NET_SendPacketA0A1A2_StatDelta_6FCABB10_113c(m, pClient, 0, 100000, 0, pPlayer)).toBe(1)
+    expect(NET_SendPacketA0A1A2_StatDelta_6FCABB10_113c(m, pClient, 0, 10, 0, pPlayer)).toBe(7)
+    expect(NET_SendPacketA0A1A2_StatDelta_6FCABB10_113c(m, pClient, 0, 1000, 0, pPlayer)).toBe(8)
+    expect(NET_SendPacketA0A1A2_StatDelta_6FCABB10_113c(m, pClient, 0, 100000, 0, pPlayer)).toBe(10)
 
     // [40/45] 0x6FCABC20 NET_SendPacket9E9FA0_StatValue_6FCABC20_113c
-    expect(NET_SendPacket9E9FA0_StatValue_6FCABC20_113c(m, 1, pPlayer, pClient, 20)).toBe(1)
-    expect(NET_SendPacket9E9FA0_StatValue_6FCABC20_113c(m, 1, pPlayer, pClient, 2000)).toBe(1)
-    expect(NET_SendPacket9E9FA0_StatValue_6FCABC20_113c(m, 1, pPlayer, pClient, 200000)).toBe(1)
+    expect(NET_SendPacket9E9FA0_StatValue_6FCABC20_113c(m, 1, pPlayer, pClient, 20)).toBe(7)
+    expect(NET_SendPacket9E9FA0_StatValue_6FCABC20_113c(m, 1, pPlayer, pClient, 2000)).toBe(8)
+    expect(NET_SendPacket9E9FA0_StatValue_6FCABC20_113c(m, 1, pPlayer, pClient, 200000)).toBe(10)
 
     // [41/45] 0x6FCABE10 NET_SendPacket19_1D1E1F_GoldUpdate_6FCABE10_113c
-    expect(NET_SendPacket19_1D1E1F_GoldUpdate_6FCABE10_113c(m, pClient, 50, 10)).toBe(1)
-    expect(NET_SendPacket19_1D1E1F_GoldUpdate_6FCABE10_113c(m, pClient, 50, 60)).toBe(1)
-    expect(NET_SendPacket19_1D1E1F_GoldUpdate_6FCABE10_113c(m, pClient, 5000, 10)).toBe(1)
-    expect(NET_SendPacket19_1D1E1F_GoldUpdate_6FCABE10_113c(m, pClient, 500000, 10)).toBe(1)
+    expect(NET_SendPacket19_1D1E1F_GoldUpdate_6FCABE10_113c(m, pClient, 50, 10)).toBe(2)
+    expect(NET_SendPacket19_1D1E1F_GoldUpdate_6FCABE10_113c(m, pClient, 50, 60)).toBe(3)
+    expect(NET_SendPacket19_1D1E1F_GoldUpdate_6FCABE10_113c(m, pClient, 5000, 10)).toBe(4)
+    expect(NET_SendPacket19_1D1E1F_GoldUpdate_6FCABE10_113c(m, pClient, 500000, 10)).toBe(6)
 
     // [42/45] 0x6FCAC280 NET_SendPacket13B_UnitCoordEvent_6FCAC280_113c
     expect(
       NET_SendPacket13B_UnitCoordEvent_6FCAC280_113c(m, 0, 0x15, 0x11223344, pClient, 1, 500, 600, 0, 1),
-    ).toBe(1)
+    ).toBe(13)
 
     // [43/45] 0x6FCAC420 NET_SendPacket8B_GameHandshake_6FCAC420_113c
     const pArenaCtrl = m.alloc(0x20)
     m.setU32((pGame + 0x1d28) >>> 0, pArenaCtrl)
-    expect(NET_SendPacket8B_GameHandshake_6FCAC420_113c(m, pGame, 0x8b, pClient)).toBe(1)
+    expect(NET_SendPacket8B_GameHandshake_6FCAC420_113c(m, pGame, 0x8b, pClient)).toBe(8)
 
     // [44/45] 0x6FCAC910 NET_CheckPartyMemberStatSyncDelta_6FCAC910_113c
     expect(NET_CheckPartyMemberStatSyncDelta_6FCAC910_113c(m, pPlayer, pPlayer, 100, 7)).toBe(0)

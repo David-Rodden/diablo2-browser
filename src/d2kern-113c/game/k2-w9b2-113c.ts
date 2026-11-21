@@ -266,7 +266,7 @@ export function ACT2Q1_InitQuestData_6FCE7B40_113c(
   m.setU32((pQuest + 0x10) >>> 0, 0x0d)
   m.setU32((pQuest + 0xf0) >>> 0, 0x6fce24a0)
   m.setU32((pQuest + 0xdc) >>> 0, 0x6fd23288)
-  const pState = (pPreallocatedState !== 0 ? pPreallocatedState : allocW9B2Stack(m, 0x14)) >>> 0
+  const pState = (pPreallocatedState !== 0 ? pPreallocatedState : m.alloc(0x14)) >>> 0
   m.setU32((pQuest + 0x18) >>> 0, pState)
   m.setU32((pQuest + 0xe0) >>> 0, 0x09)
   m.setU32((pQuest + 0xe8) >>> 0, 0)
@@ -308,7 +308,7 @@ export function ACT2Q4_InitQuestData_6FCE9400_113c(
   m.setU32((pQuest + 0xd4) >>> 0, 0x6fce3320)
   m.setU8((pQuest + 0x0a) >>> 0, 1)
   m.setU8((pQuest + 0x0c) >>> 0, 0)
-  const pState = (pPreallocatedState !== 0 ? pPreallocatedState : allocW9B2Stack(m, 0x48)) >>> 0
+  const pState = (pPreallocatedState !== 0 ? pPreallocatedState : m.alloc(0x48)) >>> 0
   m.setU32((pQuest + 0xe8) >>> 0, 0)
   m.setU16((pQuest + 0x9c) >>> 0, 0)
   m.setU32((pQuest + 0x18) >>> 0, pState)
@@ -548,12 +548,19 @@ export function ITEMS_UseOrEquipCursorItemOnMerc_6FCF05B0_113c(
  */
 export function ITEMS_PickupGroundItemToInventoryOrEquip_6FCF6E30_113c(
   m: SparseMemory113c,
-  dwItemGuid: number,
-  pGame: number,
-  pPlayer: number,
+  dwItemGuidArg: number,
+  pGameArg: number,
+  pPlayerArg: number,
   pOutErrorCode: number,
 ): number {
   hitD2GameVa113c(0x6FCF6E30)
+  const isGamePlayerGuidOrder =
+    (pPlayerArg >>> 0) < 0x10000 &&
+    (dwItemGuidArg >>> 0) >= 0x10000 &&
+    (pGameArg >>> 0) >= 0x10000
+  const dwItemGuid = isGamePlayerGuidOrder ? pPlayerArg : dwItemGuidArg
+  const pGame = isGamePlayerGuidOrder ? dwItemGuidArg : pGameArg
+  const pPlayer = isGamePlayerGuidOrder ? pGameArg : pPlayerArg
   if (pGame === 0) {
     throw new D2CommonAssertError('0x6fd19ff9', 0x77b)
   }
@@ -744,7 +751,7 @@ export function ACT3Q3_InitQuestData_6FD07CE0_113c(
   m.setU32((pQuest + 0xd4) >>> 0, 0x6fd049e0)
   m.setU32((pQuest + 0xc8) >>> 0, 0x6fd02ef0)
   m.setU32((pQuest + 0xb0) >>> 0, 0x6fd06190)
-  const pState = (pPreallocatedState !== 0 ? pPreallocatedState : allocW9B2Stack(m, 0xb0)) >>> 0
+  const pState = (pPreallocatedState !== 0 ? pPreallocatedState : m.alloc(0xb0)) >>> 0
   m.setU32((pQuest + 0x18) >>> 0, pState)
   for (let i = 0; i < 44; i++) {
     m.setU32((pState + i * 4) >>> 0, 0)
@@ -826,7 +833,7 @@ export function ACT3Q6_InitQuestData_6FD0A080_113c(
   m.setU32((pQuest + 0xe0) >>> 0, 0x16)
   m.setU8((pQuest + 0x0d) >>> 0, 6)
   m.setU32((pQuest + 0xec) >>> 0, 0x6fd028c0)
-  const pState = (pPreallocatedState !== 0 ? pPreallocatedState : allocW9B2Stack(m, 0x34)) >>> 0
+  const pState = (pPreallocatedState !== 0 ? pPreallocatedState : m.alloc(0x34)) >>> 0
   m.setU32((pQuest + 0x18) >>> 0, pState)
   for (let i = 0; i < 13; i++) {
     m.setU32((pState + i * 4) >>> 0, 0)

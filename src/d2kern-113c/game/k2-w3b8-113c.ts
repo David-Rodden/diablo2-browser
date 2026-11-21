@@ -853,7 +853,7 @@ function triggerMonsterSelfDeathMode0_113c(
     m.setU32((sp + 0x04) >>> 0, pUnit >>> 0)
     m.setU8((sp + 0x15) >>> 0, 0x64)
     hitD2GameVa113c(0x6FC95E10)
-    MONSTER_StartModeReal113c(m, pGame >>> 0, pUnit >>> 0, 0, 0, 0, 0)
+    MONSTER_StartModeReal113c(m, pGame >>> 0, pUnit >>> 0, 0, 0, 0, 0, 0x64, 1)
   } finally {
     k2W3B8StackPtr = (sp + 0x20) >>> 0
   }
@@ -1914,13 +1914,13 @@ export function AI_SubmergedOrStuckTransition_6FC9D550_113c(
         }
       }
       m.setU8((sp + 0x15) >>> 0, bAnimRate)
-      MONSTER_StartMode113c(m, pGame >>> 0, pUnit >>> 0, 0x0a, 0, 0, 0)
+      MONSTER_StartMode113c(m, pGame >>> 0, pUnit >>> 0, 0x0a, 0, 0, 0, bAnimRate, 1)
     } finally {
       k2W3B8StackPtr = (sp + 0x20) >>> 0
     }
     return
   }
-  AI_InitMonsterAiThinkFn113c(m, pUnit >>> 0)
+  AI_InitMonsterAiThinkFn113c(m, pUnit >>> 0, pGame >>> 0, pAiControl, m.u32(pAiControl) | 0)
   AI_Stall113c(m, pGame >>> 0, pUnit >>> 0, 1)
 }
 

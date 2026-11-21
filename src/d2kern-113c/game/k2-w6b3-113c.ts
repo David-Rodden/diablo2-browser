@@ -409,7 +409,7 @@ function transitionMonsterSpecialAiState6FCBD230(
   m.setU32(((pAiGeneral >>> 0) + 0x1c) >>> 0, 0)
   AIGENERAL_FlushAllAiCommands113c(m, pGame >>> 0, pMonster >>> 0)
   m.setU32(pAiGeneral >>> 0, effSpecAi >>> 0)
-  AI_InitMonsterAiThinkFn113c(m, pMonster >>> 0)
+  AI_InitMonsterAiThinkFn113c(m, pMonster >>> 0, pGame >>> 0, pAiGeneral >>> 0, effSpecAi)
 }
 
 function dispatchMonsterStartMode6FC95E10(
@@ -430,7 +430,8 @@ function dispatchMonsterStartMode6FC95E10(
   if (hooks !== undefined && hooks.world !== undefined) {
     return MONSTER_StartMode113c(hooks.world, pUnit, mode, pTarget, targetX, targetY) ? 1 : 0
   }
-  return MONSTER_StartModeMem113c(m, pGame >>> 0, pUnit, mode, pTarget, targetX, targetY) | 0
+  const pathTypeArg = m.u8((pModeArgs + 0x15) >>> 0)
+  return MONSTER_StartModeMem113c(m, pGame >>> 0, pUnit, mode, pTarget, targetX, targetY, pathTypeArg, bUpdateAnim | 0) | 0
 }
 
 function aiStall6FD122C0(

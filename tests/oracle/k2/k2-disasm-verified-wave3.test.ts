@@ -2007,7 +2007,8 @@ describe('[K2] D2Game 1.13c Disassembly-Verified Promotion Wave 3 (+169 VAs: Lan
       PLAYERSTATS_AllocateEnergyPoints_6FD0AE20_113c(m, 3, plr.pPlayer)
       expect(STATLIST_GetUnitStat113c(m, plr.pPlayer, 1, 0)).toBe(18)
 
-      expect(PARTY_SendRosterUpdateCallback_6FD0B070_113c(m, pGame, plrB.pPlayer, plr.pPlayer)).toBe(1)
+      // D2Game.dll@0x6FCAA3E0 returns queued byte count (13 for S2C 0x75 via 0x6FCAD120).
+      expect(PARTY_SendRosterUpdateCallback_6FD0B070_113c(m, pGame, plrB.pPlayer, plr.pPlayer)).toBe(13)
 
       // Save sections (0x6FD0B610..0x6FD0C1E0)
       for (let d = 0; d < 3; d++) {
@@ -2079,7 +2080,8 @@ describe('[K2] D2Game 1.13c Disassembly-Verified Promotion Wave 3 (+169 VAs: Lan
       PARTY_BroadcastPacket8CRelationFlags_6FD105B0_113c(m, plrB.pPlayer, plr.pPlayer, pGame)
       PARTY_SetOrClearRelationFlagAndBroadcast8C_6FD10640_113c(m, 0x08, plr.pPlayer, plrB.pPlayer, pGame, 1)
       expect(m.u32((pRelAB + 0x04) >>> 0)).toBe(0x09)
-      expect(NET_SendPacket5A_PartyRelationEvent_6FD10720_113c(m, 0x1234, plr.pClient, 3)).toBe(1)
+      // D2Game.dll@0x6FCAA3E0 returns nPacketSize (0x28 = 40 for S2C 0x5A), not 1.
+      expect(NET_SendPacket5A_PartyRelationEvent_6FD10720_113c(m, 0x1234, plr.pClient, 3)).toBe(40)
       PARTY_SyncMutualRelationState_6FD109E0_113c(m, plr.pPlayer, plrB.pPlayer)
       PARTY_InitPlayerRelationOnJoinCallback_6FD10B10_113c(m, pGame, plr.pPlayer, plrB.pPlayer)
       PLAYERLIST_RemoveRelationNodeCallback_6FD10040_113c(m, pGame, plr.pPlayer, plrB.pPlayer)

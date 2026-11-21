@@ -416,6 +416,14 @@ export class LocalLoopbackAdapter implements GameServerAdapter {
     return this.playerUnitId
   }
 
+  get mapSeed(): number {
+    return this.gameInstance.mapSeed
+  }
+
+  get tickCount(): number {
+    return this.gameInstance.tickCount
+  }
+
   get state(): 'loading' | 'ingame' | 'inGame' | 'closed' {
     return this.closed ? 'closed' : 'inGame'
   }
@@ -658,14 +666,14 @@ export class LocalLobbyProvider implements LobbyProvider {
   private selectedCharName: string | undefined
   private persistedPlayersX: number | undefined = undefined
   private lastAreaLevelSource: LocalAreaLevelSource | undefined = undefined
-  private backendMode: SinglePlayerBackendMode = 'legacy'
+  private backendMode: SinglePlayerBackendMode = 'd2kern-113c'
 
   getBackend(): SinglePlayerBackendMode {
     return this.backendMode
   }
 
   setBackend(mode: SinglePlayerBackendMode): void {
-    this.backendMode = mode === 'd2kern-113c' ? 'd2kern-113c' : 'legacy'
+    this.backendMode = mode === 'legacy' ? 'legacy' : 'd2kern-113c'
   }
 
   getPersistedPlayersX(): number | undefined {
@@ -681,8 +689,8 @@ export class LocalLobbyProvider implements LobbyProvider {
   }
 
   constructor(options: LocalLobbyProviderOptions = {}) {
-    if (options.backend === 'd2kern-113c') {
-      this.backendMode = 'd2kern-113c'
+    if (options.backend === 'legacy' || options.backend === 'd2kern-113c') {
+      this.backendMode = options.backend
     }
     const configuredSeed = options.defaultMapSeed ?? options.seed
     this.defaultMapSeed = configuredSeed !== undefined ? (configuredSeed >>> 0) || 1 : undefined
@@ -934,12 +942,15 @@ export class LocalLobbyProvider implements LobbyProvider {
     target: LobbyEnterGameTarget & { readonly backend: 'd2kern-113c' },
   ): Promise<LocalKernelD2gsAdapter113c>
   enterGame(
+    target: LobbyEnterGameTarget & { readonly backend: 'legacy' },
+  ): Promise<LocalLoopbackAdapter>
+  enterGame(
     target?:
       | { readonly mode: 'create'; readonly spec: GameCreateSpec }
       | { readonly mode: 'join'; readonly name: string; readonly password?: string | undefined }
       | { readonly mode: 'single'; readonly difficulty?: 0 | 1 | 2 | undefined }
       | LobbyEnterGameTarget,
-  ): Promise<LocalLoopbackAdapter>
+  ): Promise<LocalKernelD2gsAdapter113c | LocalLoopbackAdapter>
   async enterGame(
     target?:
       | { readonly mode: 'create'; readonly spec: GameCreateSpec }
@@ -1077,6 +1088,15 @@ export class LocalLobbyProvider implements LobbyProvider {
     },
   ): Promise<LocalKernelD2gsAdapter113c>
   enterSinglePlayerGame(
+    options: {
+      readonly backend: 'legacy'
+      readonly charName?: string | undefined
+      readonly difficulty?: 0 | 1 | 2 | undefined
+      readonly mapSeed?: number | undefined
+      readonly playersX?: number | undefined
+    },
+  ): Promise<LocalLoopbackAdapter>
+  enterSinglePlayerGame(
     charNameOrOptions?:
       | string
       | {
@@ -1086,7 +1106,7 @@ export class LocalLobbyProvider implements LobbyProvider {
           readonly mapSeed?: number | undefined
           readonly playersX?: number | undefined
         },
-  ): Promise<LocalLoopbackAdapter>
+  ): Promise<LocalKernelD2gsAdapter113c | LocalLoopbackAdapter>
   async enterSinglePlayerGame(
     charNameOrOptions?:
       | string
@@ -1246,11 +1266,16 @@ export function createLocalKernelSession113c(
 }
 
 export function createLocalLoopbackSession(
+  req: LocalServerSessionRequest & { readonly backend: 'legacy' },
+): LocalServerSessionHandle & { readonly gameAdapter: LocalLoopbackAdapter }
+export function createLocalLoopbackSession(
   req: LocalServerSessionRequest & { readonly backend: 'd2kern-113c' },
 ): LocalServerSessionHandle & { readonly gameAdapter: LocalKernelD2gsAdapter113c }
 export function createLocalLoopbackSession(
   req?: LocalServerSessionRequest,
-): LocalServerSessionHandle & { readonly gameAdapter: LocalLoopbackAdapter }
+): LocalServerSessionHandle & {
+  readonly gameAdapter: LocalKernelD2gsAdapter113c | LocalLoopbackAdapter
+}
 export function createLocalLoopbackSession(
   req: LocalServerSessionRequest = {},
 ): LocalServerSessionHandle & {
@@ -1260,9 +1285,9 @@ export function createLocalLoopbackSession(
   const effectiveBackend: SinglePlayerBackendMode =
     req.backend !== undefined
       ? req.backend
-      : lobby?.getBackend?.() === 'd2kern-113c'
-        ? 'd2kern-113c'
-        : 'legacy'
+      : lobby?.getBackend?.() === 'legacy'
+        ? 'legacy'
+        : 'd2kern-113c'
   if (effectiveBackend === 'd2kern-113c') {
     return createLocalKernelSession113c(req)
   }

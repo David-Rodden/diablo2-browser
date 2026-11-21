@@ -6,9 +6,13 @@ import { testCharacterSaves } from '../../tools/test-characters.ts'
 const CHARSI = 154
 
 async function atCharsi(name: string) {
-  const lobby = new LocalLobbyProvider({ seed: 937 })
+  const lobby = new LocalLobbyProvider({ seed: 937, backend: 'legacy' })
   await lobby.importCharacterD2s(testCharacterSaves().get(name)!)
-  const adapter: LocalLoopbackAdapter = await lobby.enterGame({ charName: name, difficulty: 0 })
+  const adapter: LocalLoopbackAdapter = await lobby.enterGame({
+    charName: name,
+    difficulty: 0,
+    backend: 'legacy',
+  })
   const events: ServerEvent[] = []
   adapter.onEvent((event) => events.push(event))
   const self = adapter.game.getPlayerState(adapter.playerUnitId)!

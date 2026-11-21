@@ -2123,6 +2123,8 @@ function invokeMonsterStartModeW3B5_113c(
   targetX: number,
   targetY: number,
   hooks?: K2W3B5Hooks113c,
+  pathTypeArg = 0,
+  bClearUsedSkill = 1,
 ): void {
   if (pGame === 0 || pMonster === 0) {
     return
@@ -2139,6 +2141,8 @@ function invokeMonsterStartModeW3B5_113c(
     pTarget >>> 0,
     targetX | 0,
     targetY | 0,
+    pathTypeArg | 0,
+    bClearUsedSkill | 0,
   )
 }
 
@@ -2984,7 +2988,7 @@ export function ACT5Q3_ThawFrozenAnyaMonster_6FC7DD00_113c(
 
   STATLIST_SetUnitStat113c(m, mon, 6, 0, 0)
   SKILLS_SetUsedSkillMemPort113c(m, mon, 0)
-  invokeMonsterStartModeW3B5_113c(m, m.u32((quest + 0x04) >>> 0), mon, 0x0c, 0, 0, 0, hooks)
+  invokeMonsterStartModeW3B5_113c(m, m.u32((quest + 0x04) >>> 0), mon, 0x0c, 0, 0, 0, hooks, 0x64, 1)
   UNITROOM_RefreshUnit113c(m, mon)
   m.setU32((mon + 0xc4) >>> 0, (m.u32((mon + 0xc4) >>> 0) | 1) >>> 0)
 }

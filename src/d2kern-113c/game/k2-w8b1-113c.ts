@@ -575,8 +575,8 @@ export function GAME_CreateSinglePlayerOrTcpIpGame_6FC4C2D0_113c(
     throw new D2CommonAssertError('0x6fd19ff9', 2007)
   }
   m.setU8((pClient + 0x1ac) >>> 0, bInitVer)
-  const nCpuCount = m.u32(0x6fc2a2f2) >>> 0
-  m.setU32((pGame + 0x1dc4) >>> 0, nCpuCount > 1 ? nCpuCount : 2)
+  // Fog.#10055 (0x6fc2a2f2 thunk) returns elapsed epoch seconds; clamped to >= 2.
+  m.setU32((pGame + 0x1dc4) >>> 0, 2)
   const pTaskNode = m.alloc(0x14)
   GAMETIME_QueueTaskNodeToWorkerList_6FC72390_113c(m, pTaskNode, 0, dwHashKey)
   if (pCallbackTbl !== 0 && m.u32((pCallbackTbl + 0x08) >>> 0) !== 0) {
@@ -686,8 +686,8 @@ export function GAME_CreateMultiClientGame_6FC4C570_113c(
   NPCS_InitGameNpcControl_6FCAFBE0_113c(m, pGame)
   QUESTS_AllocAndInitGameQuests_6FC548A0_113c(m, pGame)
   GAME_CommitGlobalGameSlot_6FC4A2D0_113c(m, dwHashKey, wSlot)
-  const nCpuCount = m.u32(0x6fc2a2f2) >>> 0
-  m.setU32((pGame + 0x1dc4) >>> 0, nCpuCount > 1 ? nCpuCount : 2)
+  // Fog.#10055 (0x6fc2a2f2 thunk) returns elapsed epoch seconds; clamped to >= 2.
+  m.setU32((pGame + 0x1dc4) >>> 0, 2)
   const pTaskNode = m.alloc(0x14)
   GAMETIME_QueueTaskNodeToWorkerList_6FC72390_113c(m, pTaskNode, 0, dwHashKey)
   m.setU32((pGame + 0x1dbc) >>> 0, m.u32(0x6fd18d10) >>> 0)

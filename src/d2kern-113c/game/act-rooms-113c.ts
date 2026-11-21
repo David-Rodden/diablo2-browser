@@ -929,9 +929,9 @@ export function ROOM_DeactivateMonsterInRoom113c(
   if (bKeepUnit !== 0) {
     isActive = 1
   } else if (uType === 0) {
-    if (animMode === 0 || animMode !== 0x11) isActive = 1
+    if (animMode === 0 || animMode === 0x11) isActive = 1
   } else if (uType === 1) {
-    if (animMode === 0 || animMode !== 0x0c) isActive = 1
+    if (animMode === 0 || animMode === 0x0c) isActive = 1
   } else {
     isActive = 1
   }

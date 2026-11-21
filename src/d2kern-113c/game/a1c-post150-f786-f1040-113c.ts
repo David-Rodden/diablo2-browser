@@ -666,6 +666,21 @@ export function SKILLS_ValidateSkillTargetAlignment113c(
   return 1;
 }
 
+export type SkillsSrvStDispatcherFn113c = (
+  m: Memory113c,
+  wSrvStFunc: number,
+  pGame: number,
+  pUnit: number,
+  nSkillId: number,
+  nSkillLevel: number,
+) => number;
+
+let defaultSkillsSrvStDispatcher113c: SkillsSrvStDispatcherFn113c | null = null;
+
+export function registerSkillsSrvStDispatcher113c(fn: SkillsSrvStDispatcherFn113c | null): void {
+  defaultSkillsSrvStDispatcher113c = fn;
+}
+
 // @va D2Game:0x6FCBFD00
 export function SKILLS_ExecuteSkillStart113c(
   m: Memory113c,
@@ -702,7 +717,7 @@ export function SKILLS_ExecuteSkillStart113c(
   if (bNoManaCost === 0 && SKILLS_CheckSkillManaAndCharges113c(m, pUnit) === 0) {
     return 0;
   }
-  if ((m.u8(pSkillsTxt + 0x06) & 0x20) === 0) {
+  if ((m.u8(pSkillsTxt + 0x05) & 0x01) === 0) {
     if (DUNGEON_CheckRoomIsTownMemPort113c(m, pRoom) !== 0) {
       return 0;
     }
@@ -747,6 +762,8 @@ export function SKILLS_ExecuteSkillStart113c(
       stResult = SKILLS_StartPlayerSkillAnimOrCast113c(m, pGame, pUnit, nSkillId, nSkillLevel);
     } else if (onSrvStFunc !== undefined) {
       stResult = onSrvStFunc(m, wSrvStFunc, pGame, pUnit, nSkillId, nSkillLevel);
+    } else if (defaultSkillsSrvStDispatcher113c !== null) {
+      stResult = defaultSkillsSrvStDispatcher113c(m, wSrvStFunc, pGame, pUnit, nSkillId, nSkillLevel);
     }
   }
   if (stResult === 0) {
@@ -832,7 +849,7 @@ export function SKILLS_StartUsedSkill113c(
       if (pTargetRoom === 0) {
         return 0;
       }
-      if ((m.u8(pSkillsTxt + 0x06) & 0x20) === 0) {
+      if ((m.u8(pSkillsTxt + 0x05) & 0x01) === 0) {
         if (DUNGEON_CheckRoomIsTownMemPort113c(m, pTargetRoom) !== 0) {
           return 0;
         }
@@ -1903,7 +1920,7 @@ export function SKILLS_ExecuteSkillDoFunc113c(
   if (pSkillsTxt === 0) {
     return 0;
   }
-  if ((m.u8(pSkillsTxt + 0x06) & 0x20) === 0) {
+  if ((m.u8(pSkillsTxt + 0x05) & 0x01) === 0) {
     if (DUNGEON_CheckRoomIsTownMemPort113c(m, pRoom) !== 0) {
       return 0;
     }

@@ -201,7 +201,8 @@ function monsterStartModeFromArgs113c(
   const pTarget = mem.u32((pModeArgs + 0x08) >>> 0) >>> 0;
   const tx = mem.u32((pModeArgs + 0x0c) >>> 0) | 0;
   const ty = mem.u32((pModeArgs + 0x10) >>> 0) | 0;
-  return MONSTER_StartMode113c(mem, pGame >>> 0, pUnit, mode, pTarget, tx, ty) | 0;
+  const pathTypeArg = mem.u8((pModeArgs + 0x15) >>> 0);
+  return MONSTER_StartMode113c(mem, pGame >>> 0, pUnit, mode, pTarget, tx, ty, pathTypeArg) | 0;
 }
 
 function setMonsterAiParamState113c(m: Memory113c, pUnit: number, nState: number): void {

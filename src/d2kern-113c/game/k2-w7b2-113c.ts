@@ -699,6 +699,7 @@ export function ACT1Q4_SendScrollOfInifussOrderPacket50_6FC847B0_113c(
   }
   const pPkt = allocScratch(0x20)
   try {
+    m.fill(pPkt, 0x20, 0)
     m.setU8(pPkt, 0x50)
     m.setU16((pPkt + 1) >>> 0, 4)
     for (let edx = 0; edx < 5; edx++) {

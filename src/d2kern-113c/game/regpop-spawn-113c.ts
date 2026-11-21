@@ -34,7 +34,10 @@ import {
   DUNGEON_GetRoomCoordinates113c,
   DUNGEON_IncreaseRoomPlayerCount113c,
 } from '../common/dungeon.ts'
-import { D2COMMON_SGPT_DATATABLES_VA_113C } from '../common/inline-helpers.ts'
+import {
+  D2COMMON_SGPT_DATATABLES_VA_113C,
+  D2CommonAssertError,
+} from '../common/inline-helpers.ts'
 import { mulDiv113c } from '../common/int-math.ts'
 import { INVENTORY_AllocInventory113c, INVENTORY_FreeInventory113c } from '../common/inventory.ts'
 import {
@@ -2906,7 +2909,7 @@ export function SUNIT_SetMonsterAlignmentState113c(
   if (pUnit === 0) return
   const align = nAlignment & 0xff
   if (align >= 3) {
-    throw new Error('SUNIT_SetMonsterAlignmentState113c: nAlignment >= 3 (line 0xbb3)')
+    throw new D2CommonAssertError('SUnit.cpp', 0xbb3)
   }
 
   const nClassId = m.u32((pUnit + 0x04) >>> 0) | 0
@@ -2926,15 +2929,17 @@ export function SUNIT_SetMonsterAlignmentState113c(
     pStatList =
       STATLIST_AllocList113c(
         m,
-        m.u32((pUnit + 0x08) >>> 0),
-        0,
         0,
         m.u32(pUnit),
         m.u32((pUnit + 0x0c) >>> 0),
+        0,
+        0,
       ) >>> 0
     if (pStatList === 0) {
-      throw new Error('SUNIT_SetMonsterAlignmentState113c: STATLIST_AllocList failed (line 0xbc5)')
+      throw new D2CommonAssertError('SUnit.cpp', 0xbc5)
     }
+    const pMemPool = m.u32((pUnit + 0x08) >>> 0) >>> 0
+    if (pMemPool !== 0) m.setU32(pStatList, pMemPool)
     STATLIST_SetState113c(m, pStatList, 0x69)
     STATLIST_MergeStatLists113c(m, pUnit, pStatList, 1)
     STATES_ToggleGfxStateFlag113c(m, pUnit, 0x69, 1)
@@ -2944,14 +2949,6 @@ export function SUNIT_SetMonsterAlignmentState113c(
 
   STATLIST_SetStat113c(m, pStatList, 0xac, align, 0)
   STATES_ClearGfxStateFlag113c(m, pUnit, 0x69, 1)
-
-  // Keep D2Common extended statlist alignment flags (+0x10 & 0x0700) in sync for UNIT_GetAlignment113c.
-  const pListEx = m.u32((pUnit + 0x5c) >>> 0) >>> 0
-  if (pListEx !== 0 && (m.u32((pListEx + 0x10) >>> 0) & 0x80000000) !== 0) {
-    const alignBit = align === 0 ? 0x0100 : align === 1 ? 0x0400 : 0x0200
-    const nextFlags = ((m.u32((pListEx + 0x10) >>> 0) & ~0x0700) | alignBit) >>> 0
-    m.setU32((pListEx + 0x10) >>> 0, nextFlags)
-  }
 
   MONSTER_UpdateMonsterRoomAllyCount113c(m, pUnit, align, oldAlign, bRefreshStats)
 }
@@ -3079,18 +3076,16 @@ export function SUNIT_PlaceServerUnitInRoom113c(
       break
     }
     case 4: {
-      UNITS_AllocStaticPath113c(m, pUnit)
       const itemMode = m.u32((pUnit + 0x10) >>> 0) | 0
-      if (itemMode === 3 || itemMode === 5) {
-        UNITS_InitStaticPathCoords113c(m, pUnit, pRoom, x, y)
-        if (itemMode === 3) {
-          UNITS_SetCollisionMaskAtCoords113c(m, pUnit, pRoom, x, y)
+      if (itemMode === 3) {
+        if (m.u32((pUnit + 0x2c) >>> 0) === 0) {
+          UNITS_AllocStaticPath113c(m, pUnit)
         }
+        UNITS_InitStaticPathCoords113c(m, pUnit, pRoom, x, y)
+        UNITS_SetCollisionMaskAtCoords113c(m, pUnit, pRoom, x, y)
         if (pRoom !== 0) {
           UNITROOM_AddUnitToRoom113c(m, pUnit, pRoom)
         }
-      } else {
-        UNITS_SetRoom113c(m, pUnit, pRoom)
       }
       break
     }
@@ -3106,7 +3101,9 @@ export function SUNIT_PlaceServerUnitInRoom113c(
   }
 
   SUNIT_InsertServerUnit113c(m, pGame, pUnit)
-  UNITROOM_RefreshUnit113c(m, pUnit)
+  if (UNITS_GetRoom113c(m, pUnit) !== 0) {
+    UNITROOM_RefreshUnit113c(m, pUnit)
+  }
   if (bNoActivate === 0) {
     UNITS_SetPathRoomRefreshFlag113c(m, pUnit, 1)
   }
@@ -3225,15 +3222,9 @@ export function MONSTER_GetDifficultyAndPlayerBonus113c(
     hasMonLvlTable = false
   }
   if (hasMonLvlTable) {
-    DATATBLS_GetMonLvlTxtRecord113c(m, nDiff)
-  }
-  const pIat = m.u32(D2GAME_IAT_SGPT_DATATABLES_VA_113C) >>> 0
-  const pTables = pIat !== 0 ? m.u32(pIat) >>> 0 : 0
-  if (pTables !== 0) {
-    const pDiffBase = m.u32((pTables + 0xbd8) >>> 0) >>> 0
-    const nDiffCount = m.u32((pTables + 0xbdc) >>> 0) >>> 0
-    if (pDiffBase !== 0 && (nDiffCount === 0 || nDiff < nDiffCount)) {
-      nSkillBonus = m.u32((pDiffBase + Math.imul(nDiff, 0x58) + 0x10) >>> 0) | 0
+    const pDiffRec = DATATBLS_GetMonLvlTxtRecord113c(m, nDiff) >>> 0
+    if (pDiffRec !== 0) {
+      nSkillBonus = m.u32((pDiffRec + 0x10) >>> 0) | 0
     }
   }
 
@@ -3366,7 +3357,7 @@ export function AI_InitMonsterAiThinkFn113c(
 ): number {
   hitD2GameVa113c(0x6FCBD230)
   if (pUnit !== 0 && STATES_CheckState113c(m, pUnit, 0x36) !== 0) {
-    throw new Error('AI_InitMonsterAiThinkFn113c: unit has STATE_UNINTERRUPTABLE 0x36 (line 0x1a6)')
+    throw new D2CommonAssertError('0x6fd19ff9', 0x1a6)
   }
   const pGame =
     pGameArg !== undefined ? pGameArg >>> 0 : pUnit !== 0 ? m.u32((pUnit + 0x80) >>> 0) >>> 0 : 0
@@ -3388,16 +3379,12 @@ export function AI_InitMonsterAiThinkFn113c(
     nAiIdx = 1
   }
 
-  const pAiCtrl = pMonData !== 0 ? m.u32((pMonData + 0x2c) >>> 0) >>> 0 : 0
   const curThink = m.u32((pAiGen + 0x04) >>> 0) >>> 0
   if (curThink !== 0) {
     const curRow = lookupAiDispatchEntry113c(m, pUnit, m.u32(pAiGen) | 0)
     if (curRow.valid && curThink === curRow.pfnThink && curRow.pfnAltThink !== 0) {
       m.setU32(pAiGen, nAiIdx >>> 0)
       m.setU32((pAiGen + 0x04) >>> 0, curRow.pfnAltThink >>> 0)
-      if (pAiCtrl !== 0) {
-        m.setU32((pAiCtrl + 0x04) >>> 0, curRow.pfnAltThink >>> 0)
-      }
       return 1
     }
   }
@@ -3430,9 +3417,6 @@ export function AI_InitMonsterAiThinkFn113c(
   const pfnThink = row.pfnThink !== 0 ? row.pfnThink >>> 0 : 0x6fcbcb00
   m.setU32(pAiGen, nAiIdx >>> 0)
   m.setU32((pAiGen + 0x04) >>> 0, pfnThink)
-  if (pAiCtrl !== 0) {
-    m.setU32((pAiCtrl + 0x04) >>> 0, pfnThink)
-  }
   return 1
 }
 
@@ -3907,23 +3891,21 @@ export function MONSTER_InitMonsterUnit113c(
   }
   m.setU32(pMonData, pMonStats >>> 0)
 
-  const pAiGen = m.alloc(0x44) >>> 0
-  m.fill(pAiGen, 0x44, 0)
+  const pAiGen = m.alloc(0x40) >>> 0
+  m.fill(pAiGen, 0x40, 0)
   m.setU32((pAiGen + 0x0c) >>> 0, 0xffffffff)
   m.setU32((pAiGen + 0x10) >>> 0, 1)
   m.setU32((pAiGen + 0x2c) >>> 0, 0xffffffff)
   m.setU32((pAiGen + 0x30) >>> 0, 1)
   m.setU32((pMonData + 0x28) >>> 0, pAiGen)
 
-  const pAiCtrl = m.alloc(0x34) >>> 0
-  m.fill(pAiCtrl, 0x34, 0)
+  const pAiCtrl = m.alloc(0x24) >>> 0
+  m.fill(pAiCtrl, 0x24, 0)
   m.setU32((pMonData + 0x2c) >>> 0, pAiCtrl)
 
   const pMonInteract = m.alloc(4) >>> 0
   m.setU32(pMonInteract, 0)
   m.setU32((pMonData + 0x30) >>> 0, pMonInteract)
-
-  m.setU16((pMonData + 0x18) >>> 0, m.u16((pMonStats + 0x06) >>> 0))
 
   m.setU32((pUnit + 0x10) >>> 0, nMode >>> 0)
   const pOutfit = MONREG_GetOrCreateActOutfit113c(m, (pGame + 0xf0) >>> 0, pRoom, pUnit)
@@ -4004,13 +3986,14 @@ export function SUNIT_AllocUnitData113c(
   m.setU32((pUnit + 0xc4) >>> 0, (m.u32((pUnit + 0xc4) >>> 0) | 0x10) >>> 0)
   m.setU32((pUnit + 0xd0) >>> 0, 0x0b)
 
-  if (pRoom !== 0 && m.u32((pRoom + 0x10) >>> 0) !== 0) {
-    const nLevelId = DUNGEON_GetLevelIdFromRoom113c(m, pRoom)
-    const nAct = DRLG_GetActNoFromLevelId113c(m, nLevelId) & 0xff
-    m.setU8((pUnit + 0x18) >>> 0, nAct)
-    m.setU32((pUnit + 0x1c) >>> 0, m.u32((pGame + 0xbc + nAct * 4) >>> 0))
-  }
-  m.setU32((pUnit + 0x84) >>> 0, pGame >>> 0)
+  // 0x6FD01E4E..0x6FD01E68: unconditionally derive actNo from pRoom (0 when pRoom == 0)
+  // and bind `pUnit->nAct (+0x18)` + `pUnit->pAct (+0x1C) = pGame->pAct[actNo]`.
+  const nLevelId = pRoom !== 0 && m.u32((pRoom + 0x10) >>> 0) !== 0
+    ? DUNGEON_GetLevelIdFromRoom113c(m, pRoom)
+    : 0
+  const nAct = DRLG_GetActNoFromLevelId113c(m, nLevelId) & 0xff
+  m.setU8((pUnit + 0x18) >>> 0, nAct)
+  m.setU32((pUnit + 0x1c) >>> 0, m.u32((pGame + 0xbc + nAct * 4) >>> 0))
 
   switch (nUnitType) {
     case 0:
