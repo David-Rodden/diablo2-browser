@@ -69,7 +69,104 @@ UNIT_IDS = {
     "firegolem": "ninf",
 }
 # Clip -> unitweapons.slk column holding its action point.
-ACTION_POINT_COLUMN = {"a1": "dmgpt1", "sc": "castpt"}
+ACTION_POINT_COLUMN = {"a1": "dmgpt1", "a2": "dmgpt1", "sc": "castpt"}
+
+# Skins this converter can build: Warcraft III team colour index plus the units of the pack.
+# A unit spec may carry `px` (scene pixels per model unit), `unit_id` (unitweapons.slk row) and
+# `phylactery` (the model dissolves on death and leaves Kel'Thuzad's phylactery behind); units
+# without them fall back to the per-key tables above.
+SKINS = {
+    "ne-kelthuzad": {
+        "team_color": 3,
+        "units": [dict(spec, phylactery=spec["key"] == "hero") for spec in mdx.UNIT_SPECS],
+    },
+    "so-jaina": {
+        "team_color": 1,
+        "units": [
+            {
+                "key": "hero",
+                "mdx": "units/human/jaina/jaina.mdx",
+                "btn": "replaceabletextures/commandbuttons/btnjaina.blp",
+                "px": 0.62,
+                "unit_id": "Hjai",
+                "extra_orb": None,
+            },
+        ],
+    },
+    "ai-maiev": {
+        "team_color": 2,
+        "units": [
+            {
+                "key": "hero",
+                "mdx": "units/nightelf/maiev/maiev.mdx",
+                "btn": "replaceabletextures/commandbuttons/btnwarden2.blp",
+                "px": 0.53,
+                "unit_id": "Ewrd",
+                "extra_orb": None,
+                "extra_clips": [("a2", ["Attack - 2"], False)],
+            },
+        ],
+    },
+    "ba-grom": {
+        "team_color": 0,
+        "units": [
+            {
+                "key": "hero",
+                "mdx": "units/orc/hellscream/hellscream.mdx",
+                "btn": "replaceabletextures/commandbuttons/btnhellscream.blp",
+                "px": 0.64,
+                "unit_id": "Ogrh",
+                "extra_orb": None,
+                # Grom has no spell animation: war cries use his victory roar.
+                "clip_sources": {"sc": ["Stand Victory"]},
+                "extra_clips": [("a2", ["Attack 2"], False)],
+            },
+        ],
+    },
+    "pa-arthas": {
+        "team_color": 1,
+        "units": [
+            {
+                "key": "hero",
+                "mdx": "units/human/arthas/arthas.mdx",
+                "btn": "replaceabletextures/commandbuttons/btnarthas.blp",
+                "px": 0.6,
+                "unit_id": "Hart",
+                "extra_orb": None,
+                "clip_sources": {"gh": ["Stand Hit"]},
+                "extra_clips": [("a2", ["Attack - 2"], False)],
+            },
+        ],
+    },
+    "dz-malfurion": {
+        "team_color": 6,
+        "units": [
+            {
+                "key": "hero",
+                "mdx": "units/nightelf/malfurion/malfurionnostag.mdx",
+                "btn": "replaceabletextures/commandbuttons/btnfurion.blp",
+                "px": 0.56,
+                "unit_id": "Emns",
+                "extra_orb": None,
+                "extra_clips": [("a2", ["Attack -2"], False)],
+            },
+        ],
+    },
+    "am-sylvanas": {
+        "team_color": 3,
+        "units": [
+            {
+                "key": "hero",
+                "mdx": "units/undead/evilsylvanas/evilsylvanas.mdx",
+                "btn": "replaceabletextures/commandbuttons/btnbansheeranger.blp",
+                "px": 0.7,
+                "unit_id": "Usyl",
+                "extra_orb": None,
+                "extra_clips": [("a2", ["Attack - 2"], False)],
+            },
+        ],
+    },
+}
 
 HERO_CLIPS = [
     ("nu", ["Stand", "Stand - 1"], True),
@@ -87,6 +184,24 @@ MINION_CLIPS = [
     ("gh", ["Stand Hit", "Stand Ready", "Stand - 2", "Stand 2", "Stand"], False),
     ("dt", ["Death"], False),
 ]
+
+def clip_defs_for(spec: dict) -> List[Tuple[str, List[str], bool]]:
+    """Clips to export for a unit: (Diablo II mode token, candidate source sequences, loop)."""
+    if spec["key"] != "hero":
+        return MINION_CLIPS
+    sources = spec.get("clip_sources") or {}
+    defs = [(key, sources.get(key, names), loop) for key, names, loop in HERO_CLIPS]
+    return defs + list(spec.get("extra_clips") or [])
+
+
+def find_clip_sequence(m: "mdx.MdxModel", unit_key: str, c_key: str, seq_names: List[str]) -> "mdx.MdxSequence":
+    """`mdx.find_sequence`, but a clip that matches none of its candidates is an error."""
+    seq = mdx.find_sequence(m, seq_names)
+    if not any(seq.name.lower().startswith(n.lower()) for n in seq_names):
+        raise SystemExit(f"{unit_key}: no source sequence for clip {c_key!r} among {seq_names} "
+                         f"(model has {[s.name for s in m.sequences]})")
+    return seq
+
 
 Channel = Tuple[List[float], List[List[float]], str]  # (times_ms relative, values, interpolation)
 
@@ -120,11 +235,13 @@ def read_slk_rows(path: str) -> Dict[str, Dict[str, str]]:
     return out
 
 
-def read_action_points(war3_root: str) -> Dict[str, Dict[str, float]]:
+def read_action_points(war3_root: str, specs: List[dict]) -> Dict[str, Dict[str, float]]:
     """`{unit key: {clip key: seconds}}` from the Warcraft III unit weapon table."""
     rows = read_slk_rows(os.path.join(war3_root, "units", "unitweapons.slk"))
     out: Dict[str, Dict[str, float]] = {}
-    for key, unit_id in UNIT_IDS.items():
+    for spec in specs:
+        key = spec["key"]
+        unit_id = spec.get("unit_id") or UNIT_IDS[key]
         row = rows.get(unit_id)
         if row is None:
             raise ValueError(f"unit id {unit_id!r} ({key}) missing from units/unitweapons.slk")
@@ -299,7 +416,7 @@ def build_unit_model(war3_root: str, spec: dict, tex_cache: mdx.BlpTextureCache)
             out.node_parents[idx_of[oid]] = idx_of[nd.parent_id]
 
     # ---- clips -------------------------------------------------------------
-    clip_defs = HERO_CLIPS if key == "hero" else MINION_CLIPS
+    clip_defs = clip_defs_for(spec)
     has_birth = any(s.name.lower().startswith("birth") for s in m.sequences)
     zero3 = np.zeros(3, dtype=np.float32)
     one3 = np.ones(3, dtype=np.float32)
@@ -307,10 +424,10 @@ def build_unit_model(war3_root: str, spec: dict, tex_cache: mdx.BlpTextureCache)
     clip_ranges: List[Tuple[Tuple[int, int], float]] = []
 
     for c_key, seq_names, loop in clip_defs:
-        seq = mdx.find_sequence(m, seq_names)
+        seq = find_clip_sequence(m, spec["key"], c_key, seq_names)
         rng = (seq.start_ms, seq.end_ms)
         end_ms = float(seq.end_ms)
-        if c_key == "dt" and key != "hero":
+        if c_key == "dt" and not spec.get("phylactery"):
             end_ms = mdx.find_visible_death_end_ms(m, seq)
         if c_key == "gh":
             end_ms = min(end_ms, seq.start_ms + HIT_CLIP_MS)
@@ -417,10 +534,16 @@ def build_unit_model(war3_root: str, spec: dict, tex_cache: mdx.BlpTextureCache)
         if not layers:
             continue
 
-        joints = np.zeros((len(geo.vertices), 4), dtype=np.uint16)
-        weights = np.zeros((len(geo.vertices), 4), dtype=np.float32)
+        # glTF carries four influences per JOINTS_n / WEIGHTS_n set; vertices bound to more than
+        # four bones get a second set instead of being truncated.
+        widest = max((len(grp) for grp in geo.matrix_groups), default=0)
+        if widest > 8:
+            raise ValueError(f"{key}: geoset {gi} binds a vertex to {widest} bones (at most 8 are supported)")
+        influences = 8 if widest > 4 else 4
+        joints = np.zeros((len(geo.vertices), influences), dtype=np.uint16)
+        weights = np.zeros((len(geo.vertices), influences), dtype=np.float32)
         for vi, grp_idx in enumerate(geo.vertex_groups):
-            grp = [idx_of[b] for b in geo.matrix_groups[grp_idx] if b in idx_of][:4]
+            grp = [idx_of[b] for b in geo.matrix_groups[grp_idx] if b in idx_of]
             if not grp:
                 raise ValueError(f"{key}: geoset {gi} vertex {vi} has no bones")
             for k, b in enumerate(grp):
@@ -445,7 +568,7 @@ def build_unit_model(war3_root: str, spec: dict, tex_cache: mdx.BlpTextureCache)
         clip.geoset_color = {geoset_remap[g]: c for g, c in clip.geoset_color.items() if g in geoset_remap}
         clip.layer_alpha = {(-(g) - 1, l): c for (g, l), c in clip.layer_alpha.items() if g < 0}
 
-    if key == "hero":
+    if spec.get("phylactery"):
         add_phylactery(out)
     if spec.get("extra_orb"):
         add_element_orb(out, spec["extra_orb"])
@@ -627,9 +750,12 @@ def write_glb(model: UnitModel, path: str) -> None:
             "POSITION": b.accessor(geo.positions, F, "VEC3", 34962, minmax=True),
             "NORMAL": b.accessor(geo.normals, F, "VEC3", 34962),
             "TEXCOORD_0": b.accessor(geo.uvs, F, "VEC2", 34962),
-            "JOINTS_0": b.accessor(geo.joints, U16, "VEC4", 34962),
-            "WEIGHTS_0": b.accessor(geo.weights, F, "VEC4", 34962),
+            "JOINTS_0": b.accessor(geo.joints[:, :4], U16, "VEC4", 34962),
+            "WEIGHTS_0": b.accessor(geo.weights[:, :4], F, "VEC4", 34962),
         }
+        if geo.joints.shape[1] > 4:
+            attrs["JOINTS_1"] = b.accessor(geo.joints[:, 4:8], U16, "VEC4", 34962)
+            attrs["WEIGHTS_1"] = b.accessor(geo.weights[:, 4:8], F, "VEC4", 34962)
         idx = b.accessor(geo.indices, U16, "SCALAR", 34963)
         for li, layer in enumerate(geo.layers):
             pbr = {"baseColorFactor": [float(layer.color[0]), float(layer.color[1]), float(layer.color[2]), float(layer.alpha)],
@@ -789,9 +915,12 @@ def glb_skinned_positions(gltf: dict, blob: bytes, clip_name: str, t_ms: float, 
     pos = read_accessor(gltf, blob, prim["attributes"]["POSITION"]).astype(np.float64)
     jn = read_accessor(gltf, blob, prim["attributes"]["JOINTS_0"])
     wt = read_accessor(gltf, blob, prim["attributes"]["WEIGHTS_0"]).astype(np.float64)
+    if "JOINTS_1" in prim["attributes"]:
+        jn = np.concatenate([jn, read_accessor(gltf, blob, prim["attributes"]["JOINTS_1"])], axis=1)
+        wt = np.concatenate([wt, read_accessor(gltf, blob, prim["attributes"]["WEIGHTS_1"]).astype(np.float64)], axis=1)
     homo = np.concatenate([pos, np.ones((len(pos), 1))], axis=1)
     out = np.zeros((len(pos), 3))
-    for k in range(4):
+    for k in range(jn.shape[1]):
         out += wt[:, k:k + 1] * np.einsum("vij,vj->vi", mats[jn[:, k]], homo)[:, :3]
     return out
 
@@ -800,12 +929,12 @@ def verify_unit(war3_root: str, spec: dict, glb_path: str) -> float:
     """Max position error between GLB playback and direct MDX skinning over all clips."""
     m = mdx.load_mdx_model(os.path.join(war3_root, spec["mdx"]))
     gltf, blob = read_glb(glb_path)
-    clip_defs = HERO_CLIPS if spec["key"] == "hero" else MINION_CLIPS
+    clip_defs = clip_defs_for(spec)
     has_birth = any(s.name.lower().startswith("birth") for s in m.sequences)
     prims = gltf["meshes"][0]["primitives"]
     worst = 0.0
     for c_key, seq_names, _loop in clip_defs:
-        seq = mdx.find_sequence(m, seq_names)
+        seq = find_clip_sequence(m, spec["key"], c_key, seq_names)
         anim = next(a for a in gltf["animations"] if a["name"] == c_key)
         dur = anim["extras"]["durationMs"]
         for frac in (0.0, 0.137, 0.31, 0.5, 0.73, 0.91, 1.0):
@@ -871,11 +1000,11 @@ def compute_unit_box(war3_root: str, spec: dict, px: float) -> dict:
     key = spec["key"]
     m = mdx.load_mdx_model(os.path.join(war3_root, spec["mdx"]))
     reach, z_lo, z_hi = 1.0, 0.0, 1.0
-    for c_key, seq_names, _loop in (HERO_CLIPS if key == "hero" else MINION_CLIPS):
-        seq = mdx.find_sequence(m, seq_names)
+    for c_key, seq_names, _loop in clip_defs_for(spec):
+        seq = find_clip_sequence(m, spec["key"], c_key, seq_names)
         rng = (seq.start_ms, seq.end_ms)
         end_ms = float(seq.end_ms)
-        if c_key == "dt" and key != "hero":
+        if c_key == "dt" and not spec.get("phylactery"):
             end_ms = mdx.find_visible_death_end_ms(m, seq)
         if c_key == "gh":
             end_ms = min(end_ms, seq.start_ms + HIT_CLIP_MS)
@@ -907,7 +1036,7 @@ def compute_unit_box(war3_root: str, spec: dict, px: float) -> dict:
                 z_lo = min(z_lo, float(pts[:, 2].min()))
                 z_hi = max(z_hi, float(pts[:, 2].max()))
     reach += HIT_RECOIL_UNITS
-    if key == "hero":
+    if spec.get("phylactery"):
         z_hi = max(z_hi, 36.0 + 4.0 + 21.0)  # hovering phylactery
     half_w = min(BOX_MAX_PX / 2, math.ceil(reach * px) + BOX_MARGIN_PX)
     above = min(BOX_MAX_PX * 0.75, math.ceil((reach * SIN_PITCH + z_hi * COS_PITCH) * px) + BOX_MARGIN_PX)
@@ -927,12 +1056,15 @@ def clip_meta(clip: Clip, action_seconds: Optional[float]) -> dict:
     return meta
 
 
-def convert_all(war3_root: str, out_dir: str, verify: bool) -> None:
+def convert_all(war3_root: str, out_dir: str, verify: bool, skin: str) -> None:
+    if skin not in SKINS:
+        raise SystemExit(f"unknown skin {skin!r} (known: {', '.join(sorted(SKINS))})")
     os.makedirs(out_dir, exist_ok=True)
-    tex_cache = mdx.BlpTextureCache(war3_root, team_color_index=3)
-    action_points = read_action_points(war3_root)
+    specs = SKINS[skin]["units"]
+    tex_cache = mdx.BlpTextureCache(war3_root, team_color_index=SKINS[skin]["team_color"])
+    action_points = read_action_points(war3_root, specs)
     units = {}
-    for spec in mdx.UNIT_SPECS:
+    for spec in specs:
         key = spec["key"]
         model = build_unit_model(war3_root, spec, tex_cache)
         glb_name = f"{key}.glb"
@@ -941,7 +1073,7 @@ def convert_all(war3_root: str, out_dir: str, verify: bool) -> None:
         portrait_name = f"portrait-{key}.png"
         with open(os.path.join(out_dir, portrait_name), "wb") as f:
             f.write(png_bytes(mdx.build_portrait_from_btn(tex_cache, spec["btn"], (92, 82))))
-        px = UNIT_PX_PER_UNIT[key]
+        px = spec.get("px") or UNIT_PX_PER_UNIT[key]
         units[key] = {
             "glb": glb_name,
             "portrait": portrait_name,
@@ -960,7 +1092,7 @@ def convert_all(war3_root: str, out_dir: str, verify: bool) -> None:
         print(msg)
     with open(os.path.join(out_dir, "preview.png"), "wb") as f:
         f.write(png_bytes(mdx.build_portrait_from_btn(
-            tex_cache, "replaceabletextures/commandbuttons/btnherolich.blp", (128, 128))))
+            tex_cache, next(sp["btn"] for sp in specs if sp["key"] == "hero"), (128, 128))))
     with open(os.path.join(out_dir, "units.json"), "w", encoding="utf-8") as f:
         json.dump({"preview": "preview.png", "units": units}, f, indent=1)
 
@@ -971,8 +1103,9 @@ def main() -> None:
         "WAR3_MPQ_DIR", os.path.join(os.path.expanduser("~"), "d2-data", "war3-mpq")))
     ap.add_argument("--out-dir", required=True)
     ap.add_argument("--verify", action="store_true")
+    ap.add_argument("--skin", default="ne-kelthuzad", choices=sorted(SKINS))
     args = ap.parse_args()
-    convert_all(args.war3_dir, args.out_dir, args.verify)
+    convert_all(args.war3_dir, args.out_dir, args.verify, args.skin)
 
 
 if __name__ == "__main__":

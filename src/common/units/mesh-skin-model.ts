@@ -35,9 +35,11 @@ export interface MeshSkinGeoset {
   readonly positions: Float32Array
   readonly normals: Float32Array
   readonly uvs: Float32Array
-  /** Four joint indices per vertex. */
+  /** Joint influences per vertex: 4, or 8 when the model carries a second JOINTS/WEIGHTS set. */
+  readonly influences: number
+  /** `influences` joint indices per vertex. */
   readonly joints: Uint16Array
-  /** Four weights per vertex. */
+  /** `influences` weights per vertex. */
   readonly weights: Float32Array
   readonly indices: Uint16Array
   readonly alpha: number
@@ -247,12 +249,35 @@ export function parseMeshSkinModel(bytes: Uint8Array): MeshSkinModel {
       const vertexCount = positions.length / 3
       const normals = readGlbFloatAccessor(glb, finiteNumber(attrs.NORMAL, 'NORMAL'), 'VEC3')
       const uvs = readGlbFloatAccessor(glb, finiteNumber(attrs.TEXCOORD_0, 'TEXCOORD_0'), 'VEC2')
-      const jointIdx = readGlbUintAccessor(glb, finiteNumber(attrs.JOINTS_0, 'JOINTS_0'), 'VEC4')
-      const weights = readGlbFloatAccessor(glb, finiteNumber(attrs.WEIGHTS_0, 'WEIGHTS_0'), 'VEC4')
+      let jointIdx = readGlbUintAccessor(glb, finiteNumber(attrs.JOINTS_0, 'JOINTS_0'), 'VEC4')
+      let weights = readGlbFloatAccessor(glb, finiteNumber(attrs.WEIGHTS_0, 'WEIGHTS_0'), 'VEC4')
+      let influences = 4
+      if (attrs.JOINTS_1 !== undefined || attrs.WEIGHTS_1 !== undefined) {
+        const joints1 = readGlbUintAccessor(glb, finiteNumber(attrs.JOINTS_1, 'JOINTS_1'), 'VEC4')
+        const weights1 = readGlbFloatAccessor(glb, finiteNumber(attrs.WEIGHTS_1, 'WEIGHTS_1'), 'VEC4')
+        if (
+          jointIdx.length !== vertexCount * 4 || weights.length !== vertexCount * 4 ||
+          joints1.length !== vertexCount * 4 || weights1.length !== vertexCount * 4
+        ) {
+          throw new Error(`Invalid mesh skin GLB: geoset ${String(gi)} has mismatched vertex attribute counts`)
+        }
+        influences = 8
+        const mergedJoints = new Uint16Array(vertexCount * 8)
+        const mergedWeights = new Float32Array(vertexCount * 8)
+        for (let v = 0; v < vertexCount; v += 1) {
+          mergedJoints.set(jointIdx.subarray(v * 4, v * 4 + 4), v * 8)
+          mergedJoints.set(joints1.subarray(v * 4, v * 4 + 4), v * 8 + 4)
+          mergedWeights.set(weights.subarray(v * 4, v * 4 + 4), v * 8)
+          mergedWeights.set(weights1.subarray(v * 4, v * 4 + 4), v * 8 + 4)
+        }
+        jointIdx = mergedJoints
+        weights = mergedWeights
+      }
       const indices = readGlbUintAccessor(glb, finiteNumber(prim.indices, 'primitive.indices'), 'SCALAR')
       if (
         normals.length !== vertexCount * 3 || uvs.length !== vertexCount * 2 ||
-        jointIdx.length !== vertexCount * 4 || weights.length !== vertexCount * 4 || indices.length % 3 !== 0
+        jointIdx.length !== vertexCount * influences || weights.length !== vertexCount * influences ||
+        indices.length % 3 !== 0
       ) {
         throw new Error(`Invalid mesh skin GLB: geoset ${String(gi)} has mismatched vertex attribute counts`)
       }
@@ -268,6 +293,7 @@ export function parseMeshSkinModel(bytes: Uint8Array): MeshSkinModel {
           positions,
           normals,
           uvs,
+          influences,
           joints: jointIdx,
           weights,
           indices,
@@ -633,16 +659,16 @@ export function computeMeshSkinJointMatrices(
 
 /** Skin one geoset on the CPU into interleaved `[x, y, z, nx, ny, nz, u, v]` vertices. */
 export function skinMeshSkinGeoset(geoset: MeshSkinGeoset, jointMatrices: Float32Array, out: Float32Array): void {
-  const { positions, normals, uvs, joints, weights } = geoset
+  const { positions, normals, uvs, joints, weights, influences } = geoset
   const count = positions.length / 3
   for (let v = 0; v < count; v += 1) {
     const px = positions[v * 3]!, py = positions[v * 3 + 1]!, pz = positions[v * 3 + 2]!
     const nx = normals[v * 3]!, ny = normals[v * 3 + 1]!, nz = normals[v * 3 + 2]!
     let ox = 0, oy = 0, oz = 0, onx = 0, ony = 0, onz = 0
-    for (let k = 0; k < 4; k += 1) {
-      const wgt = weights[v * 4 + k]!
+    for (let k = 0; k < influences; k += 1) {
+      const wgt = weights[v * influences + k]!
       if (wgt === 0) continue
-      const m = joints[v * 4 + k]! * 12
+      const m = joints[v * influences + k]! * 12
       const m0 = jointMatrices[m]!, m1 = jointMatrices[m + 1]!, m2 = jointMatrices[m + 2]!
       const m4 = jointMatrices[m + 4]!, m5 = jointMatrices[m + 5]!, m6 = jointMatrices[m + 6]!
       const m8 = jointMatrices[m + 8]!, m9 = jointMatrices[m + 9]!, m10 = jointMatrices[m + 10]!

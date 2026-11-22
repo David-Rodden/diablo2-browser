@@ -486,7 +486,7 @@ export function AI_FindNearestPlayerTarget113c(
 
     const bestPlayer = mem.u32(sp) >>> 0;
     if (bestPlayer === 0) {
-      return 0;
+      return pUnit >>> 0;
     }
     const bestDist = mem.u32((sp + 0x04) >>> 0) | 0;
     if (bestDist < 4 && pOutClose !== 0) {
@@ -1221,10 +1221,10 @@ export function AI_TownNpcMem113c(
         sp,
         (sp + 0x04) >>> 0,
       );
-      if (mem.u32(sp) !== 0) {
+      if (mem.u32((sp + 0x04) >>> 0) !== 0) {
         AI_Stall113c(mem, pGame >>> 0, pUnit >>> 0, 0x14);
       }
-      if (mem.u32((sp + 0x04) >>> 0) === 0) {
+      if (mem.u32(sp) === 0) {
         return;
       }
       if (ACT2Q4_ActivateHorazonJournal_6FCE1F90_113c(mem, pGame >>> 0) !== 0) {

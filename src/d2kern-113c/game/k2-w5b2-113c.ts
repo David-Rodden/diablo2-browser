@@ -3065,10 +3065,10 @@ function petsSendPetOrMercAssignPacket_6FCB66E0(
 
   return NET_SendPacket81_AssignMerc_6FCAB220_113c(
     m,
-    m.u32((pPetNode + 0x04) >>> 0) >>> 0,
+    m.u32(pPetNode >>> 0) >>> 0,
     pClient,
     m.u32((pPetNode + 0x0c) >>> 0) & 0xff,
-    m.u32(pPetNode >>> 0) >>> 0,
+    m.u32((pPetNode + 0x04) >>> 0) >>> 0,
     m.u16((pPetNode + 0x08) >>> 0),
     dwSeed,
     dwWParam,

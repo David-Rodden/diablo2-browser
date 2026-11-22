@@ -3923,7 +3923,7 @@ export function UNITS_UpdateAnimFrame113c(m: Memory113c, pUnit: number): number 
 
   if (outType === 1) {
     if (prevType === 0 && UNITS_IsShapeshifted113c(m, edi) !== 0 && (outMode === 0x0d || outMode === 0x0f)) {
-      UNITS_ApplyRunWalkStatListInline113c(m, outClass, edi)
+      UNITS_ApplyRunWalkStatListInline113c(m, rawClass, edi)
     }
     if (outMode === 0x0e) {
       UNITS_InitSkillAnimSequence113c(m, edi)

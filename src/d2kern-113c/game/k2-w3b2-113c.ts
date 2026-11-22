@@ -1319,12 +1319,15 @@ export function ITEMS_SaveItemToNodeAndFree_6FC403D0_113c(
 
   if (ppOutNode !== 0) {
     m.setU32(ppOutNode >>> 0, pSaved)
-  } else if (pInactiveHolder !== 0) {
-    const pOldHead = m.u32((pInactiveHolder + 0x08) >>> 0) >>> 0
-    m.setU32(pSaved, pOldHead)
-    m.setU32((pInactiveHolder + 0x08) >>> 0, pSaved)
+    return ppOutNode >>> 0
   }
-  return pSaved
+  const holder = pInactiveHolder >>> 0
+  if (holder !== 0) {
+    const pOldHead = m.u32((holder + 0x08) >>> 0) >>> 0
+    m.setU32(pSaved, pOldHead)
+    m.setU32((holder + 0x08) >>> 0, pSaved)
+  }
+  return holder
 }
 
 /**

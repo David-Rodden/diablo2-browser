@@ -338,7 +338,10 @@ function createWave5World(nDifficulty = 0) {
   const pStatesTxt = m.alloc(200 * 0x40)
   m.setU32(pDataTables + 0xbbc, pStatesTxt)
   m.setU32(pDataTables + 0xbc0, 200)
-  m.setU32(pDataTables + 0x150, m.alloc(32))
+  const pZeroStateMask = m.alloc(32)
+  for (let off = 0xc8; off <= 0x168; off += 4) {
+    m.setU32(pDataTables + off, pZeroStateMask)
+  }
 
   const pCharStatsTxt = m.alloc(7 * 0xc4)
   m.setU32(pDataTables + 0xbc4, pCharStatsTxt)
@@ -753,9 +756,10 @@ describe('K2 Wave 5 Disassembly-Verified Differential Suite (+160 D2Game VAs)', 
     m.setU16(pItemData + 0x02, 0x60)
     m.setU32(pItemData + 0x18, 0x200000)
     const pHolder = m.alloc(0x20)
-    const pSavedNode = ITEMS_SaveItemToNodeAndFree_6FC403D0_113c(m, pGame, pItem, pHolder)
+    const pRetHolder = ITEMS_SaveItemToNodeAndFree_6FC403D0_113c(m, pGame, pItem, pHolder)
+    expect(pRetHolder).toBe(pHolder)
+    const pSavedNode = m.u32(pHolder + 0x08)
     expect(pSavedNode).toBeGreaterThan(0)
-    expect(m.u32(pHolder + 0x08)).toBe(pSavedNode)
     const pEmptyNode = m.alloc(0x20)
     expect(ITEMS_LoadItemAndSocketsFromBitstream_6FC3F9F0_113c(m, pGame, 0, pEmptyNode)).toBe(0)
 

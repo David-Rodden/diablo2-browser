@@ -531,7 +531,7 @@ export function ITEMS_UseOrEquipCursorItemOnMerc_6FCF05B0_113c(
     SUNIT_SetUnitEventSound113c(m, pMercUnit, 0x55, pPlayer)
     return 0
   }
-  if (ITEMS_EquipMercBodyLocFromPlayerCursor_6FCEFBC0_113c(m, pGame, pMercUnit, pPlayer, pCursorItem) !== 0) {
+  if (ITEMS_EquipMercBodyLocFromPlayerCursor_6FCEFBC0_113c(m, pGame, pPlayer, pMercUnit, pCursorItem) !== 0) {
     SUNIT_SetUnitEventSound113c(m, pMercUnit, 0x57, pPlayer)
     return 1
   }

@@ -2255,30 +2255,43 @@ export function MONUMOD_ApplyFireEnchantedStats_6FC42740_113c(
   MONUMOD_ApplyResistanceBonus_6FC41BE0_113c(m, pUnit, nUModId, bChampion)
 }
 
-const DEFAULT_RANDOM_ELEM_TYPES_6FD1CE00: readonly number[] = [0, 1, 2, 3, 5]
+const DEFAULT_RANDOM_ELEM_TRIPLES_6FD1CE00: ReadonlyArray<readonly [number, number, number]> = [
+  [48, 49, -1],
+  [50, 51, -1],
+  [52, 53, -1],
+  [54, 55, 56],
+  [57, 58, 59],
+]
 
 /**
- * [28/45] Rolls one of 5 elemental damage bonus entries (`0x6FD1CE00`) using `pUnit->tSeed` (`+0x20`)
+ * [28/45] Rolls one of 5 elemental damage bonus triples (`0x6FD1CE00`) using `pUnit->tSeed` (`+0x20`)
  * when `bBoss != 0` and applies it via `MONUMOD_ApplyElementalDamageBonus_6FC41FE0_113c`.
  *
  * @va D2Game:0x6FC42B60
  */
 export function MONUMOD_ApplyRandomElementalHitBonus_6FC42B60_113c(
   m: D2KernMemory113c,
-  _nUModId: number,
+  pGameOrUModId: number,
   pUnit: number,
   _arg0: number,
   bBoss: number,
 ): void {
   hitD2GameVa113c(0x6FC42B60)
-  if (bBoss === 0) return
-  const newLo = stepSeed64At113c(m, (pUnit + 0x20) >>> 0) >>> 0
+  const unit = pUnit >>> 0
+  if ((bBoss >>> 0) === 0 || unit === 0) return
+  const newLo = stepSeed64At113c(m, (unit + 0x20) >>> 0) >>> 0
   const idx = (newLo % 5) | 0
   const entryAddr = (0x6fd1ce00 + idx * 12) >>> 0
-  const memElem = m.u32(entryAddr) | 0
-  const memFlag = m.u32((entryAddr + 4) >>> 0) | 0
-  const nElemType = memElem !== 0 || memFlag !== 0 ? memElem : DEFAULT_RANDOM_ELEM_TYPES_6FD1CE00[idx]!
-  MONUMOD_ApplyElementalDamageBonus_6FC41FE0_113c(m, pUnit, nElemType, bBoss)
+  const memMin = m.u32(entryAddr) | 0
+  const memMax = m.u32((entryAddr + 4) >>> 0) | 0
+  const memLen = m.u32((entryAddr + 8) >>> 0) | 0
+  const fallback = DEFAULT_RANDOM_ELEM_TRIPLES_6FD1CE00[idx]!
+  const hasTable = memMin !== 0 || memMax !== 0
+  const minStatId = hasTable ? memMin : fallback[0]
+  const maxStatId = hasTable ? memMax : fallback[1]
+  const lenStatId = hasTable ? memLen : fallback[2]
+  const game = (pGameOrUModId >>> 0) > 0x100 ? (pGameOrUModId >>> 0) : (m.u32((unit + 0x80) >>> 0) >>> 0)
+  MONUMOD_ApplyElementalDamageBonus_6FC41FE0_113c(m, game, unit, minStatId, maxStatId, lenStatId)
 }
 
 /**

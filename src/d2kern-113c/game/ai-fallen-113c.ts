@@ -1095,12 +1095,16 @@ export function AI_FallenShaman113c(
       m.setU8((pAiParam + 0x20) >>> 0, 3)
       if (world !== undefined) {
         AI_ApproachTarget113c(world, pUnit, pTarget, 2, 0, 0, 1, 0)
+      } else if (pGame !== 0) {
+        AI_ApproachTarget113c(m, pGame, pUnit, pTarget, 2, 0, 0, 1, 0)
       }
       return
     }
 
     if (world !== undefined) {
       AI_Stall113c(world, pUnit, 10)
+    } else if (pGame !== 0) {
+      AI_Stall113c(m, pGame, pUnit, 10)
     }
   } finally {
     aiFallenStackPtr = sp
@@ -1157,9 +1161,10 @@ export function AI_CheckApproachTauntSound113c(
   SUNIT_SetUnitEventSound113c(m, pUnit, 0x10, 0)
   const pAiControlAfter = m.u32(pAiArgs)
   m.setU8((pAiControlAfter + 0x08) >>> 0, (m.u8((pAiControlAfter + 0x08) >>> 0) | 0x10) & 0xff)
-  void pGame
   if (world !== undefined) {
     AI_Stall113c(world, pUnit, 20)
+  } else if (pGame !== 0) {
+    AI_Stall113c(m, pGame, pUnit, 20)
   }
   return 1
 }
@@ -1549,6 +1554,8 @@ export function AI_CastSkillWithMode113c(
     }
     if (world !== undefined) {
       AI_Stall113c(world, pUnit, 10)
+    } else if (pGame !== 0) {
+      AI_Stall113c(m, pGame, pUnit, 10)
     }
     return 0
   } finally {

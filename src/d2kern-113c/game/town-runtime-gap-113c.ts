@@ -142,18 +142,8 @@ function withTownRuntimeGapStack<T>(size: number, fn: (sp: number) => T): T {
   }
 }
 
-const QUEST_BIT_STATE_OFFSETS = new Int32Array([0x00, 0x04, 0x06, 0x0c, 0x0e, 0x10]);
-
 function checkQuestBitStateHelper(m: Memory113c, pBitBuffer: number, nQuestId: number, nSubBit: number): number {
-  if (pBitBuffer === 0 || nSubBit >= 16 || nQuestId >= 44) {
-    return 0;
-  }
-  const bitOffset = nSubBit < 6 ? QUEST_BIT_STATE_OFFSETS[nSubBit]! : 0;
-  const bitIndex = (nQuestId * 16 + (nSubBit + bitOffset)) | 0;
-  const byteVal = m.u8((pBitBuffer + (bitIndex >> 3)) >>> 0);
-  const gdwBitMasks = m.u32(D2GAME_IAT_GDW_BITMASKS_VA_113C);
-  const mask = gdwBitMasks !== 0 ? m.u32((gdwBitMasks + ((bitIndex & 7) << 2)) >>> 0) : (1 << (bitIndex & 7)) >>> 0;
-  return (byteVal & mask) !== 0 ? 1 : 0;
+  return DRLGWARP_TestRoomTileBit113c(m, pBitBuffer >>> 0, nQuestId | 0, nSubBit | 0);
 }
 
 function appendClientNetPacketNode(m: Memory113c, pClient: number, pPayload: number, nSize: number): void {
@@ -871,12 +861,17 @@ export function ACT1Q6_CheckTravelEastNpcAlert113c(
   if (pQ1 === 0 || m.u8(pQ1 + 9) === 0) {
     return 0;
   }
-  if (m.u32(pQuestControl + 8) === 0) {
-    throw new D2CommonAssertError('ACT1Q6_CheckTravelEastNpcAlert113c: null quest control state', 0x82c);
+  if (pGame === 0) {
+    throw new D2CommonAssertError('ACT1Q6_CheckTravelEastNpcAlert113c: null pGame', 0x820);
   }
-  const pGlobalFlags = m.u32(pQuestControl + 0xc);
-  if (checkQuestBitStateHelper(m, pGlobalFlags, 1, 0x0d) !== 0) {
-    return 0;
+  if (pQuestControl !== 0) {
+    if (m.u32(pQuestControl + 8) === 0) {
+      throw new D2CommonAssertError('ACT1Q6_CheckTravelEastNpcAlert113c: null quest control state', 0x82c);
+    }
+    const pGlobalFlags = m.u32(pQuestControl + 0xc);
+    if (checkQuestBitStateHelper(m, pGlobalFlags, 1, 0x0d) !== 0) {
+      return 0;
+    }
   }
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer);
   const diff = m.u8(pGame + 0x6d);

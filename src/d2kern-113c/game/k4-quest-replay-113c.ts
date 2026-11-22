@@ -1758,6 +1758,7 @@ export function tryApplyQuestAndNpcC2SPacketK4_113c(
     return false
   }
   const pPkt = K4_PACKET_SCRATCH_VA
+  m.fill(pPkt, Math.max(64, packetBytes.length + 16), 0)
   for (let i = 0; i < packetBytes.length; i++) {
     m.setU8((pPkt + i) >>> 0, packetBytes[i]!)
   }

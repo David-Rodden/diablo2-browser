@@ -314,8 +314,8 @@ export function hydrateMercHireableSnapshotStateK3_113c(
       const pAssignCtx = k3MercHeapPtr
       k3MercHeapPtr = (pAssignCtx + 0x20) >>> 0
       m.fill(pAssignCtx, 0x20, 0)
-      m.setU32(pAssignCtx, m.u32((pOwner + 0x0c) >>> 0))
-      m.setU32((pAssignCtx + 0x04) >>> 0, monId >>> 0)
+      m.setU32(pAssignCtx, monId >>> 0)
+      m.setU32((pAssignCtx + 0x04) >>> 0, m.u32((pOwner + 0x0c) >>> 0))
       m.setU16((pAssignCtx + 0x08) >>> 0, wMercNameId & 0xffff)
       m.setU32((pAssignCtx + 0x0c) >>> 0, 7)
       m.setU32((pAssignCtx + 0x10) >>> 0, dwMercSeed !== 0 ? dwMercSeed : 1)
@@ -552,21 +552,13 @@ export function stepMonsterAttackOrSkillActionK3_113c(
       MONSTER_AdvanceAttackOrSkillStep113c(m, pGame, pMonster, world, {
         onSpawnModeMissile(mem, pg, mid, pUnit, _pTarget, lvl) {
           SUNIT_ValidatePathTargetUnit113c(mem, pUnit, pg)
-          const useUnitLvl = ((mem.get(pUnit, D2UnitStrc.dwFlags) >>> 9) & 1) !== 0
-          let projLvl = lvl | 0
-          if (!useUnitLvl) {
-            const diff = getDifficultyIdx113c(mem, pg)
-            const pTables = readSgptDataTables113c(mem)
-            const pGameLvl = pTables !== 0 ? (mem.u32((pTables + 0xbc0) >>> 0) >>> 0) : 0
-            projLvl = pGameLvl !== 0 ? ((mem.u32((pGameLvl + diff * 0x10 + 0x10) >>> 0) | 0) + 1) | 0 : 1
-          }
           return SKILLS_CreateDirectionalProjectileWithToHitAndAmmo_6FCC28F0_113c(
             mem,
             pg,
             mid,
             pUnit,
             0,
-            projLvl,
+            lvl | 0,
             0,
             0,
             0,

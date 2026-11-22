@@ -58,8 +58,8 @@ const K6_S3_SCENARIO_SPECS_113C: readonly K6S3ScenarioSpec113c[] = [
     totalHits: 1609,
     d2CommonExecuted: 859,
     d2GameExecuted: 750,
-    minStrictHorizon: 228,
-    minPosHorizon: 228,
+    minStrictHorizon: 374,
+    minPosHorizon: 387,
   },
   {
     name: 'k6s3-assassin-full-30-skills',
@@ -68,8 +68,8 @@ const K6_S3_SCENARIO_SPECS_113C: readonly K6S3ScenarioSpec113c[] = [
     totalHits: 1605,
     d2CommonExecuted: 835,
     d2GameExecuted: 770,
-    minStrictHorizon: 220,
-    minPosHorizon: 220,
+    minStrictHorizon: 304,
+    minPosHorizon: 395,
   },
   {
     name: 'k6s3-act1-bosses-cowlevel-imbue',
@@ -129,7 +129,7 @@ const K6_S3_SCENARIO_SPECS_113C: readonly K6S3ScenarioSpec113c[] = [
     d2CommonExecuted: 956,
     d2GameExecuted: 731,
     minStrictHorizon: 22,
-    minPosHorizon: 138,
+    minPosHorizon: 211,
   },
 ]
 

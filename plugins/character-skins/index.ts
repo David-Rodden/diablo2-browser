@@ -3,8 +3,10 @@
  *
  * Non-1.13c opt-in cosmetic character skin plugin:
  * - Default disabled (`defaultEnabled: false`): zero network requests and zero GPU memory when off.
- * - Built-in Necromancer (`ne`) -> Kel'Thuzad (Archlich) true-color RGBA + additive glow skin,
- *   keeping Kel'Thuzad's appearance even when wearing full Trang-Oul's Avatar (`morphPolicy: 'keep-skin'`).
+ * - Built-in Necromancer (`ne`) -> Kel'Thuzad (Archlich) with Scourge summons, keeping Kel'Thuzad's
+ *   appearance even when wearing full Trang-Oul's Avatar (`morphPolicy: 'keep-skin'`).
+ * - Built-in Warcraft III heroes for the other six classes (Jaina, Sylvanas, Arthas, Grom,
+ *   Malfurion, Maiev), without summon replacements.
  * - Supports importing custom `.d2skin.zip` skin packages into browser IndexedDB across all 7 classes.
  * - Disabling the plugin immediately releases all skin claims and restores 100% vanilla 1.13c graphics.
  */
@@ -18,6 +20,17 @@ import {
   type PluginStatus,
 } from '../../src/client/plugin-host/api.ts'
 
+/** Classes with a built-in skin: plugin setting key and the built-in skin id it toggles. */
+const BUILTIN_CLASS_SKINS = [
+  { cls: 'ne', settingKey: 'neSkin', skinId: 'ne-kelthuzad' },
+  { cls: 'so', settingKey: 'soSkin', skinId: 'so-jaina' },
+  { cls: 'am', settingKey: 'amSkin', skinId: 'am-sylvanas' },
+  { cls: 'pa', settingKey: 'paSkin', skinId: 'pa-arthas' },
+  { cls: 'ba', settingKey: 'baSkin', skinId: 'ba-grom' },
+  { cls: 'dz', settingKey: 'dzSkin', skinId: 'dz-malfurion' },
+  { cls: 'ai', settingKey: 'aiSkin', skinId: 'ai-maiev' },
+] as const
+
 export function createCharacterSkinsPlugin(): D2WebPlugin {
   return {
     id: 'character-skins',
@@ -26,8 +39,8 @@ export function createCharacterSkinsPlugin(): D2WebPlugin {
       en: 'Character Skins',
     },
     description: {
-      zh: '非 1.13c 外观增强：将指定职业替换为高清真彩 RGBA 精灵皮肤（内置死灵法师 → 巫妖克尔苏加德整套天灾军团皮肤：含食尸鬼、亡灵巫师、憎恶、血肉憎恶、地穴领主、地狱火召唤物与专属头像，穿塔格奥套装亦保持巫妖外观），并支持本地导入 .d2skin.zip 皮肤包。关闭插件立即恢复 1.13c 原版外观。',
-      en: "Non-1.13c cosmetic skins: replaces class & summon sprites with true-color RGBA + additive glow skin packs (includes Necromancer -> Kel'Thuzad + Warcraft III Scourge summon set & HUD portraits, keeping Lich visuals even with Trang-Oul's set) and supports local .d2skin.zip packages. Disabling restores 1.13c vanilla.",
+      zh: '非 1.13c 外观增强：将指定职业替换为高清真彩 RGBA 精灵皮肤（内置死灵法师 → 巫妖克尔苏加德整套天灾军团皮肤：含食尸鬼、亡灵巫师、岩石傀儡、憎恶、血肉傀儡、地狱火召唤物与专属头像，穿塔格奥套装亦保持巫妖外观；其余六个职业各内置一个魔兽争霸3英雄：法师吉安娜、亚马逊希尔瓦娜斯、圣骑士阿尔萨斯、野蛮人格罗姆、德鲁伊玛法里奥、刺客玛维），并支持本地导入 .d2skin.zip 皮肤包。关闭插件立即恢复 1.13c 原版外观。',
+      en: "Non-1.13c cosmetic skins: replaces class & summon sprites with true-color RGBA + additive glow skin packs (includes Necromancer -> Kel'Thuzad + Warcraft III Scourge summon set & HUD portraits, keeping Lich visuals even with Trang-Oul's set; the other six classes each get a Warcraft III hero: Jaina, Sylvanas, Arthas, Grom, Malfurion, Maiev) and supports local .d2skin.zip packages. Disabling restores 1.13c vanilla.",
     },
     defaultEnabled: false,
     settings: [
@@ -51,10 +64,124 @@ export function createCharacterSkinsPlugin(): D2WebPlugin {
         ],
       },
       {
+        kind: 'select',
+        key: 'soSkin',
+        label: {
+          zh: '法师外观',
+          en: 'Sorceress Skin',
+        },
+        default: 'so-jaina',
+        options: [
+          {
+            value: 'so-jaina',
+            label: { zh: '吉安娜·普罗德摩尔', en: 'Jaina Proudmoore' },
+          },
+          {
+            value: 'none',
+            label: { zh: '原版 1.13c 外观', en: 'Vanilla 1.13c' },
+          },
+        ],
+      },
+      {
+        kind: 'select',
+        key: 'amSkin',
+        label: {
+          zh: '亚马逊外观',
+          en: 'Amazon Skin',
+        },
+        default: 'am-sylvanas',
+        options: [
+          {
+            value: 'am-sylvanas',
+            label: { zh: '黑暗游侠希尔瓦娜斯', en: 'Sylvanas (Dark Ranger)' },
+          },
+          {
+            value: 'none',
+            label: { zh: '原版 1.13c 外观', en: 'Vanilla 1.13c' },
+          },
+        ],
+      },
+      {
+        kind: 'select',
+        key: 'paSkin',
+        label: {
+          zh: '圣骑士外观',
+          en: 'Paladin Skin',
+        },
+        default: 'pa-arthas',
+        options: [
+          {
+            value: 'pa-arthas',
+            label: { zh: '阿尔萨斯王子', en: 'Arthas (Paladin)' },
+          },
+          {
+            value: 'none',
+            label: { zh: '原版 1.13c 外观', en: 'Vanilla 1.13c' },
+          },
+        ],
+      },
+      {
+        kind: 'select',
+        key: 'baSkin',
+        label: {
+          zh: '野蛮人外观',
+          en: 'Barbarian Skin',
+        },
+        default: 'ba-grom',
+        options: [
+          {
+            value: 'ba-grom',
+            label: { zh: '格罗姆·地狱咆哮', en: 'Grom Hellscream' },
+          },
+          {
+            value: 'none',
+            label: { zh: '原版 1.13c 外观', en: 'Vanilla 1.13c' },
+          },
+        ],
+      },
+      {
+        kind: 'select',
+        key: 'dzSkin',
+        label: {
+          zh: '德鲁伊外观',
+          en: 'Druid Skin',
+        },
+        default: 'dz-malfurion',
+        options: [
+          {
+            value: 'dz-malfurion',
+            label: { zh: '玛法里奥·怒风', en: 'Malfurion Stormrage' },
+          },
+          {
+            value: 'none',
+            label: { zh: '原版 1.13c 外观', en: 'Vanilla 1.13c' },
+          },
+        ],
+      },
+      {
+        kind: 'select',
+        key: 'aiSkin',
+        label: {
+          zh: '刺客外观',
+          en: 'Assassin Skin',
+        },
+        default: 'ai-maiev',
+        options: [
+          {
+            value: 'ai-maiev',
+            label: { zh: '守望者玛维', en: 'Maiev Shadowsong (Warden)' },
+          },
+          {
+            value: 'none',
+            label: { zh: '原版 1.13c 外观', en: 'Vanilla 1.13c' },
+          },
+        ],
+      },
+      {
         kind: 'boolean',
         key: 'minionsEnabled',
         label: {
-          zh: '召唤物跟随皮肤替换（食尸鬼/憎恶/地穴领主/地狱火等）',
+          zh: '召唤物跟随皮肤替换（食尸鬼/岩石傀儡/憎恶/地狱火等）',
           en: 'Replace Summoned Minions & Portraits',
         },
         default: true,
@@ -120,8 +247,8 @@ export function createCharacterSkinsPlugin(): D2WebPlugin {
 
       const readMinionsEnabled = (): boolean => ctx.settings.get('minionsEnabled') !== false
 
-      const readNeSkinSetting = (): string | null => {
-        const raw = String(ctx.settings.get('neSkin') ?? 'ne-kelthuzad')
+      const readSkinSetting = (settingKey: string, builtinId: string): string | null => {
+        const raw = String(ctx.settings.get(settingKey) ?? builtinId)
         return raw === 'none' || raw === '' ? null : raw
       }
 
@@ -129,24 +256,19 @@ export function createCharacterSkinsPlugin(): D2WebPlugin {
 
       const applyFromSettings = (): void => {
         const currentSelected = ctx.characterSkins.getConfig().selectedByClass
-        const currentNe = currentSelected.ne
-        const settingNe = readNeSkinSetting()
-        // Preserve a custom imported 'ne' skin ID if one is already active and neSkin != 'none'
-        const effectiveNe =
-          settingNe === null
-            ? null
-            : currentNe && currentNe !== 'ne-kelthuzad' && settingNe === 'ne-kelthuzad'
-              ? currentNe
-              : settingNe
+        const selected: Record<string, string | null | undefined> = { ...currentSelected }
+        for (const { cls, settingKey, skinId } of BUILTIN_CLASS_SKINS) {
+          const current = currentSelected[cls]
+          const wanted = readSkinSetting(settingKey, skinId)
+          // Preserve a custom imported skin for the class if one is already active and the setting is not 'none'.
+          selected[cls] = wanted === null ? null : current && current !== skinId && wanted === skinId ? current : wanted
+        }
         ctx.characterSkins.setConfig({
           enabled: true,
           scope: readScope(),
           morphPolicy: readMorphPolicy(),
           minionsEnabled: readMinionsEnabled(),
-          selectedByClass: {
-            ...currentSelected,
-            ne: effectiveNe,
-          },
+          selectedByClass: selected,
         })
       }
 
@@ -155,12 +277,12 @@ export function createCharacterSkinsPlugin(): D2WebPlugin {
 
       const unsubSettings = ctx.settings.subscribe((key) => {
         if (syncingFromService) return
-        if (key === 'neSkin') {
-          const raw = String(ctx.settings.get('neSkin') ?? 'ne-kelthuzad')
+        const classSkin = BUILTIN_CLASS_SKINS.find((entry) => entry.settingKey === key)
+        if (classSkin) {
           ctx.characterSkins.setConfig({
             selectedByClass: {
               ...ctx.characterSkins.getConfig().selectedByClass,
-              ne: raw === 'none' || raw === '' ? null : raw,
+              [classSkin.cls]: readSkinSetting(classSkin.settingKey, classSkin.skinId),
             },
           })
           ctx.notifyStatusChanged()
@@ -176,14 +298,16 @@ export function createCharacterSkinsPlugin(): D2WebPlugin {
 
       const unsubService = ctx.characterSkins.subscribe(() => {
         const cfg = ctx.characterSkins.getConfig()
-        const neId = cfg.selectedByClass.ne ?? null
-        const targetSettingVal = neId === null ? 'none' : 'ne-kelthuzad'
-        if (ctx.settings.get('neSkin') !== targetSettingVal && (neId === null || neId === 'ne-kelthuzad')) {
-          syncingFromService = true
-          try {
-            ctx.settings.set('neSkin', targetSettingVal)
-          } finally {
-            syncingFromService = false
+        for (const { cls, settingKey, skinId } of BUILTIN_CLASS_SKINS) {
+          const activeId = cfg.selectedByClass[cls] ?? null
+          const targetSettingVal = activeId === null ? 'none' : skinId
+          if (ctx.settings.get(settingKey) !== targetSettingVal && (activeId === null || activeId === skinId)) {
+            syncingFromService = true
+            try {
+              ctx.settings.set(settingKey, targetSettingVal)
+            } finally {
+              syncingFromService = false
+            }
           }
         }
         ctx.notifyStatusChanged()

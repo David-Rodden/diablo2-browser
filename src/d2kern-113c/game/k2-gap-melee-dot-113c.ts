@@ -140,6 +140,7 @@ import {
   SUNIT_DispatchItemEventCallbacks113c,
 } from './a1c-post150-f786-f1040-113c.ts'
 import {
+  rollPassiveAvoidanceMask0x6FCFB030,
   SUNITDMG_ApplyDamage113c,
   SUNITDMG_ApplySideEffectsAndKill113c,
   type SUnitDmgHooks113c,
@@ -743,36 +744,15 @@ function syncPlayerPetCaps0x6FCB6FA0(
   }
 }
 
-/** Internal `0x6FCFB030` (`eax = pDefender`, `edi = pAttacker`, `[esp+4] = bAllowWeaponBlock`): Amazon evade/dodge/avoid + weapon block. */
+/** Internal `0x6FCFB030` (`eax = pDefender`, `edi = pAttacker`, `[esp+4] = bRanged`): Amazon evade/dodge/avoid + weapon block. */
 function rollPassiveAvoidOrWeaponBlock0x6FCFB030(
   m: Memory113c,
   pAttacker: number,
   pDefender: number,
-  bAllowWeaponBlock: number,
+  bRanged: number,
 ): number {
-  const def = pDefender >>> 0
-  if (def === 0 || m.u32(def) !== 0) return 0
   if (pAttacker === 0) return 0
-  const mode = m.u32((def + 0x10) >>> 0) | 0
-  const isMoving = mode === 2 || mode === 3
-  const avoidStat = isMoving ? 0x45 : 0x44
-  const avoidChance = STATLIST_GetUnitStat113c(m, def, avoidStat, 0) | 0
-  if (avoidChance > 0) {
-    const roll = (stepSeed64At113c(m, (def + 0x20) >>> 0) >>> 0) % 100
-    if (roll < (avoidChance >>> 0)) {
-      return isMoving ? 0x08 : 0x02
-    }
-  }
-  if (bAllowWeaponBlock !== 0 && !isMoving) {
-    const wbChance = STATLIST_GetUnitStat113c(m, def, 0xc3, 0) | 0
-    if (wbChance > 0) {
-      const roll = (stepSeed64At113c(m, (def + 0x20) >>> 0) >>> 0) % 100
-      if (roll < (wbChance >>> 0)) {
-        return 0x10
-      }
-    }
-  }
-  return 0
+  return rollPassiveAvoidanceMask0x6FCFB030(m, pDefender, bRanged)
 }
 
 /** Internal `0x6FCFB790` (`eax = bHasPhysDmg`, `ecx = pAttacker`, `esi = pDefender`, `[esp+4] = pGame`, `[esp+8] = bAllowWeaponBlock`). */

@@ -96,7 +96,10 @@ describe('K1R14-LaneJ1: D2Game.dll F4..F78 + 0x6FCAC010 33 VAs', () => {
     const pQuestData = m.alloc(0x200);
     m.setU32(pQuest + 0x18, pQuestData);
     m.setU32(pQuest + 0xe0, 1);
-    const pQuestFlags = m.alloc(0x80);
+    const pQuestFlagsBuf = m.alloc(0x80);
+    const pQuestFlags = m.alloc(8);
+    m.setU32(pQuestFlags, pQuestFlagsBuf);
+    m.setU32(pQuestFlags + 4, 0x300);
     const pPlayer = m.alloc(0x100);
     m.setU32(pPlayer + 0xc, 42);
 

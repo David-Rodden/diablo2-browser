@@ -54,6 +54,7 @@ import {
   SKILLS_SetLeftSkill113c,
   SKILLS_SetSkillLevelOnUnit113c,
 } from '../common/skills.js'
+import { D2CommonAssertError } from '../common/inline-helpers.js'
 import {
   STATES_ApplyMonSkillIconToUnit113c,
   STATES_CheckState113c,
@@ -863,6 +864,9 @@ export function D2GAME_ARENA_FindPlayerSlotByUnit113c(
       return pSlot
     }
   }
+  if ((pUnit >>> 0) === 0) {
+    throw new D2CommonAssertError('..\\Source\\D2Game\\PLAYER\\Arena.cpp', 0x72)
+  }
   mem.setU32(pOutIndex, 0x40)
   return 0
 }
@@ -1061,8 +1065,14 @@ export function D2GAME_PARTY_GetPartyIdForUnit113c(
   if (pInventory !== 0) {
     INVENTORY_GetLeftItemGuid113c(mem, pInventory)
   }
-  if (pUnit === 0 || (mem.u32(pUnit) >>> 0) !== 0 || pGame === 0) {
+  if (pUnit === 0) {
     return 0xffff
+  }
+  if ((mem.u32(pUnit) >>> 0) !== 0) {
+    throw new D2CommonAssertError('..\\Source\\D2Game\\UNIT\\Party.cpp', 0x27b)
+  }
+  if (pGame === 0) {
+    throw new D2CommonAssertError('..\\Source\\D2Game\\UNIT\\Party.cpp', 0x27c)
   }
   const pPartyCtrl = mem.u32(pGame + 0x1d2c) >>> 0
   if (pPartyCtrl === 0) {

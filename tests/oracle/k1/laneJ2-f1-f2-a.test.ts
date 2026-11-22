@@ -6,8 +6,9 @@ import {
   D2GAME_DISABLE_CLIENT_TIMEOUT_VA_113C,
   D2GAME_MINION_COMP_COUNT_VA_113C,
   D2GAME_MINION_COMP_TABLE_PTR_VA_113C,
-  D2GAME_PERF_TICK_ARRAY_PTR_VA_113C,
-  D2GAME_TOTAL_MEMPOOL_BYTES_VA_113C,
+  D2GAME_PEAK_MEMPOOL_KB_VA_113C,
+  D2GAME_PEAK_MEMPOOL_TICK_VA_113C,
+  D2GAME_TICKS_PER_SECOND_VA_113C,
   EVENT_ExecuteItemEvents113c,
   EVENT_ExecuteMissileEvents113c,
   EVENT_ExecuteMonsterEvents113c,
@@ -51,15 +52,31 @@ describe('K1R14-LaneJ2: D2Game.dll Boot/Init & Event/Sync Coverage Gap Closure P
     const m = new SparseMemory113c();
     expect(OBJECT_CheckRespawnOrPortalInRoom113c(m, 0, 0)).toBe(1);
 
+    const pGame = m.alloc(0x2000);
+    const pObjCtrl = m.alloc(0x1200);
+    m.setU32(pGame + 0x10f0, pObjCtrl);
     const pUnit = m.alloc(0x100);
     const pRoom = m.alloc(0x100);
+    const pRoomEx = m.alloc(0x80);
+    const pLevel = m.alloc(0x200);
     const pPath = m.alloc(0x40);
+    m.setU32(pLevel + 0x1d0, 1); // Rogue Encampment (town)
+    m.setU32(pRoomEx + 0x58, pLevel);
+    m.setU32(pRoom + 0x10, pRoomEx);
     m.setU32(pUnit + 0x00, 2); // UNIT_OBJECT
     m.setU32(pUnit + 0x10, 0);
     m.setU32(pUnit + 0x2c, pPath);
-    expect(OBJECT_CheckRespawnOrPortalInRoom113c(m, pUnit, pRoom)).toBe(1);
+    m.setU32(pUnit + 0x80, pGame);
 
-    OBJECT_SetAnimMode2Wrapper113c(m, 0, pUnit);
+    const pArgs = m.alloc(0x10);
+    m.setU32(pArgs + 0x00, pGame);
+    m.setU32(pArgs + 0x04, pUnit);
+    m.setU32(pArgs + 0x08, pRoom);
+    expect(OBJECT_CheckRespawnOrPortalInRoom113c(m, pArgs)).toBe(1);
+    expect(m.u32(pUnit + 0x10)).toBe(2);
+
+    m.setU32(pUnit + 0x10, 0);
+    OBJECT_SetAnimMode2Wrapper113c(m, pArgs);
     expect(m.u32(pUnit + 0x10)).toBe(2);
   });
 
@@ -156,21 +173,21 @@ describe('K1R14-LaneJ2: D2Game.dll Boot/Init & Event/Sync Coverage Gap Closure P
     });
     expect(visited).toEqual([pClient1, 0x99]);
 
-    const pPerf = m.alloc(0x20);
-    m.setU32(D2GAME_PERF_TICK_ARRAY_PTR_VA_113C, pPerf);
-    m.setU32(D2GAME_TOTAL_MEMPOOL_BYTES_VA_113C, 0);
-    m.setU16(pGame + 0x28, 1);
-    m.setU32(pGame + 0xa8, 50);
-    m.setU32(pGame + 0xac, 1000);
+    m.setU32(D2GAME_PEAK_MEMPOOL_TICK_VA_113C, 0);
+    m.setU32(D2GAME_PEAK_MEMPOOL_KB_VA_113C, 0);
+    m.setU32(pGame + 0xb4, 1000);
     m.setU32(pGame + 0xb0, 25);
     GAME_UpdateTickRateMetrics113c(m, pGame, {
       getTickCountMs: () => 2000,
+      getPoolUsageKB: () => 512,
     });
-    expect(m.u32(pGame + 0xb4)).toBe(25);
-    expect(m.u32(pPerf + 4)).toBe(25);
-    expect(D2GAME_TOTAL_MEMPOOL_BYTES_VA_113C).toBe(0x6fd4dc28);
+    expect(m.u32(pGame + 0xac)).toBe(25);
+    expect(m.u32(D2GAME_TICKS_PER_SECOND_VA_113C)).toBe(25);
+    expect(m.u32(pGame + 0xb4)).toBe(2000);
+    expect(m.u32(pGame + 0xb0)).toBe(1);
+    expect(m.u32(D2GAME_PEAK_MEMPOOL_KB_VA_113C)).toBe(512);
 
-    m.setU32(pGame + 0xa8, 128);
+    m.setU32(pGame + 0xa8, 1500);
     GAME_ExpireItemsAndMinionListsPeriodic113c(m, pGame);
 
     m.setU32(pClient2 + 0x04, 4);
@@ -229,6 +246,27 @@ describe('K1R14-LaneJ2: D2Game.dll Boot/Init & Event/Sync Coverage Gap Closure P
     m.setU32(pPortal + 0x94, 0xffffffff);
     expect(QUEST_Act1TownPortalUpdateState113c(m, pPortal, pGame)).toBe(0);
 
+    const pQCtrl = m.alloc(0x20);
+    const pQ4 = m.alloc(0x100);
+    const pQ4Ex = m.alloc(0x100);
+    const pPlr = m.alloc(0x40);
+    m.setU32(pPlr + 0x0c, 0x55);
+    m.setU32(pQ4 + 0x00, 4);
+    m.setU32(pQ4 + 0x18, pQ4Ex);
+    m.setU32(pQCtrl + 0x00, pQ4);
+    m.setU32(pGame + 0x10f4, pQCtrl);
+    const pQArgs = m.alloc(0x20);
+    m.setU32(pQArgs + 0x00, pGame);
+    m.setU32(pQArgs + 0x04, pPlr);
+    m.setU32(pQArgs + 0x08, pRoom);
+    m.setU32(pQArgs + 0x14, 111);
+    m.setU32(pQArgs + 0x18, 222);
+    expect(QUEST_Act1TownPortalUpdateState113c(m, pQArgs)).toBe(1);
+    expect(m.u32(pQ4Ex + 0x6c)).toBe(0x55);
+    expect(m.u8(pQ4Ex + 0x70)).toBe(1);
+    expect(m.u32(pQ4Ex + 0x84)).toBe(111);
+    expect(m.u32(pQ4Ex + 0x88)).toBe(222);
+
     const pClient = m.alloc(0x500);
     const pQueue = m.alloc(0x208);
     m.setU32(pClient + 0x1b8, pQueue);
@@ -248,12 +286,12 @@ describe('K1R14-LaneJ2: D2Game.dll Boot/Init & Event/Sync Coverage Gap Closure P
     expect(OBJECT_SyncStateAndEventsToClient113c(m, pObj, pClient)).toBe(1);
     expect(m.u32(pQueue + 0x00)).toBe(0x18);
 
-    expect(MONSTER_CalcLifePercentage128_113c(m, 0)).toBe(0);
+    expect(MONSTER_CalcLifePercentage128_113c(m, 0)).toBe(0x80);
 
-    m.setU32(pGame + 0x70, 0);
+    m.setU8(pGame + 0x6d, 1);
     expect(MONSTER_GetHirelingLevelBonusFactor113c(m, pGame, 0)).toBe(0);
     expect(MONSTER_GetHirelingLevelBonusFactor113c(m, pGame, 3)).toBe(16);
-    expect(MONSTER_GetHirelingLevelBonusFactor113c(m, pGame, 8)).toBe(0);
+    expect(MONSTER_GetHirelingLevelBonusFactor113c(m, pGame, 8)).toBe(56);
 
     MONSTER_ApplyElementalDamageAndResistStats113c(m, pGame, 0, 0);
   });

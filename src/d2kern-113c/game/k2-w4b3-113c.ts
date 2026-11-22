@@ -914,7 +914,7 @@ export function ITEMS_RollRareAffixesByFormat_6FC354F0_113c(
 
 /**
  * Monster Unique Modifier `#27` (Spectral Hit) missile damage wrapper: forwards to `0x6FC42B60`
- * when `pDamage != NULL` and `pTargetUnit` is a missile (`dwUnitType == 3`).
+ * when `pMonster != NULL` (`[esp+0x8]`) and `pTargetUnit` is a missile (`dwUnitType == 3`).
  *
  * @va D2Game:0x6FC43650
  */
@@ -923,20 +923,20 @@ export function MONUMOD_SpectralHitMissileDamage_6FC43650_113c(
   pGame: number,
   pTargetUnit: number,
   pAttackerMonster: number,
-  pDamage: number,
+  pDamage?: number,
   hooks?: K2W4B3Hooks113c,
 ): void {
   hitD2GameVa113c(0x6FC43650)
-  const dmg = pDamage >>> 0
+  const monsterOrFlag = (pDamage !== undefined ? pDamage : pAttackerMonster) >>> 0
   const target = pTargetUnit >>> 0
-  if (dmg !== 0 && target !== 0 && (m.u32(target) | 0) === 3) {
+  if (monsterOrFlag !== 0 && target !== 0 && (m.u32(target) | 0) === 3) {
     if (hooks !== undefined && hooks.onApplySpectralHitElemDamage_6FC42B60 !== undefined) {
       hooks.onApplySpectralHitElemDamage_6FC42B60(
         m,
         pGame >>> 0,
         target,
         pAttackerMonster >>> 0,
-        dmg,
+        monsterOrFlag,
       )
     } else {
       MONUMOD_ApplyRandomElementalHitBonus_6FC42B60_113c(
@@ -944,7 +944,7 @@ export function MONUMOD_SpectralHitMissileDamage_6FC43650_113c(
         pGame >>> 0,
         target,
         pAttackerMonster >>> 0,
-        dmg,
+        monsterOrFlag,
       )
     }
   }

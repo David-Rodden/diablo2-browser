@@ -1025,7 +1025,7 @@ export function SKILLS_ApplySummonStatsPassivesAndEquip_6FC6F970_113c(
       if (pItemStatCost !== 0) {
         const dwCalc = m.u32((pSkillsTxt + 0xa4 + i * 4) >>> 0)
         const nVal = SKILLS_EvalCalcByOffset113c(m, owner, dwCalc, edx, skillLvl)
-        STATLIST_SetUnitStat113c(m, ebp, nStatId, nVal, 0)
+        STATLIST_AddUnitStatMemPort113c(m, ebp, nStatId, nVal, 0)
         const wItemEvent1 = (m.u16((pItemStatCost + 0x48) >>> 0) << 16) >> 16
         if (wItemEvent1 > 0) {
           const dwPetGuid = ebp !== 0 ? m.u32((ebp + 0xc) >>> 0) : 0xffffffff
@@ -1169,11 +1169,26 @@ export function SKILLS_ApplySummonStatsPassivesAndEquip_6FC6F970_113c(
       edx,
       skillLvl,
     ) | 0
-  let nMaxLife = STATLIST_GetMaxLifeFromUnit113c(m, ebp) | 0
-  const bonusLife = Number((BigInt(nMaxLife) * BigInt(nLifeBonusPct)) / 100n) | 0
-  nMaxLife = (nMaxLife + bonusLife) | 0
-  STATLIST_AddUnitStatMemPort113c(m, ebp, 7, nMaxLife, 0)
-  STATLIST_AddUnitStatMemPort113c(m, ebp, 6, nMaxLife, 0)
+  const baseLife = STATLIST_GetMaxLifeFromUnit113c(m, ebp) | 0
+  let bonusLife = 0
+  if (baseLife > 0x100000) {
+    if (((baseLife & ~0xf) | 0) < 0x640) {
+      bonusLife = Number((BigInt(baseLife) * BigInt(nLifeBonusPct)) / 100n) | 0
+    } else {
+      bonusLife = Math.imul(Math.trunc(baseLife / 100), nLifeBonusPct) | 0
+    }
+  } else if (nLifeBonusPct > 0x10000) {
+    if (((nLifeBonusPct & ~0xf) | 0) < 0x640) {
+      bonusLife = Number((BigInt(baseLife) * BigInt(nLifeBonusPct)) / 100n) | 0
+    } else {
+      bonusLife = Math.imul(Math.trunc(nLifeBonusPct / 100), baseLife) | 0
+    }
+  } else {
+    bonusLife = Math.trunc(Math.imul(baseLife, nLifeBonusPct) / 100) | 0
+  }
+  const nMaxLife = (baseLife + bonusLife) | 0
+  STATLIST_SetUnitStat113c(m, ebp, 7, nMaxLife, 0)
+  STATLIST_SetUnitStat113c(m, ebp, 6, nMaxLife, 0)
 
   for (let i = 0; i < 5; i += 1) {
     const nPassiveSkillId = (m.u16((pSkillsTxt + 0xc4 + i * 2) >>> 0) << 16) >> 16
@@ -1300,7 +1315,7 @@ export function SKILLS_ApplySummonStatsPassivesAndEquip_6FC6F970_113c(
     }
     nEquipLvl = nCap < nOwnerLvl ? nCap : nOwnerLvl
   }
-  MONSTER_EquipMonEquipItems113c(m, ebp, game)
+  MONSTER_EquipMonEquipItems113c(m, ebp, game, owner, nEquipLvl, 0, skillLvl)
   return 1
 }
 
@@ -1889,7 +1904,7 @@ export function NPCS_RepairPlayerItemOrAllItems_6FCDDE60_113c(
       m.setU8(pPkt, 0x2a)
       m.setU8((pPkt + 1) >>> 0, 0)
       m.setU8((pPkt + 2) >>> 0, 0x9)
-      m.setU32((pPkt + 3) >>> 0, 0xffffffff)
+      m.setU32((pPkt + 3) >>> 0, 0)
       m.setU32((pPkt + 7) >>> 0, 0xffffffff)
       m.setU32((pPkt + 0xb) >>> 0, nGold >>> 0)
       NET_QueuePacketToClientBuffer113c(m, pClient, 1, pPkt, 0xf)

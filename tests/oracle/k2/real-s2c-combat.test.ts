@@ -33,6 +33,7 @@ import {
 } from '../../../src/d2kern-113c/common/statlist.ts'
 import { STATLIST_GetStatListFromUnitAndStateMemPort113c } from '../../../src/d2kern-113c/common/k0-d2common-memports.ts'
 import { UNITS_Create113c, UNITS_GetRoom113c } from '../../../src/d2kern-113c/common/unit.ts'
+import { SKILLS_AllocSkillList113c } from '../../../src/d2kern-113c/common/skills.ts'
 import { PATH_AllocDynamicPath113c } from '../../../src/d2kern-113c/common/path.ts'
 import { SUNIT_InsertServerUnit113c } from '../../../src/d2kern-113c/game/game-strc.ts'
 import { EVENT_GetNextEventFrame113c, EVENT_InitTimerQueue113c } from '../../../src/d2kern-113c/game/timer-wheel.ts'
@@ -407,6 +408,7 @@ function createRealK2World(levelId = 2): RealK2World {
   m.setU32((pGame + 0x88) >>> 0, pClient) // pGame->pClientList
 
   const pPlayer = spawnUnitInWorld(m, pGame, pRoom, 0, 4, 1, subX + 10, subY + 10)
+  m.set(pPlayer, D2UnitStrc.pSkills, SKILLS_AllocSkillList113c(m, 0))
   const pPlrData = m.get(pPlayer, D2UnitStrc.pUnitData)
   m.setU32((pPlrData + 0x9c) >>> 0, pClient)
   m.setU32((pClient + 0x16c) >>> 0, 0)
@@ -649,7 +651,7 @@ describe('K2 Real D2Game Non-Item Combat, Timed StatLists, Room Restore & 0x6FCA
     // Matches real D2Game.dll oracle `076004880402` (tileX=0x0460, tileY=0x0488, levelId=2)!
     expect(drainFrameS2CPackets113c(m, pGame)).toEqual(['076004880402'])
 
-    ROOM_DeactivateRoomForClient113c(m, pRoom, w.pPlayer, pClient)
+    ROOM_DeactivateRoomForClient113c(m, pRoom, pGame, pClient)
     const deactPkts = drainFrameS2CPackets113c(m, pGame)
     expect(deactPkts).toContain('0a0109000000') // RemoveUnit monster 9
     expect(deactPkts[deactPkts.length - 1]).toBe('086004880402') // RemoveRoom
@@ -710,9 +712,9 @@ describe('K2 Real D2Game Non-Item Combat, Timed StatLists, Room Restore & 0x6FCA
     expect(pkts[0]!.startsWith('3e')).toBe(true)
     expect(pkts[0]!.length).toBe(68) // 34 bytes = 68 hex chars (`0x22` in `0x6FCAA3E0`)
 
-    // 3-arg 0x6FC99100 call consumes another stackable quantity -> 3
+    // 3-arg 0x6FC99100 -> 0x6FC98DD0 preserves qty > 0 (D2Game.dll jg 0x6FC98F92) and clears qty == 0
     PLAYER_ScheduleSkillActionFrameEvents113c(m, pGame, pPlayer)
-    expect(STATLIST_GetUnitStat113c(m, pJav, 70, 0)).toBe(3)
+    expect(STATLIST_GetUnitStat113c(m, pJav, 70, 0)).toBe(4)
     drainFrameS2CPackets113c(m, pGame)
   })
 
@@ -1101,7 +1103,9 @@ describe('K2 Real D2Game Non-Item Combat, Timed StatLists, Room Restore & 0x6FCA
     m.set(pLeaper, D2UnitStrc.dwAnimMode, 1)
 
     const pSnap = m.alloc(16)
-    expect(PLAYER_SnapshotHandSkillsToStruct113c(m, pPlayer, pSnap)).toBe(1)
+    PLAYER_SnapshotHandSkillsToStruct113c(m, pPlayer, pSnap)
+    expect(m.u32(pSnap)).toBe(0)
+    expect(m.u32((pSnap + 0x08) >>> 0)).toBe(0xffffffff)
     expect(PLAYER_RestoreHandSkillsFromSnapshot113c(m, pPlayer, pSnap)).toBe(1)
     expect(PLAYER_StartModeDispatch113c(m, pGame, pPlayer, 9, 0, '1HS')).toBe(1)
     expect(SUNITDMG_TriggerBlockEvents113c(m, pGame, pPlayer)).toBe(1)

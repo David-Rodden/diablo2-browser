@@ -328,8 +328,8 @@ describe('K2 Wave 8 Batch 3 (30 D2Game VAs 0x6FCDD880..0x6FD07080)', () => {
       ITEMS_EquipMercBodyLocFromPlayerCursor_6FCEFBC0_113c(
         m,
         pGame,
-        pMerc,
         pPlayer,
+        pMerc,
         pItem,
       ),
     ).toBe(3)

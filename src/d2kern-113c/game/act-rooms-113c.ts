@@ -33,7 +33,7 @@ import {
   UNITS_GetPlayerActiveWeaponFlags113c,
   UNITS_SetPlayerActiveWeaponFlags113c,
 } from '../common/composit.ts'
-import { D2COMMON_SGPT_DATATABLES_VA_113C } from '../common/inline-helpers.ts'
+import { D2COMMON_SGPT_DATATABLES_VA_113C, D2CommonAssertError } from '../common/inline-helpers.ts'
 import {
   DATATBLS_GetObjectsTxtRecord113c,
   UNIT_GetAlignment113c,
@@ -715,13 +715,14 @@ export function ROOM_ActivateRoomForClient113c(
 export function ROOM_DeactivateRoomForClient113c(
   m: Memory113c,
   pRoom: number,
-  pPlayer: number,
+  pGame: number,
   pClient: number,
 ): void {
   hitD2GameVa113c(0x6FCBD980)
-  if (pRoom === 0 || pClient === 0) return
-  const sendPackets = m.u32((pClient + 0x04) >>> 0) === 4
-  if (sendPackets) {
+  if ((pRoom >>> 0) === 0) {
+    throw new D2CommonAssertError('0x6fd19ff9', 0x104)
+  }
+  if ((pClient >>> 0) !== 0) {
     const pkt0A = new Uint8Array(6)
     pkt0A[0] = 0x0a
     let pUnit = m.u32((pRoom + 0x74) >>> 0) >>> 0
@@ -742,16 +743,10 @@ export function ROOM_DeactivateRoomForClient113c(
 
   DUNGEON_RemoveClientFromRoom113c(m, pRoom, pClient)
   if ((m.u32((pRoom + 0x78) >>> 0) >>> 0) === 0) {
-    const pGame =
-      pPlayer !== 0
-        ? ((m.u32((pPlayer + 0x80) >>> 0) || m.u32((pPlayer + 0x84) >>> 0)) >>> 0)
-        : 0
-    if (pGame !== 0) {
-      ROOM_SleepRoomMonsters113c(m, pRoom, pGame)
-    }
+    ROOM_SleepRoomMonsters113c(m, pRoom, pGame >>> 0)
   }
 
-  if (sendPackets) {
+  if ((pClient >>> 0) !== 0) {
     const sp = actRoomsStackPtr
     actRoomsStackPtr = (sp + 0x20) >>> 0
     try {
@@ -841,7 +836,7 @@ export function CLIENTS_SetPlayerCurrentRoom113c(
         }
       }
       if (!inNew) {
-        ROOM_DeactivateRoomForClient113c(m, rOld, pPlayer, pClient)
+        ROOM_DeactivateRoomForClient113c(m, rOld, m.u32((pClient + 0x1a8) >>> 0) >>> 0, pClient)
       }
     }
 

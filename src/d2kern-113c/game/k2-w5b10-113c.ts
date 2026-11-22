@@ -788,9 +788,8 @@ export function AI_FindTargetOrUnstickOverlap_6FD13150_113c(
     if ((pOutInMeleeRange >>> 0) !== 0) {
       m.setU32(pOutInMeleeRange >>> 0, 0)
     }
-    if ((pOutDistance >>> 0) !== 0) {
-      const outDist = found.distance === 0x7fffffff ? 0 : found.distance >>> 0
-      m.setU32(pOutDistance >>> 0, outDist)
+    if (pOutDistance >>> 0 !== 0) {
+      m.setU32(pOutDistance >>> 0, found.distance >>> 0)
     }
   }
 

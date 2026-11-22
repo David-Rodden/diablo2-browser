@@ -1418,7 +1418,7 @@ describe('D2Game.dll 1.13c Disassembly Verification — Wave 15 (+122 VAs across
       w8b3.C2S_Packet60_SwapWeapons_6FCEF510_113c(m, pGame, pPlr, pPkt, 1)
       w8b3.C2S_Packet26_UseBeltItem_6FCEF5B0_113c(m, pGame, pPlr, pPkt, 0x0d)
       w8b3.C2S_Packet27_IdentifyItem_6FCEF6B0_113c(m, pGame, pPlr, pPkt, 9)
-      w8b3.ITEMS_EquipMercBodyLocFromPlayerCursor_6FCEFBC0_113c(m, pGame, pMerc, pPlr, pItem)
+      w8b3.ITEMS_EquipMercBodyLocFromPlayerCursor_6FCEFBC0_113c(m, pGame, pPlr, pMerc, pItem)
       w8b3.C2S_Packet1B_SwapTwoHandedOrDualWeaponBodyLoc_6FCF1140_113c(m, pGame, pPlr, pPkt, 9)
       w8b3.C2S_Packet19_PickupBufferOrStorageItemToCursor_6FCF1370_113c(m, pGame, pPlr, pPkt, 5)
       w8b3.ITEMS_AutoStackGroundItemOrScroll_6FCF4360_113c(m, pGame, pPlr, pItem)

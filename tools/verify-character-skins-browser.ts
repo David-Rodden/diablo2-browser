@@ -259,6 +259,76 @@ async function main(): Promise<void> {
       await h.cdp.captureScreenshot(join(outDir, `06-scourge-summons-army-${vpKey}.png`))
     }
 
+    // 7. Every other class -> its built-in Warcraft III hero (mesh skins without summons).
+    // Loaded models are counted through the skin service: the browser's resource-timing buffer is
+    // full by now, so new fetches no longer show up in `performance.getEntriesByType('resource')`.
+    const countMeshModels = `(async () => {
+      const mod = await import('/src/client/render/character-skin-cache.ts');
+      return mod.getGlobalCharacterSkinService().listMeshSkinRuntimes()
+        .reduce((n, rt) => n + rt.meshRenderer.liveModelCount, 0);
+    })()`
+    await h.cdp.evaluate(`(() => {
+      const w = window.__d2Play.session.world;
+      w.pets.clear();
+      for (const id of [9101, 9102, 9103, 9104, 9105, 9106, 9107, 9108]) {
+        const m = w.getUnit('monster', id);
+        if (m) { m.x += 40; m.y += 40; w.npcMotion.reassignMonster(id, m.x, m.y); }
+      }
+      w.self.states.delete(177);
+    })()`)
+    for (const [classId, token, skinId] of [
+      [0, 'am', 'am-sylvanas'],
+      [1, 'so', 'so-jaina'],
+      [3, 'pa', 'pa-arthas'],
+      [4, 'ba', 'ba-grom'],
+      [5, 'dz', 'dz-malfurion'],
+      [6, 'ai', 'ai-maiev'],
+    ] as const) {
+      const modelsBefore = await h.cdp.evaluate<number>(countMeshModels)
+      await h.cdp.evaluate(`(() => {
+        const app = window.__d2Play;
+        const w = app.session.world;
+        w.self.charClass = ${String(classId)};
+        app.session.selfAppearanceCache = null;
+        const u = w.getUnit('player', ${String(selfId)});
+        if (u) { u.classId = ${String(classId)}; u.token = '${token}'; u.mode = 1; u.dir64 = 0; u.targetDirection = 0; u.castState = undefined; u.states.replaceAll([]); }
+        app.hudModel.syncFromWorld();
+        app.renderFrame(performance.now());
+      })()`)
+      let loaded = false
+      for (let i = 0; i < 40 && !loaded; i += 1) {
+        await h.tick(2)
+        loaded = (await h.cdp.evaluate<number>(countMeshModels)) > modelsBefore
+        if (!loaded) await sleep(100)
+      }
+      assert(loaded, `Expected the ${skinId} hero model to be loaded for class '${token}'`)
+      const clip = await h.cdp.evaluate<string | null>(`(async () => {
+        const mod = await import('/src/client/render/character-skin-cache.ts');
+        window.__d2Play.renderFrame(performance.now());
+        for (const rt of mod.getGlobalCharacterSkinService().listMeshSkinRuntimes()) {
+          const st = rt.animator.snapshot().find((u) => u.unitKey === 'player:${String(selfId)}');
+          if (st) return st.clip;
+        }
+        return null;
+      })()`)
+      assert(clip === 'nu', `Expected class '${token}' to play the idle clip of ${skinId}, got '${String(clip)}'`)
+      await h.tick(5)
+      for (const [vpKey, w, hgt] of [
+        ['800x600', 800, 600],
+        ['1068x600', 1068, 600],
+        ['1280x720', 1280, 720],
+      ] as const) {
+        await h.cdp.setViewport(w, hgt)
+        await h.cdp.evaluate(`(() => {
+          const app = window.__d2Play;
+          app.settings.set({ viewport: '${vpKey}' });
+          app.renderFrame(performance.now());
+        })()`)
+        await h.tick(3)
+        await h.cdp.captureScreenshot(join(outDir, `07-${skinId}-${vpKey}.png`))
+      }
+    }
+
     assert(h.cdp.missingArt.length === 0, `Unexpected missingArt errors: ${JSON.stringify(h.cdp.missingArt)}`)
     assert(h.cdp.consoleErrors.length === 0, `Unexpected console errors: ${JSON.stringify(h.cdp.consoleErrors)}`)
     console.log(`[verify-character-skins] All multi-resolution & Trang-Oul override checks PASSED -> ${outDir}`)

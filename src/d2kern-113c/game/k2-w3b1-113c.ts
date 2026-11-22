@@ -1646,50 +1646,56 @@ export function ITEMS_CreateGoldPileInRoomAtCoords_6FC320E0_113c(
   const yOff = (y0 + 3) | 0
   const pFoundRoom = ROOM_FindRoomContainingSubtile113c(m, pRoom, xOff, yOff) >>> 0
 
-  const pScratch = allocZeroedScratch113c(m, 0xa0)
-  const pOutCoords = pScratch
-  const pCenterCoords = (pScratch + 0x08) >>> 0
-  const pDrop = (pScratch + 0x18) >>> 0
+  const sp = k2W3B1StackPtr
+  k2W3B1StackPtr = (sp + 0xa0) >>> 0
+  try {
+    m.fill(sp, 0xa0, 0)
+    const pOutCoords = sp
+    const pCenterCoords = (sp + 0x08) >>> 0
+    const pDrop = (sp + 0x18) >>> 0
 
-  m.setU32(pCenterCoords, x0 >>> 0)
-  m.setU32(pCenterCoords + 0x04, y0 >>> 0)
-  if (pFoundRoom !== 0) {
-    m.setU32(pOutCoords, xOff >>> 0)
-    m.setU32(pOutCoords + 0x04, yOff >>> 0)
-  } else {
-    m.setU32(pOutCoords, x0 >>> 0)
-    m.setU32(pOutCoords + 0x04, y0 >>> 0)
+    m.setU32(pCenterCoords, x0 >>> 0)
+    m.setU32(pCenterCoords + 0x04, y0 >>> 0)
+    if (pFoundRoom !== 0) {
+      m.setU32(pOutCoords, xOff >>> 0)
+      m.setU32(pOutCoords + 0x04, yOff >>> 0)
+    } else {
+      m.setU32(pOutCoords, x0 >>> 0)
+      m.setU32(pOutCoords + 0x04, y0 >>> 0)
+    }
+
+    const pTargetRoom =
+      COLLISION_FindFreePositionBasic113c(m, pRoom, pOutCoords, pCenterCoords, 1, 0x3e01, 0x801, 1) >>> 0
+    if (pTargetRoom === 0) {
+      return 0
+    }
+
+    const wItemFormat = m.u16(pGame + 0x78)
+    const nGoldClassId = m.u32(D2GAME_GDW_GOLD_CLASS_ID_VA_113C)
+    const outX = m.u32(pOutCoords)
+    const outY = m.u32(pOutCoords + 0x04)
+
+    m.setU32(pDrop + 0x00, 0)
+    m.setU32(pDrop + 0x04, pRoomSeed >>> 0)
+    m.setU32(pDrop + 0x08, pGame >>> 0)
+    m.setU32(pDrop + 0x0c, mlvl >>> 0)
+    m.setU32(pDrop + 0x14, nGoldClassId >>> 0)
+    m.setU32(pDrop + 0x18, 3)
+    m.setU32(pDrop + 0x1c, outX >>> 0)
+    m.setU32(pDrop + 0x20, outY >>> 0)
+    m.setU32(pDrop + 0x24, pTargetRoom >>> 0)
+    m.setU16(pDrop + 0x28, 1)
+    m.setU16(pDrop + 0x2a, wItemFormat)
+    m.setU32(pDrop + 0x30, 0)
+
+    const pItem = D2GAME_CreateItemEx_6FC31490_113c(m, pGame, pDrop, 0) >>> 0
+    if (pItem !== 0) {
+      ITEMS_SetOrClearCommandFlags113c(m, pItem, 0x2000, 0)
+    }
+    return pItem | 0
+  } finally {
+    k2W3B1StackPtr = sp
   }
-
-  const pTargetRoom =
-    COLLISION_FindFreePositionBasic113c(m, pRoom, pOutCoords, pCenterCoords, 1, 0x3e01, 0x801, 1) >>> 0
-  if (pTargetRoom === 0) {
-    return 0
-  }
-
-  const wItemFormat = m.u16(pGame + 0x78)
-  const nGoldClassId = m.u32(D2GAME_GDW_GOLD_CLASS_ID_VA_113C)
-  const outX = m.u32(pOutCoords)
-  const outY = m.u32(pOutCoords + 0x04)
-
-  m.setU32(pDrop + 0x00, 0)
-  m.setU32(pDrop + 0x04, pRoomSeed >>> 0)
-  m.setU32(pDrop + 0x08, pGame >>> 0)
-  m.setU32(pDrop + 0x0c, mlvl >>> 0)
-  m.setU32(pDrop + 0x14, nGoldClassId >>> 0)
-  m.setU32(pDrop + 0x18, 3)
-  m.setU32(pDrop + 0x1c, outX >>> 0)
-  m.setU32(pDrop + 0x20, outY >>> 0)
-  m.setU32(pDrop + 0x24, pTargetRoom >>> 0)
-  m.setU16(pDrop + 0x28, 1)
-  m.setU16(pDrop + 0x2a, wItemFormat)
-  m.setU32(pDrop + 0x30, 0)
-
-  const pItem = D2GAME_CreateItemEx_6FC31490_113c(m, pGame, pDrop, 0) >>> 0
-  if (pItem !== 0) {
-    ITEMS_SetOrClearCommandFlags113c(m, pItem, 0x2000, 0)
-  }
-  return pItem | 0
 }
 
 /**

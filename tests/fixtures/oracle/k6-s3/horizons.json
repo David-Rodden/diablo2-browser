@@ -1,13 +1,13 @@
 {
   "k6s3-druid-full-30-skills": {
     "bootFrame": 2,
-    "strict": 228,
-    "pos": 228
+    "strict": 374,
+    "pos": 387
   },
   "k6s3-assassin-full-30-skills": {
     "bootFrame": 2,
-    "strict": 220,
-    "pos": 220
+    "strict": 304,
+    "pos": 395
   },
   "k6s3-act1-bosses-cowlevel-imbue": {
     "bootFrame": 2,
@@ -37,6 +37,6 @@
   "k6s3-crafting-runewords-c2s-monai": {
     "bootFrame": 2,
     "strict": 22,
-    "pos": 138
+    "pos": 211
   }
 }

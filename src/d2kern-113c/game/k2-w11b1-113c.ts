@@ -213,7 +213,6 @@ import {
   ACT2Q2_IsQuestInState01_6FCE1B20_113c,
   ACT2Q2_IsQuestPastState01_6FCE1B60_113c,
 } from './k2-w2b6-113c'
-import { STATES_ClearGfxStateFlag_6FCEB1A0_113c } from './k2-w2b7-113c'
 import {
   AI_ScheduleAiThinkTimer_6FD120C0_113c,
   MONSTER_SpawnAtCoords_6FD0F450_113c,
@@ -3147,257 +3146,149 @@ export function NPCTRADE_InteractResurrectMerc_6FCE0DB0_113c(
  * @va 0x6FCE8990
  * @ordinalOrName sub_6FCE8990
  */
+/**
+ * `@va 0x6FCE8990` (`ACT2Q4_JerhynPalaceNpcAiOverride`, `__stdcall(pGame, pNpcUnit, pOutRunNormalAi, pOutStallAi)`, `calleePop = 16`, void):
+ * Checks quest `0x0B` active (`+0x09 != 0`, `+0x0D != 0`, quests `0x0C`/`0x0E` step `0x0D == 0`, `!ACT2Q2_PastState01`, `+0x14 == 0`),
+ * activates `+0x12 = 1` via `0x6FCE1B20`, then:
+ * - If `+0x13 == 0 || +0x0F != 0` (`0x6FCE8BF9`): scans players with `0x6FCE31C0`; if `+0x1A != 0`, approaches `(+0x20, +0x24)` and sets `+0x13=1, +0x12=0, *pOutRunNormalAi=0, *pOutStallAi=0`.
+ * - If `+0x13 != 0 && +0x0F == 0` (`0x6FCE8A88`): sets `*pOutRunNormalAi=0, *pOutStallAi=1`; if `+0x11 == 1` and `dist <= 2` (`0x6FCD07B0`), warps near `+0x38` player (`x+4, y`, `FindFreePositionSimple` radius `1..3`) via `0x6FD019C0` and sets `+0x0F=1, +0x14=1`; if `dist > 2`, sets `+0x19=1, +0x18=0`, approaches `(+0x20, +0x24)`, and clears `*pOutStallAi=0`.
+ */
 export function ACT2Q4_JerhynPalaceNpcAiOverride_6FCE8990_113c(
   m: SparseMemory113c,
   pGame: number,
   pNpcUnit: number,
-  pOutSkipDefaultAi: number,
-  pOutHandled: number,
+  pOutRunNormalAi: number,
+  pOutStallAi: number,
 ): void {
   hitD2GameVa113c(0x6FCE8990)
-  void ACT2Q4_UnitIterate_CheckNearHorazonTome_6FCE31C0_113c;
-  void STATES_ClearGfxStateFlag_6FCEB1A0_113c;
   const pQuestChainRoot = u32(m, pGame + 0x10f4);
   let pQuest = pQuestChainRoot !== 0 ? u32(m, pQuestChainRoot) : 0;
   while (pQuest !== 0 && u32(m, pQuest) !== 0x0b) {
     pQuest = u32(m, pQuest + 0xf4);
   }
   if (pQuest === 0 || u8(m, pQuest + 0x09) === 0) {
-    w32(m, pOutHandled, 1);
-    w32(m, pOutSkipDefaultAi, 0);
+    w32(m, pOutRunNormalAi, 1);
+    w32(m, pOutStallAi, 0);
     return;
   }
   const pQuestExt = u32(m, pQuest + 0x18);
+  if (u8(m, pQuestExt + 0x0d) === 0) {
+    w32(m, pOutRunNormalAi, 1);
+    w32(m, pOutStallAi, 0);
+    return;
+  }
   if (
-    u8(m, pQuestExt + 0x0d) === 0 ||
     QUESTS_CheckGlobalQuestState_6FC538D0_113c(m, pGame, 0x0c, 0x0d) !== 0 ||
     QUESTS_CheckGlobalQuestState_6FC538D0_113c(m, pGame, 0x0e, 0x0d) !== 0 ||
     (ACT2Q2_IsQuestPastState01_6FCE1B60_113c(m, pGame) & 0xff) !== 0 ||
     u8(m, pQuestExt + 0x14) !== 0
   ) {
-    w32(m, pOutHandled, 1);
-    w32(m, pOutSkipDefaultAi, 0);
+    w32(m, pOutRunNormalAi, 1);
+    w32(m, pOutStallAi, 0);
     return;
   }
   if ((ACT2Q2_IsQuestInState01_6FCE1B20_113c(m, pGame) & 0xff) !== 0) {
     w8(m, pQuestExt + 0x12, 1);
   }
   if (u8(m, pQuestExt + 0x12) !== 1) {
-    w32(m, pOutHandled, 1);
-    w32(m, pOutSkipDefaultAi, 0);
+    w32(m, pOutRunNormalAi, 1);
+    w32(m, pOutStallAi, 0);
     return;
   }
-  const bState13 = u8(m, pQuestExt + 0x13);
-  if (bState13 === 0) {
-    if (u8(m, pQuestExt + 0x0f) !== 0) {
-      const pTargetUnit =
-        SUNIT_FindFirstLivingPlayerOrMonsterMatching_6FCFFCC0_113c(
-          m,
-          pGame,
-          0x6fce31c0,
-          0,
-          0,
-        ) >>> 0;
-      const nTargetY = i32(m, pQuestExt + 0x24);
-      const nTargetX = i32(m, pQuestExt + 0x20);
-      if (pTargetUnit !== 0) {
-        w8(m, pQuestExt + 0x13, 1);
-        if (
-          Boolean(
-            AI_ApproachTarget113c(
-              worldOf(m, pGame),
-              pNpcUnit,
-              0,
-              2,
-              nTargetX,
-              nTargetY,
-              1,
-              0,
-            ),
-          )
-        ) {
-          w32(m, pOutHandled, 1);
-          w32(m, pOutSkipDefaultAi, 1);
-          return;
-        }
-        w32(m, pOutHandled, 0);
-        w32(m, pOutSkipDefaultAi, 0);
-        return;
-      }
+  if (u8(m, pQuestExt + 0x13) !== 0 && u8(m, pQuestExt + 0x0f) === 0) {
+    w32(m, pOutRunNormalAi, 0);
+    w32(m, pOutStallAi, 1);
+    if (u8(m, pQuestExt + 0x11) !== 1) {
+      return;
+    }
+    const nTargetX = i32(m, pQuestExt + 0x20);
+    const nTargetY = i32(m, pQuestExt + 0x24);
+    const dist =
+      UNITS_GetOctileDistanceToCoordinates113c(m, pNpcUnit, nTargetX, nTargetY) >>> 0;
+    if (dist > 2) {
+      w8(m, pQuestExt + 0x19, 1);
+      w8(m, pQuestExt + 0x18, 0);
+      AI_ApproachTarget113c(
+        worldOf(m, pGame),
+        pNpcUnit,
+        0,
+        2,
+        nTargetX,
+        nTargetY,
+        1,
+        0,
+      );
+      w32(m, pOutStallAi, 0);
+      return;
+    }
+    const dwTargetPlayerGuid = u32(m, pQuestExt + 0x38);
+    let pTargetPlayer = u32(m, pGame + (dwTargetPlayerGuid & 0x7f) * 4 + 0x1520);
+    while (pTargetPlayer !== 0 && u32(m, pTargetPlayer + 0x0c) !== dwTargetPlayerGuid) {
+      pTargetPlayer = u32(m, pTargetPlayer + 0xe4);
+    }
+    if (pTargetPlayer !== 0) {
+      const pOutPt = K2_W11B1_SCRATCH_BASE;
+      w32(m, pOutPt, 0);
+      w32(m, pOutPt + 4, 0);
+      PATH_GetTargetTypeAndPosition113c(m, pTargetPlayer, pOutPt);
+      w32(m, pOutPt, (i32(m, pOutPt) + 4) | 0);
+      const pPlayerRoom = UNITS_GetRoom113c(m, pTargetPlayer);
       if (
-        UNITS_GetOctileDistanceToCoordinates113c(
-          m,
-          pNpcUnit,
-          nTargetX,
-          nTargetY,
-        ) > 7
+        COLLISION_FindFreePositionSimple113c(m, pPlayerRoom, pOutPt, 1, 0x3c01, 0) !== 0 ||
+        COLLISION_FindFreePositionSimple113c(m, pPlayerRoom, pOutPt, 2, 0x3c01, 0) !== 0 ||
+        COLLISION_FindFreePositionSimple113c(m, pPlayerRoom, pOutPt, 3, 0x3c01, 0) !== 0
       ) {
         if (
-          Boolean(
-            AI_ApproachTarget113c(
-              worldOf(m, pGame),
-              pNpcUnit,
-              0,
-              2,
-              nTargetX,
-              nTargetY,
-              1,
-              0,
-            ),
-          )
-        ) {
-          w32(m, pOutHandled, 1);
-          w32(m, pOutSkipDefaultAi, 1);
-          return;
-        }
-        w32(m, pOutHandled, 0);
-        w32(m, pOutSkipDefaultAi, 0);
-        return;
-      }
-    }
-    w32(m, pOutHandled, 1);
-    w32(m, pOutSkipDefaultAi, 0);
-    return;
-  }
-  if (bState13 === 1) {
-    const pOutPos = K2_W11B1_SCRATCH_BASE;
-    w32(m, pOutPos, 0);
-    w32(m, pOutPos + 4, 0);
-    PATH_GetTargetTypeAndPosition113c(m, pNpcUnit, pOutPos);
-    const nPosX = UNIT_GetPosX113c(m, pNpcUnit);
-    const nPosY = UNIT_GetPosY113c(m, pNpcUnit);
-    if (nPosX === i32(m, pOutPos) && nPosY === i32(m, pOutPos + 4)) {
-      if (u8(m, pQuestExt + 0x11) !== 0 && i32(m, pQuestExt + 0x38) > 0) {
-        const pTargetUnit =
-          SUNIT_FindFirstLivingPlayerOrMonsterMatching_6FCFFCC0_113c(
+          sunitWarpUnitToCoords_6FD019C0(
             m,
+            i32(m, pOutPt),
+            pPlayerRoom,
+            i32(m, pOutPt + 4),
+            pNpcUnit,
             pGame,
-            0x6fce31c0,
             0,
             0,
-          ) >>> 0;
-        if (pTargetUnit !== 0) {
-          w8(m, pQuestExt + 0x13, 2);
-          if (
-            Boolean(
-              AI_ApproachTarget113c(
-                worldOf(m, pGame),
-                pNpcUnit,
-                0,
-                2,
-                i32(m, pQuestExt + 0x28),
-                i32(m, pQuestExt + 0x2c),
-                1,
-                0,
-              ),
-            )
-          ) {
-            w32(m, pOutHandled, 1);
-            w32(m, pOutSkipDefaultAi, 1);
-            return;
-          }
-          w32(m, pOutHandled, 0);
-          w32(m, pOutSkipDefaultAi, 0);
-          return;
-        }
-      }
-      w8(m, pQuestExt + 0x13, 0);
-      const nTargetY = i32(m, pQuestExt + 0x24);
-      const nTargetX = i32(m, pQuestExt + 0x20);
-      if (
-        UNITS_GetOctileDistanceToCoordinates113c(
-          m,
-          pNpcUnit,
-          nTargetX,
-          nTargetY,
-        ) > 7
-      ) {
-        if (
-          Boolean(
-            AI_ApproachTarget113c(
-              worldOf(m, pGame),
-              pNpcUnit,
-              0,
-              2,
-              nTargetX,
-              nTargetY,
-              1,
-              0,
-            ),
-          )
+          ) !== 0
         ) {
-          w32(m, pOutHandled, 1);
-          w32(m, pOutSkipDefaultAi, 1);
+          w8(m, pQuestExt + 0x0f, 1);
+          w8(m, pQuestExt + 0x14, 1);
           return;
         }
-        w32(m, pOutHandled, 0);
-        w32(m, pOutSkipDefaultAi, 0);
-        return;
       }
-      w32(m, pOutHandled, 1);
-      w32(m, pOutSkipDefaultAi, 0);
-      return;
     }
-    if (
-      Boolean(
-        AI_ApproachTarget113c(
-          worldOf(m, pGame),
-          pNpcUnit,
-          0,
-          2,
-          i32(m, pOutPos),
-          i32(m, pOutPos + 4),
-          1,
-          0,
-        ),
-      )
-    ) {
-      w32(m, pOutHandled, 1);
-      w32(m, pOutSkipDefaultAi, 1);
-      return;
-    }
-    w32(m, pOutHandled, 0);
-    w32(m, pOutSkipDefaultAi, 0);
+    w32(m, pOutRunNormalAi, 0);
+    w32(m, pOutStallAi, 1);
     return;
   }
-  if (bState13 === 2) {
-    const pOutPos = K2_W11B1_SCRATCH_BASE;
-    w32(m, pOutPos, 0);
-    w32(m, pOutPos + 4, 0);
-    PATH_GetTargetTypeAndPosition113c(m, pNpcUnit, pOutPos);
-    const nPosX = UNIT_GetPosX113c(m, pNpcUnit);
-    const nPosY = UNIT_GetPosY113c(m, pNpcUnit);
-    if (nPosX === i32(m, pOutPos) && nPosY === i32(m, pOutPos + 4)) {
-      w8(m, pQuestExt + 0x13, 3);
-      w8(m, pQuestExt + 0x14, 1);
-      w32(m, pOutHandled, 1);
-      w32(m, pOutSkipDefaultAi, 0);
-      return;
-    }
-    if (
-      Boolean(
-        AI_ApproachTarget113c(
-          worldOf(m, pGame),
-          pNpcUnit,
-          0,
-          2,
-          i32(m, pOutPos),
-          i32(m, pOutPos + 4),
-          1,
-          0,
-        ),
-      )
-    ) {
-      w32(m, pOutHandled, 1);
-      w32(m, pOutSkipDefaultAi, 1);
-      return;
-    }
-    w32(m, pOutHandled, 0);
-    w32(m, pOutSkipDefaultAi, 0);
+
+  w8(m, pQuestExt + 0x1a, 0);
+  w32(m, pQuestExt + 0x1c, 0);
+  SUNIT_FindFirstLivingPlayerOrMonsterMatching_6FCFFCC0_113c(
+    m,
+    pGame,
+    ACT2Q4_UnitIterate_CheckNearHorazonTome_6FCE31C0_113c,
+    0,
+    u32(m, pQuest + 0x04),
+  );
+  if (u8(m, pQuestExt + 0x1a) === 0) {
+    w32(m, pOutRunNormalAi, 0);
+    w32(m, pOutStallAi, 1);
     return;
   }
-  w32(m, pOutHandled, 1);
-  w32(m, pOutSkipDefaultAi, 0);
+  AI_ApproachTarget113c(
+    worldOf(m, pGame),
+    pNpcUnit,
+    0,
+    2,
+    i32(m, pQuestExt + 0x20),
+    i32(m, pQuestExt + 0x24),
+    1,
+    0,
+  );
+  w8(m, pQuestExt + 0x13, 1);
+  w8(m, pQuestExt + 0x12, 0);
+  w32(m, pOutRunNormalAi, 0);
+  w32(m, pOutStallAi, 0);
 }
 
 /**

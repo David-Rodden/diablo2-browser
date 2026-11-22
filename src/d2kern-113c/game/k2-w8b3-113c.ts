@@ -1687,11 +1687,18 @@ export function C2S_Packet20_UseInventoryItem_6FCEF730_113c(
  * @va 0x6FCEFBC0
  * @ordinalOrName D2Game_6FCEFBC0
  */
+/**
+ * [23/30] Equips player's cursor item onto hireling body location, returning old merc item to player cursor/socket-inventory (`0x6FCEFBC0`, `__stdcall(pGame, pPlayerUnit, pMercUnit, pCursorItem)`, `calleePop = 16`).
+ *
+ * @dll D2Game.dll
+ * @va 0x6FCEFBC0
+ * @ordinalOrName D2Game_6FCEFBC0
+ */
 export function ITEMS_EquipMercBodyLocFromPlayerCursor_6FCEFBC0_113c(
   m: SparseMemory113c,
   pGame: number,
-  pMercUnit: number,
   pPlayerUnit: number,
+  pMercUnit: number,
   pCursorItem: number,
 ): number {
   hitD2GameVa113c(0x6FCEFBC0)

@@ -293,6 +293,7 @@ export interface RegpopSpawnHooks113c {
     pRoom: number,
     pGame: number,
     nClassId: number,
+    pCoordNode?: number,
   ) => number
   getLevelRoomCountInAct?: (m: Memory113c, pAct: number, nLevelId: number) => number
   getActPresetTileCoords?: (
@@ -471,8 +472,37 @@ export function initD2GameGlobalsInMem113c(m: Memory113c, pDataTables: number): 
   m.setU32(0x6fd31f90, 0)
   m.setU32(0x6fd31c3c, 0)
   m.setU32(0x6fd31c20, 0)
+  m.setU32(0x6fd31c1c, 0)
   m.setU32(0x6fd286a0, 0)
   m.setU32(0x6fd18d10, 0)
+  const hirelingBonus9 = [0, 0, 8, 16, 24, 32, 40, 48, 56]
+  for (let i = 0; i < hirelingBonus9.length; i++) {
+    m.setU32((0x6fd1bbf0 + i * 4) >>> 0, hirelingBonus9[i]! >>> 0)
+  }
+  const strStartedQuest = 'Started quest\0'
+  for (let i = 0; i < strStartedQuest.length; i++) {
+    m.setU8((0x6fd1bf08 + i) >>> 0, strStartedQuest.charCodeAt(i) & 0xff)
+  }
+  const strChangingState = 'changing state to %d\n\0'
+  for (let i = 0; i < strChangingState.length; i++) {
+    m.setU8((0x6fd1cc2c + i) >>> 0, strChangingState.charCodeAt(i) & 0xff)
+  }
+  const q1Map = [0xffffffff, 0, 1, 2, 3, 4]
+  for (let i = 0; i < q1Map.length; i++) {
+    m.setU32((0x6fd28a30 + i * 4) >>> 0, q1Map[i]! >>> 0)
+  }
+  const q2Map = [0xffffffff, 0, 1, 2, 3, 4, 154, 146]
+  for (let i = 0; i < q2Map.length; i++) {
+    m.setU32((0x6fd28ee0 + i * 4) >>> 0, q2Map[i]! >>> 0)
+  }
+  const q5Map = [0xffffffff, 0, 1, 2, 3, 4]
+  for (let i = 0; i < q5Map.length; i++) {
+    m.setU32((0x6fd29390 + i * 4) >>> 0, q5Map[i]! >>> 0)
+  }
+  const q3Map = [0xffffffff, 0xffffffff, 0, 1, 2, 3]
+  for (let i = 0; i < q3Map.length; i++) {
+    m.setU32((0x6fd2a00c + i * 4) >>> 0, q3Map[i]! >>> 0)
+  }
 }
 
 function sx8(v: number): number {
@@ -1543,7 +1573,7 @@ export function REGPOP_PopulateRoomMonsters113c(
                 )
                 spawned =
                   hooks !== undefined && hooks.onSpawnChampionOrUniquePack !== undefined
-                    ? hooks.onSpawnChampionOrUniquePack(m, rarity, pRoom, pGame, champClassId)
+                    ? hooks.onSpawnChampionOrUniquePack(m, rarity, pRoom, pGame, champClassId, pCoord)
                     : 0
               } else if (rarity === 1) {
                 const pRoomSeed = pRoom !== 0 ? (pRoom + 0x6c) >>> 0 : 0
@@ -3116,50 +3146,30 @@ export function SUNIT_PlaceServerUnitInRoom113c(
  */
 export function GAME_GetEffectivePlayerCount113c(m: Memory113c, pGame: number): number {
   hitD2GameVa113c(0x6FC579A0)
+  if (pGame === 0) return 0
   let count = 0
-  if (pGame !== 0) {
-    let hashLoaded = false
-    try {
-      m.u32((pGame + 0x131c) >>> 0)
-      hashLoaded = true
-    } catch {
-      hashLoaded = false
-    }
-    if (hashLoaded) {
-      const sp = regpopStackPtr
-      regpopStackPtr = (sp + 8) >>> 0
-      try {
-        m.setU32(sp, 0)
-        D2GAME_SUNIT_IterateAllLivingPlayers113c(
-          m,
-          pGame,
-          (mem, _g, pUnit, pCnt) => QUESTS_CountLivingUnitsInRoomCallback113c(mem, pUnit, pCnt),
-          sp,
-        )
-        count = m.u32(sp) | 0
-      } finally {
-        regpopStackPtr = sp
-      }
-      const gameType = m.u8((pGame + 0x6a) >>> 0)
-      if (gameType >= 1 && gameType <= 3) {
-        try {
-          const maxCount = m.u32(0x6fd31c1c) | 0
-          if (maxCount > count) count = maxCount
-        } catch {
-          // 0x6fd31c1c unmapped in standalone tests without global players override
-        }
-      }
-    }
-    if (count === 0) {
-      count = m.u32((pGame + 0x1d20) >>> 0) | 0
-      const overrideCount = m.u32((pGame + 0x74) >>> 0) | 0
-      if (overrideCount > count) {
-        count = overrideCount
-      }
-    }
+  const sp = regpopStackPtr
+  regpopStackPtr = (sp + 8) >>> 0
+  try {
+    m.setU32(sp, 0)
+    D2GAME_SUNIT_IterateAllLivingPlayers113c(
+      m,
+      pGame,
+      (mem, _g, pUnit, pCnt) => QUESTS_CountLivingUnitsInRoomCallback113c(mem, pUnit, pCnt),
+      sp,
+    )
+    count = m.u32(sp) | 0
+  } finally {
+    regpopStackPtr = sp
   }
-  if (count <= 1) {
-    count = 1
+  const gameType = m.u8((pGame + 0x6a) >>> 0)
+  if (gameType >= 1 && gameType <= 3) {
+    try {
+      const maxCount = m.u32(0x6fd31c1c) | 0
+      if (maxCount > count) count = maxCount
+    } catch {
+      // 0x6fd31c1c unmapped in standalone tests without global players override
+    }
   }
   return count
 }

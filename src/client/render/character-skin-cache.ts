@@ -189,7 +189,64 @@ const BUILTIN_FALLBACK_SKINS: readonly CharacterSkinCatalogEntry[] = Object.free
     manifestPath: 'ne-kelthuzad/skin.json',
     previewPath: 'ne-kelthuzad/preview.png',
   }),
+  Object.freeze({
+    id: 'so-jaina',
+    name: Object.freeze({ zh: '吉安娜·普罗德摩尔', en: 'Jaina Proudmoore' }),
+    description: Object.freeze({
+      zh: '《魔兽争霸3》吉安娜·普罗德摩尔实时 3D 骨骼模型。',
+      en: 'Real-time Warcraft III model of Jaina Proudmoore.',
+    }),
+    targetClass: 'so',
+    source: 'builtin',
+    manifestPath: 'so-jaina/skin.json',
+  }),
+  Object.freeze({
+    id: 'am-sylvanas',
+    name: Object.freeze({ zh: '黑暗游侠希尔瓦娜斯', en: 'Sylvanas (Dark Ranger)' }),
+    targetClass: 'am',
+    source: 'builtin',
+    manifestPath: 'am-sylvanas/skin.json',
+  }),
+  Object.freeze({
+    id: 'pa-arthas',
+    name: Object.freeze({ zh: '阿尔萨斯王子', en: 'Arthas (Paladin)' }),
+    targetClass: 'pa',
+    source: 'builtin',
+    manifestPath: 'pa-arthas/skin.json',
+  }),
+  Object.freeze({
+    id: 'ba-grom',
+    name: Object.freeze({ zh: '格罗姆·地狱咆哮', en: 'Grom Hellscream' }),
+    targetClass: 'ba',
+    source: 'builtin',
+    manifestPath: 'ba-grom/skin.json',
+  }),
+  Object.freeze({
+    id: 'dz-malfurion',
+    name: Object.freeze({ zh: '玛法里奥·怒风', en: 'Malfurion Stormrage' }),
+    targetClass: 'dz',
+    source: 'builtin',
+    manifestPath: 'dz-malfurion/skin.json',
+  }),
+  Object.freeze({
+    id: 'ai-maiev',
+    name: Object.freeze({ zh: '守望者玛维', en: 'Maiev Shadowsong (Warden)' }),
+    targetClass: 'ai',
+    source: 'builtin',
+    manifestPath: 'ai-maiev/skin.json',
+  }),
 ])
+
+/** Built-in skin a class gets by default when the skin plugin is switched on. */
+export const BUILTIN_DEFAULT_SKIN_BY_CLASS: Readonly<Partial<Record<PlayerClassToken, string>>> = Object.freeze({
+  am: 'am-sylvanas',
+  so: 'so-jaina',
+  ne: 'ne-kelthuzad',
+  pa: 'pa-arthas',
+  ba: 'ba-grom',
+  dz: 'dz-malfurion',
+  ai: 'ai-maiev',
+})
 
 const CLASS_DISPLAY_NAMES: Readonly<Record<PlayerClassToken, { readonly zh: string; readonly en: string }>> = {
   am: { zh: '亚马逊 (Amazon)', en: 'Amazon' },
@@ -788,8 +845,15 @@ export class CharacterSkinService {
       ...this.config.selectedByClass,
       ...(patch.selectedByClass ?? {}),
     }
-    if (!wasEnabled && nextEnabled && restored.ne && restored.ne !== 'ne-kelthuzad' && patch.selectedByClass?.ne === 'ne-kelthuzad') {
-      nextSelected.ne = restored.ne
+    if (!wasEnabled && nextEnabled) {
+      // Switching the plugin on asks for the built-in defaults; a custom skin the player had
+      // picked for that class before wins over the default.
+      for (const [cls, builtinId] of Object.entries(BUILTIN_DEFAULT_SKIN_BY_CLASS) as [PlayerClassToken, string][]) {
+        const prev = restored[cls]
+        if (prev && prev !== builtinId && patch.selectedByClass?.[cls] === builtinId) {
+          nextSelected[cls] = prev
+        }
+      }
     }
     if (patch.selectedByClass !== undefined) {
       savePersistedSelectionMap(nextSelected)

@@ -2471,7 +2471,7 @@ export function QUESTS_Act2RadamentSetStateAndDebugPrint_6FC55EB0_113c(
     m.setU8((pQuestArg + 0x0c) >>> 0, nState & 0xff);
     user32_wsprintfA113c(m, pBuf, 0x6fd1cc2c, nState);
     if (m.u32(0x6fd31c20) !== 0) {
-      QUESTS_DebugOutput_6FCEBE70_113c(m, m.u32((pQuestArg + 0x04) >>> 0), pBuf, 4);
+      NET_BroadcastSystemChatMessage_6FCEBE70_113c(m, pBuf, m.u32((pQuestArg + 0x04) >>> 0), 4);
     }
   } finally {
     k2W7B1StackPtr = savedSp;

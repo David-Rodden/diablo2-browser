@@ -1908,6 +1908,7 @@ export function SKILLS_ApplyMeleeHitAuraStatesAndExecuteEvents_6FCC3220_113c(
   pUnit: number,
   nSkillId: number,
   nSkillLevel: number,
+  hooks?: SUnitDmgHooks113c,
 ): number {
   hitD2GameVa113c(0x6FCC3220)
   if (nSkillId < 0) {
@@ -2006,7 +2007,7 @@ export function SKILLS_ApplyMeleeHitAuraStatesAndExecuteEvents_6FCC3220_113c(
   if (pFinalTarget === pUnit || pFinalTarget === 0) {
     return 0;
   }
-  SUNITDMG_ExecuteEvents113c(m, pGame, pUnit, pFinalTarget, 1, 0);
+  SUNITDMG_ExecuteEvents113c(m, pGame, pUnit, pFinalTarget, 1, 0, hooks);
   return 1;
 }
 

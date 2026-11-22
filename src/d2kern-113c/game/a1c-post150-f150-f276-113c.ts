@@ -78,6 +78,8 @@ import { D2GAME_SUNIT_IterateAllLivingPlayers113c } from './boot-init-gap-b-113c
 import { AIGENERAL_CopyAiCommandParams113c } from './replay-kernel-113c.ts'
 import { SUNIT_RemoveServerUnit113c } from './game-strc.ts'
 import { UNITS_ChangeAnimMode113c } from './monster-events.ts'
+import { ITEMS_DeactivateEquippedItemStats113c } from './k2-gap-itemdef-113c.ts'
+import { SUNIT_FreeUnit113c } from './replay-final11-113c.ts'
 import {
   D2GAME_IAT_GDW_BITMASKS_VA_113C,
   D2GAME_IAT_SGPT_DATATABLES_VA_113C,
@@ -89,6 +91,54 @@ import {
   EVENT_GetNextEventFrame113c,
   EVENT_RemoveUnitEvents113c,
 } from './timer-wheel.ts'
+import { QUESTS_SetGlobalQuestState_6FC53920_113c } from './k2-laneJ-0x6fc4-w1-113c.ts'
+import {
+  ACT5Q3_SyncPrisonOfIceQuestStateCallback_6FC78110_113c,
+  ACT5Q4_SyncNihlathakQuestStateCallback_6FC77C00_113c,
+  ACT5Q5_SyncRiteOfPassageQuestStateCallback_6FC77750_113c,
+  ACT5Q6_SyncBaalQuestStateCallback_6FC77320_113c,
+} from './k2-laneM-0x6fc7-w1-113c.ts'
+import { ACT5Q3_SyncPlayerQuest25State0EAlert21_6FC79120_113c } from './k2-w2b1-113c.ts'
+import {
+  ACT5Q1_SyncPlayerQuestStateWithQuest1F_6FC78890_113c,
+  ACT5Q2_SyncPlayerQuestStateWithQuest20_6FC78530_113c,
+  ACT5Q6_SendPacket50Quest24WordA4_6FC78A40_113c,
+} from './k2-w3b5-113c.ts'
+import {
+  ACT1Q1_UpdatePlayerQuestStateCallback_6FC82370_113c,
+  ACT1Q2_UpdatePlayerQuestStateCallback_6FC82040_113c,
+  ACT1Q3_UpdatePlayerQuestStateCallback_6FC81250_113c,
+  ACT1Q4_SetCompletedBeforeAndAddGuidCallback_6FC81910_113c,
+  ACT1Q4_UpdatePlayerQuestStateCallback_6FC819B0_113c,
+  ACT1Q5_UpdatePlayerQuestStateCallback_6FC81DA0_113c,
+  ACT1Q6_RemoveGuidFromSelectedList_6FC802A0_113c,
+  ACT1Q6_UpdatePlayerQuestStateCallback_6FC80D00_113c,
+} from './k2-w3b6-113c.ts'
+import {
+  ACT1Q2_SendAlert02IfQuest02Active_6FC82C00_113c,
+  ACT1Q3_SendAlert03IfQuest03Active_6FC82AE0_113c,
+  ACT1Q4_SendAlert04IfQuest04Active_6FC82A80_113c,
+  ACT1Q5_SendAlert05IfQuest05Active_6FC82870_113c,
+  ACT1Q6_SendAlert06IfQuest06Active_6FC82700_113c,
+  ACT5Q1_SendAlert1FIfQuest23Active_6FC79620_113c,
+  ACT5Q2_SendAlert20IfQuest24Active_6FC793F0_113c,
+  ACT5Q3_CleanupFrozenAnyaAndTownNpcState_6FC7EC30_113c,
+  ACT5Q3_SendAlert21IfQuest25Active_6FC791D0_113c,
+  ACT5Q4_SendAlert22IfQuest26Active_6FC790C0_113c,
+  ACT5Q5_SendAlert23IfQuest27Active_6FC78F90_113c,
+  ACT5Q6_SendAlert24IfQuest28Active_6FC78D40_113c,
+} from './k2-w4b2-113c.ts'
+import {
+  ACT1Q1_SendAlert01IfQuest01Active_6FC82D30_113c,
+  ACT1Q4_SpawnGriswoldInTristram_6FC860D0_113c,
+} from './k2-w4b3-113c.ts'
+import { SUNIT_FindFirstLivingPlayerOrMonsterMatching_6FCFFCC0_113c } from './k2-w5b7-113c.ts'
+import { NET_BroadcastSystemChatMessage_6FCEBE70_113c } from './k2-w6b3-113c.ts'
+import { QUESTS_Act2RadamentSetStateAndDebugPrint_6FC55EB0_113c } from './k2-w7b1-113c.ts'
+import {
+  ACT1Q4_BroadcastDebugQuestNotice_6FC835B0_113c,
+  ACT1Q4_UpdateGibbetModeAndCainState_6FC88280_113c,
+} from './k2-w7b2-113c.ts'
 import { hitD2GameVa113c } from '../va-trace-113c.ts'
 
 /** `D2Game.dll` image base (`0x6FC20000`) used to compute internal callback VAs without raw literals. */
@@ -584,8 +634,57 @@ export function QUESTS_NotifyLevelChange113c(
   freeStackFrame(savedStack)
 }
 
+function broadcastInlineQuestStateDebug113c(
+  m: Memory113c,
+  pQuest: number,
+  nState: number,
+): void {
+  const savedStack = laneI1StackPtr
+  const pBuf = allocStackFrame(m, 0x80)
+  try {
+    const text = `changing state to ${nState | 0}\n`
+    for (let i = 0; i < text.length; i++) {
+      m.setU8((pBuf + i) >>> 0, text.charCodeAt(i) & 0xff)
+    }
+    m.setU8((pBuf + text.length) >>> 0, 0)
+    if (m.u32(0x6fd31c20) !== 0) {
+      NET_BroadcastSystemChatMessage_6FCEBE70_113c(m, pBuf, m.u32((pQuest + 0x04) >>> 0) >>> 0, 4)
+    }
+  } finally {
+    freeStackFrame(savedStack)
+  }
+}
+
+function getPlayerQuestFlagsFromArg113c(
+  m: Memory113c,
+  pArg: number,
+): number {
+  const pGame = m.u32(pArg >>> 0) >>> 0
+  const pUnit = m.u32((pArg + 0x0c) >>> 0) >>> 0
+  const pPlayerData = UNITS_GetPlayerData113c(m, pUnit) >>> 0
+  const diffIdx = m.u8((pGame + 0x6d) >>> 0)
+  return m.u32((pPlayerData + diffIdx * 4 + 0x10) >>> 0) >>> 0
+}
+
+function lookupObjectByGuidInGame113c(
+  m: Memory113c,
+  pGame: number,
+  dwGuid: number,
+): number {
+  const target = dwGuid >>> 0
+  let pObj = m.u32((pGame + ((target & 0x7f) << 2) + 0x1520) >>> 0) >>> 0
+  while (pObj !== 0) {
+    if ((m.u32((pObj + 0x0c) >>> 0) >>> 0) === target) {
+      return pObj
+    }
+    pObj = m.u32((pObj + 0xe4) >>> 0) >>> 0
+  }
+  return 0
+}
+
 /**
- * Act 4 Quest 1 (Fallen Angel / Izual) level-change callback (`cbIdx = 3`).
+ * Act 5 Quest 6 (Eve of Destruction / Baal) level-change callback (`cbIdx = 3`, `__fastcall (ecx=pQuest, edx=pArg)`).
+ * Bound to `ACT4Q1_Callback03_LevelChanged` in `k1r14-laneI1-f150-f276.json`.
  *
  * @va D2Game:0x6FC7A9B0 (327B)
  */
@@ -593,70 +692,81 @@ export function ACT4Q1_Callback03_LevelChanged113c(
   m: Memory113c,
   pQuest: number,
   pArg: number,
-  hooks?: Post150LaneI1Hooks113c,
+  _hooks?: Post150LaneI1Hooks113c,
 ): void {
   hitD2GameVa113c(0x6FC7A9B0)
-  if (m.u32((pArg + 0x14) >>> 0) === 0x6d) {
+  const nOldLevel = m.u32((pArg + 0x14) >>> 0) | 0
+  const nNewLevel = m.u32((pArg + 0x18) >>> 0) | 0
+  if (nNewLevel === 0x6d) {
+    ACT5Q6_SendPacket50Quest24WordA4_6FC78A40_113c(
+      m,
+      m.u32((pArg + 0x0c) >>> 0) >>> 0,
+      m.u32(pArg >>> 0) >>> 0,
+    )
+  }
+  if (nOldLevel === 0x6d) {
     const pUnit = m.u32((pArg + 0x0c) >>> 0) >>> 0
     const dwGuid = pUnit !== 0 ? m.u32((pUnit + 0x0c) >>> 0) : 0xffffffff
     if (m.u16((pQuest + 0x9c) >>> 0) > 0) {
       QUESTS_GuidListRemove113c(m, (pQuest + 0x1c) >>> 0, dwGuid)
     }
-    const pPlayerData = UNITS_GetPlayerData113c(m, pUnit)
-    const pGame = m.u32(pArg >>> 0) >>> 0
-    const diffIdx = m.u32((pGame + 0x68) >>> 0) >>> 0
-    const pQuestFlags = m.u32((pPlayerData + diffIdx * 4 + 0x10) >>> 0) >>> 0
-    if (
-      DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 0x19, 0) !== 1 &&
-      DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 0x19, 1) !== 1
-    ) {
-      const pQuestData = m.u32((pQuest + 0x18) >>> 0) >>> 0
-      if (pQuestData !== 0 && m.u8((pQuestData + 0x01) >>> 0) !== 1) {
-        m.setU8((pQuest + 0x0b) >>> 0, 1)
-        m.setU32((pQuest + 0x0c) >>> 0, 2)
+    if (m.u8((pQuest + 0x0c) >>> 0) === 2) {
+      const pQuestFlags = getPlayerQuestFlagsFromArg113c(m, pArg)
+      const nQuestNo = m.u32((pQuest + 0xe0) >>> 0) | 0
+      if (
+        DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, nQuestNo, 0) === 1 ||
+        DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, nQuestNo, 1) === 1
+      ) {
+        return
       }
+      QUESTS_Act2RadamentSetStateAndDebugPrint_6FC55EB0_113c(m, pQuest, 3)
+      const pQuestGame = m.u32((pQuest + 0x04) >>> 0) >>> 0
+      if (m.u8((pQuest + 0x0b) >>> 0) !== 1) {
+        m.setU8((pQuest + 0x14) >>> 0, 0)
+        m.setU8((pQuest + 0x0b) >>> 0, 1)
+        SUNIT_FindFirstLivingPlayerOrMonsterMatching_6FCFFCC0_113c(
+          m,
+          pQuestGame,
+          ACT5Q6_SendAlert24IfQuest28Active_6FC78D40_113c,
+          0,
+          0,
+        )
+      }
+      SUNIT_FindFirstLivingPlayerOrMonsterMatching_6FCFFCC0_113c(
+        m,
+        pQuestGame,
+        ACT5Q6_SyncBaalQuestStateCallback_6FC77320_113c,
+        0,
+        0,
+      )
     }
   }
-  const pQuestData = m.u32((pQuest + 0x18) >>> 0) >>> 0
-  if (pQuestData !== 0 && m.u8((pQuestData + 0x02) >>> 0) === 1 && m.u32((pQuest + 0x14) >>> 0) === 2) {
-    const nToLevel = m.u32((pArg + 0x18) >>> 0)
-    if (nToLevel === 0x6e || nToLevel === 0x6f || nToLevel === 0x70) {
-      const pGame = m.u32(pArg >>> 0) >>> 0
-      const pUnit = m.u32((pArg + 0x0c) >>> 0) >>> 0
-      m.setU32((pQuestData + 0x20) >>> 0, 0)
-      iterateUnitsOfTypeDefault(m, pGame, 0, pUnit, 0x58d40, hooks)
-      if (m.u32((pQuestData + 0x20) >>> 0) === 0) {
-        m.setU32((pQuestData + 0x1c) >>> 0, 0)
-        const pRoom = UNITS_GetRoom113c(m, m.u32((pArg + 0x0c) >>> 0) >>> 0)
-        m.setU32((pQuestData + 0x0c) >>> 0, pRoom >>> 0)
-        if (hooks?.onQuestHelperCall !== undefined) {
-          hooks.onQuestHelperCall(m, 0x59120, pQuest, pArg)
-        }
-        if (m.u32((pQuestData + 0x1c) >>> 0) !== 0) {
-          m.setU8((pQuestData + 0x03) >>> 0, 0)
-          m.setU8((pQuestData + 0x02) >>> 0, 0)
-          iterateUnitsOfTypeDefault(
-            m,
-            m.u32(pArg >>> 0) >>> 0,
-            0,
-            m.u32((pArg + 0x0c) >>> 0) >>> 0,
-            0x58d40,
-            hooks,
-          )
-          if (m.u32((pQuestData + 0x20) >>> 0) !== 0) {
-            m.setU32((pQuest + 0x14) >>> 0, 3)
-            setQuestMainStateDefault(m, pQuest, m.u8((pQuest + 0x0c) >>> 0), hooks)
-          }
-          return
-        }
-        m.setU8((pQuestData + 0x03) >>> 0, 1)
-      }
+  if (nNewLevel >= 0x83) {
+    const pQuestGame = m.u32((pQuest + 0x04) >>> 0) >>> 0
+    if (m.u8((pQuest + 0x09) >>> 0) !== 0 && m.u8((pQuest + 0x0b) >>> 0) < 2) {
+      m.setU8((pQuest + 0x14) >>> 0, 0)
+      m.setU8((pQuest + 0x0b) >>> 0, 2)
+      SUNIT_FindFirstLivingPlayerOrMonsterMatching_6FCFFCC0_113c(
+        m,
+        pQuestGame,
+        ACT5Q6_SendAlert24IfQuest28Active_6FC78D40_113c,
+        0,
+        0,
+      )
     }
+    SUNIT_FindFirstLivingPlayerOrMonsterMatching_6FCFFCC0_113c(
+      m,
+      pQuestGame,
+      ACT5Q6_SyncBaalQuestStateCallback_6FC77320_113c,
+      0,
+      0,
+    )
   }
 }
 
 /**
- * Act 4 Quest 2 (Terror's End / Diablo) level-change callback (`cbIdx = 3`).
+ * Act 5 Quest 5 (Rite of Passage / Ancients) level-change callback (`cbIdx = 3`, `__fastcall (ecx=pQuest, edx=pArg)`).
+ * Bound to `ACT4Q2_Callback03_LevelChanged` in `k1r14-laneI1-f150-f276.json`.
  *
  * @va D2Game:0x6FC7AB60 (491B)
  */
@@ -664,88 +774,100 @@ export function ACT4Q2_Callback03_LevelChanged113c(
   m: Memory113c,
   pQuest: number,
   pArg: number,
-  hooks?: Post150LaneI1Hooks113c,
+  _hooks?: Post150LaneI1Hooks113c,
 ): void {
   hitD2GameVa113c(0x6FC7AB60)
-  const nFromLevel = m.u32((pArg + 0x14) >>> 0)
-  if (nFromLevel === 0x6d) {
+  const nOldLevel = m.u32((pArg + 0x14) >>> 0) | 0
+  const nNewLevel = m.u32((pArg + 0x18) >>> 0) | 0
+  const pQuestData = m.u32((pQuest + 0x18) >>> 0) >>> 0
+  if (nOldLevel === 0x6d) {
     const pUnit = m.u32((pArg + 0x0c) >>> 0) >>> 0
     const dwGuid = pUnit !== 0 ? m.u32((pUnit + 0x0c) >>> 0) : 0xffffffff
     if (m.u16((pQuest + 0x9c) >>> 0) > 0) {
       QUESTS_GuidListRemove113c(m, (pQuest + 0x1c) >>> 0, dwGuid)
     }
-    const pPlayerData = UNITS_GetPlayerData113c(m, pUnit)
-    const pGame = m.u32(pArg >>> 0) >>> 0
-    const diffIdx = m.u8((pGame + 0x6d) >>> 0)
-    const pQuestFlags = m.u32((pPlayerData + diffIdx * 4 + 0x10) >>> 0) >>> 0
-    if (
-      DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 0x1a, 0) !== 1 &&
-      DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 0x1a, 1) !== 1 &&
-      m.u8((pQuest + 0x0a) >>> 0) === 1
-    ) {
-      const pQuestData = m.u32((pQuest + 0x18) >>> 0) >>> 0
-      if (m.u8((pQuestData + 0x20) >>> 0) !== 1) {
+    if (m.u8((pQuest + 0x09) >>> 0) !== 0 && m.u8((pQuest + 0x0c) >>> 0) === 2) {
+      const pQuestFlags = getPlayerQuestFlagsFromArg113c(m, pArg)
+      const nQuestNo = m.u32((pQuest + 0xe0) >>> 0) | 0
+      if (DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, nQuestNo, 0) === 1) {
+        return
+      }
+      QUESTS_Act2RadamentSetStateAndDebugPrint_6FC55EB0_113c(m, pQuest, 3)
+      const pQuestGame = m.u32((pQuest + 0x04) >>> 0) >>> 0
+      if (m.u8((pQuest + 0x0b) >>> 0) !== 1) {
+        m.setU8((pQuest + 0x14) >>> 0, 0)
         m.setU8((pQuest + 0x0b) >>> 0, 1)
-        m.setU32((pQuest + 0x0c) >>> 0, 1)
+        SUNIT_FindFirstLivingPlayerOrMonsterMatching_6FCFFCC0_113c(
+          m,
+          pQuestGame,
+          ACT5Q5_SendAlert23IfQuest27Active_6FC78F90_113c,
+          0,
+          0,
+        )
       }
-    }
-  }
-  const nToLevel = m.u32((pArg + 0x18) >>> 0)
-  if (nToLevel === 0x6c) {
-    if (m.u8((pQuest + 0x0a) >>> 0) === 1 && m.u32((pQuest + 0x14) >>> 0) === 1) {
-      m.setU32((pQuest + 0x14) >>> 0, 2)
-      const bState = m.u8((pQuest + 0x0c) >>> 0)
-      statusCyclerExDefault(m, pQuest, bState === 0 || bState > 3 ? 1 : 0, bState, hooks)
-    }
-    const pQuestData = m.u32((pQuest + 0x18) >>> 0) >>> 0
-    if (m.u8((pQuestData + 0x0d) >>> 0) === 0) {
-      const pUnit = m.u32((pArg + 0x0c) >>> 0) >>> 0
-      const pPlayerData = UNITS_GetPlayerData113c(m, pUnit)
-      const pGame = m.u32((pQuest + 0x04) >>> 0) >>> 0
-      const diffIdx = m.u8((pGame + 0x6d) >>> 0)
-      const pQuestFlags = m.u32((pPlayerData + diffIdx * 4 + 0x10) >>> 0) >>> 0
-      if (
-        DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 0x1a, 0) !== 1 &&
-        DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 0x1a, 0x0c) !== 1 &&
-        DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 0x1a, 0x0d) !== 1 &&
-        hooks?.onQuestHelperCall !== undefined
-      ) {
-        hooks.onQuestHelperCall(m, 0xaf430, pQuest, pArg)
-      }
-    }
-  } else if (nToLevel === 0x6d) {
-    const pQuestData = m.u32((pQuest + 0x18) >>> 0) >>> 0
-    if (m.u8((pQuestData + 0x1d) >>> 0) !== 0) {
-      const pPortal = m.u32((pQuestData + 0x90) >>> 0) >>> 0
-      if (pPortal !== 0) {
-        if (m.u32((pPortal + 0x10) >>> 0) === 1) {
-          UNITS_ChangeAnimMode113c(m, pPortal, 2)
-        }
-        m.setU8((pQuestData + 0x1d) >>> 0, 0)
-      }
-    }
-  }
-  if (nFromLevel === 0x6c) {
-    const pQuestData = m.u32((pQuest + 0x18) >>> 0) >>> 0
-    if (m.u8((pQuestData + 0x1e) >>> 0) === 0 && m.u32((pQuestData + 0x90) >>> 0) !== 0) {
-      m.setU32((pQuestData + 0x5c) >>> 0, 0)
-      iterateUnitsOfTypeDefault(
+      SUNIT_FindFirstLivingPlayerOrMonsterMatching_6FCFFCC0_113c(
         m,
-        m.u32((pQuest + 0x04) >>> 0) >>> 0,
+        pQuestGame,
+        ACT5Q5_SyncRiteOfPassageQuestStateCallback_6FC77750_113c,
         0,
-        (pQuestData + 0x5c) >>> 0,
-        0x58f90,
-        hooks,
+        0,
       )
-      if (m.u32((pQuestData + 0x5c) >>> 0) === 0 && hooks?.onQuestHelperCall !== undefined) {
-        hooks.onQuestHelperCall(m, 0x57750, pQuest, pArg)
+    }
+  }
+  if (nNewLevel === 0x78) {
+    let bSync = 0
+    const pQuestGame = m.u32((pQuest + 0x04) >>> 0) >>> 0
+    if (m.u8((pQuest + 0x0b) >>> 0) < 2 && m.u8((pQuest + 0x0c) >>> 0) > 2) {
+      m.setU8((pQuest + 0x14) >>> 0, 0)
+      m.setU8((pQuest + 0x0b) >>> 0, 2)
+      SUNIT_FindFirstLivingPlayerOrMonsterMatching_6FCFFCC0_113c(
+        m,
+        pQuestGame,
+        ACT5Q5_SendAlert23IfQuest27Active_6FC78F90_113c,
+        0,
+        0,
+      )
+      bSync = 1
+    }
+    if (m.u8((pQuest + 0x0c) >>> 0) < 3) {
+      m.setU8((pQuest + 0x0c) >>> 0, 3)
+      broadcastInlineQuestStateDebug113c(m, pQuest, 3)
+      SUNIT_FindFirstLivingPlayerOrMonsterMatching_6FCFFCC0_113c(
+        m,
+        pQuestGame,
+        ACT5Q5_SyncRiteOfPassageQuestStateCallback_6FC77750_113c,
+        0,
+        0,
+      )
+    } else if (bSync !== 0) {
+      SUNIT_FindFirstLivingPlayerOrMonsterMatching_6FCFFCC0_113c(
+        m,
+        pQuestGame,
+        ACT5Q5_SyncRiteOfPassageQuestStateCallback_6FC77750_113c,
+        0,
+        0,
+      )
+    }
+    if (m.u8(pQuestData) === 0 && m.u8((pQuestData + 0x58) >>> 0) !== 0) {
+      if (pQuestGame === 0) {
+        throw new D2CommonAssertError('Act5Q5.cpp', 0x2d3)
+      }
+      const pPortal = lookupObjectByGuidInGame113c(
+        m,
+        pQuestGame,
+        m.u32((pQuestData + 0x5c) >>> 0) >>> 0,
+      )
+      if (pPortal !== 0 && m.u32((pQuestData + 0x60) >>> 0) === 0) {
+        m.setU32((pQuestData + 0x60) >>> 0, 2)
+        UNITS_ChangeAnimMode113c(m, pPortal, 1)
       }
     }
   }
 }
 
 /**
- * Act 4 Quest 3 ( Chaos Sanctuary / Fortress portal ) level-change callback (`cbIdx = 3`).
+ * Act 5 Quest 4 (Betrayal of Harrogath / Nihlathak) level-change callback (`cbIdx = 3`, `__fastcall (ecx=pQuest, edx=pArg)`).
+ * Bound to `ACT4Q3_Callback03_LevelChanged` in `k1r14-laneI1-f150-f276.json`.
  *
  * @va D2Game:0x6FC7AD50 (199B)
  */
@@ -753,42 +875,40 @@ export function ACT4Q3_Callback03_LevelChanged113c(
   m: Memory113c,
   pQuest: number,
   pArg: number,
-  hooks?: Post150LaneI1Hooks113c,
+  _hooks?: Post150LaneI1Hooks113c,
 ): void {
   hitD2GameVa113c(0x6FC7AD50)
-  if (m.u32((pArg + 0x14) >>> 0) === 0x6d) {
-    const pQuestData = m.u32((pQuest + 0x18) >>> 0) >>> 0
-    if (m.u8((pQuestData + 0x05) >>> 0) === 0 && m.u32((pQuestData + 0x10) >>> 0) !== 0) {
-      m.setU32((pQuestData + 0x08) >>> 0, 0)
-      iterateUnitsOfTypeDefault(
-        m,
-        m.u32((pQuest + 0x04) >>> 0) >>> 0,
-        0,
-        (pQuestData + 0x08) >>> 0,
-        0x590c0,
-        hooks,
-      )
-      if (m.u32((pQuestData + 0x08) >>> 0) === 0 && hooks?.onQuestHelperCall !== undefined) {
-        hooks.onQuestHelperCall(m, 0x57c00, pQuest, pArg)
-      }
-    }
+  const nOldLevel = m.u32((pArg + 0x14) >>> 0) | 0
+  const nNewLevel = m.u32((pArg + 0x18) >>> 0) | 0
+  const pQuestData = m.u32((pQuest + 0x18) >>> 0) >>> 0
+  if (nOldLevel === 0x6d && m.u8((pQuest + 0x0c) >>> 0) === 2) {
+    m.setU8((pQuest + 0x0c) >>> 0, 3)
+    broadcastInlineQuestStateDebug113c(m, pQuest, 3)
+    SUNIT_FindFirstLivingPlayerOrMonsterMatching_6FCFFCC0_113c(
+      m,
+      m.u32((pQuest + 0x04) >>> 0) >>> 0,
+      ACT5Q4_SyncNihlathakQuestStateCallback_6FC77C00_113c,
+      0,
+      0,
+    )
   }
-  if (m.u32((pArg + 0x18) >>> 0) === 0x6d) {
-    m.setU32((pQuest + 0xa8) >>> 0, 0)
-    const pQuestData = m.u32((pQuest + 0x18) >>> 0) >>> 0
-    if (m.u8((pQuestData + 0x00) >>> 0) === 1 && m.u8((pQuestData + 0x01) >>> 0) === 0) {
-      const pGame = m.u32(pArg >>> 0) >>> 0
-      const pUnit = m.u32((pArg + 0x0c) >>> 0) >>> 0
-      m.setU8((pQuestData + 0x01) >>> 0, 1)
-      if (hooks?.onQuestHelperCall !== undefined) {
-        hooks.onQuestHelperCall(m, 0xcbe70, pGame, pUnit, 0x1b)
-      }
-    }
+  if (nNewLevel === 0x79 && m.u8((pQuest + 0x0b) >>> 0) === 1) {
+    m.setU8((pQuest + 0x14) >>> 0, 0)
+    m.setU8((pQuest + 0x0b) >>> 0, 2)
+    SUNIT_FindFirstLivingPlayerOrMonsterMatching_6FCFFCC0_113c(
+      m,
+      m.u32((pQuest + 0x04) >>> 0) >>> 0,
+      ACT5Q4_SendAlert22IfQuest26Active_6FC790C0_113c,
+      0,
+      0,
+    )
+    m.setU8((pQuestData + 0x86) >>> 0, 0)
   }
 }
 
 /**
- * Act 4 Quest 1 alternate level-change callback (`cbIdx = 3`, levels `0x69`, `0x6A`).
+ * Act 5 Quest 2 (Rescue on Mount Arreat) level-change callback (`cbIdx = 3`, `__fastcall (ecx=pQuest, edx=pArg)`).
+ * Bound to `ACT4Q1_Callback03_AltLevelChanged` in `k1r14-laneI1-f150-f276.json`.
  *
  * @va D2Game:0x6FC7B1E0 (405B)
  */
@@ -796,79 +916,94 @@ export function ACT4Q1_Callback03_AltLevelChanged113c(
   m: Memory113c,
   pQuest: number,
   pArg: number,
-  hooks?: Post150LaneI1Hooks113c,
+  _hooks?: Post150LaneI1Hooks113c,
 ): void {
   hitD2GameVa113c(0x6FC7B1E0)
-  if (m.u32((pArg + 0x14) >>> 0) === 0x67) {
+  const nOldLevel = m.u32((pArg + 0x14) >>> 0) | 0
+  const nNewLevel = m.u32((pArg + 0x18) >>> 0) | 0
+  if (nNewLevel >= 0x6f && nNewLevel <= 0x70) {
+    const pQuestData = m.u32((pQuest + 0x18) >>> 0) >>> 0
+    if (m.u8((pQuest + 0x09) >>> 0) !== 0 && (m.u32((pQuestData + 0xa8) >>> 0) | 0) < 5) {
+      let bSync = 0
+      const cur0c = m.u8((pQuest + 0x0c) >>> 0)
+      if (cur0c === 1 || cur0c === 2) {
+        QUESTS_Act2RadamentSetStateAndDebugPrint_6FC55EB0_113c(m, pQuest, 3)
+        bSync = 1
+      }
+      const pQuestGame = m.u32((pQuest + 0x04) >>> 0) >>> 0
+      if (m.u8((pQuest + 0x0b) >>> 0) === 0) {
+        m.setU8((pQuest + 0x14) >>> 0, 0)
+        m.setU8((pQuest + 0x0b) >>> 0, 1)
+        SUNIT_FindFirstLivingPlayerOrMonsterMatching_6FCFFCC0_113c(
+          m,
+          pQuestGame,
+          ACT5Q2_SendAlert20IfQuest24Active_6FC793F0_113c,
+          0,
+          0,
+        )
+        m.setU32((pQuest + 0xa8) >>> 0, 0)
+        bSync = 1
+      }
+      if (bSync !== 0) {
+        SUNIT_FindFirstLivingPlayerOrMonsterMatching_6FCFFCC0_113c(
+          m,
+          pQuestGame,
+          ACT5Q2_SyncPlayerQuestStateWithQuest20_6FC78530_113c,
+          0,
+          0,
+        )
+      }
+    }
+    return
+  }
+  if (nOldLevel === 0x6d) {
     const pUnit = m.u32((pArg + 0x0c) >>> 0) >>> 0
     const dwGuid = pUnit !== 0 ? m.u32((pUnit + 0x0c) >>> 0) : 0xffffffff
     if (m.u16((pQuest + 0x9c) >>> 0) > 0) {
       QUESTS_GuidListRemove113c(m, (pQuest + 0x1c) >>> 0, dwGuid)
     }
-    const pPlayerData = UNITS_GetPlayerData113c(m, pUnit)
-    const pGame = m.u32(pArg >>> 0) >>> 0
-    const diffIdx = m.u8((pGame + 0x6d) >>> 0)
-    const pQuestFlags = m.u32((pPlayerData + diffIdx * 4 + 0x10) >>> 0) >>> 0
-    if (
-      DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 0x16, 0) !== 1 &&
-      DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 0x16, 1) !== 1 &&
-      m.u8((pQuest + 0x0a) >>> 0) === 1
-    ) {
-      const pQuestData = m.u32((pQuest + 0x18) >>> 0) >>> 0
-      if (m.u8((pQuestData + 0x04) >>> 0) !== 1) {
-        m.setU8((pQuest + 0x0b) >>> 0, 1)
-        m.setU32((pQuest + 0x0c) >>> 0, 1)
+    if (m.u8((pQuest + 0x0c) >>> 0) === 2) {
+      const pQuestFlags = getPlayerQuestFlagsFromArg113c(m, pArg)
+      const nQuestNo = m.u32((pQuest + 0xe0) >>> 0) | 0
+      if (
+        DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, nQuestNo, 0) === 1 ||
+        DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, nQuestNo, 1) === 1
+      ) {
+        return
       }
-    }
-  }
-  const nToLevel = m.u32((pArg + 0x18) >>> 0)
-  if (nToLevel === 0x69) {
-    if (m.u8((pQuest + 0x0a) >>> 0) === 1) {
-      if (m.u32((pQuest + 0x14) >>> 0) === 1) {
-        m.setU32((pQuest + 0x14) >>> 0, 2)
-        statusCyclerExDefault(
-          m,
-          pQuest,
-          m.u8((pQuest + 0x0c) >>> 0) !== 1 ? 1 : 0,
-          m.u8((pQuest + 0x0c) >>> 0),
-          hooks,
-        )
-      } else {
-        const bState = m.u8((pQuest + 0x0c) >>> 0)
-        if (bState === 0 || bState > 3) {
-          setQuestMainStateDefault(m, pQuest, bState, hooks)
-        }
-      }
-    }
-    const pQuestData = m.u32((pQuest + 0x18) >>> 0) >>> 0
-    if (m.u8((pQuestData + 0x01) >>> 0) === 1) {
-      m.setU32((pQuest + 0xb0) >>> 0, (D2GAME_IMAGE_BASE_113C + 0x58530) >>> 0)
-      if (hooks?.onQuestHelperCall !== undefined) {
-        hooks.onQuestHelperCall(m, 0x593f0, pQuest, pArg)
-      }
-    }
-  } else if (nToLevel === 0x6a && m.u8((pQuest + 0x0a) >>> 0) === 1) {
-    if (m.u32((pQuest + 0x14) >>> 0) <= 2) {
-      m.setU32((pQuest + 0x14) >>> 0, 3)
-      const bState = m.u8((pQuest + 0x0c) >>> 0)
-      statusCyclerExDefault(
+      QUESTS_Act2RadamentSetStateAndDebugPrint_6FC55EB0_113c(m, pQuest, 3)
+      const pQuestGame = m.u32((pQuest + 0x04) >>> 0) >>> 0
+      SUNIT_FindFirstLivingPlayerOrMonsterMatching_6FCFFCC0_113c(
         m,
-        pQuest,
-        bState !== 1 && bState !== 2 ? 1 : 0,
-        bState,
-        hooks,
+        pQuestGame,
+        ACT5Q2_SyncPlayerQuestStateWithQuest20_6FC78530_113c,
+        0,
+        0,
       )
-      return
-    }
-    const bState = m.u8((pQuest + 0x0c) >>> 0)
-    if (bState === 0 || bState > 3) {
-      setQuestMainStateDefault(m, pQuest, bState, hooks)
+      const pQuestData = m.u32((pQuest + 0x18) >>> 0) >>> 0
+      if (
+        m.u8((pQuest + 0x0b) >>> 0) === 0 &&
+        m.u8((pQuest + 0x09) >>> 0) !== 0 &&
+        (m.u32((pQuestData + 0xa8) >>> 0) | 0) < 5
+      ) {
+        m.setU8((pQuest + 0x14) >>> 0, 0)
+        m.setU8((pQuest + 0x0b) >>> 0, 1)
+        SUNIT_FindFirstLivingPlayerOrMonsterMatching_6FCFFCC0_113c(
+          m,
+          pQuestGame,
+          ACT5Q2_SendAlert20IfQuest24Active_6FC793F0_113c,
+          0,
+          0,
+        )
+        m.setU32((pQuest + 0xa8) >>> 0, 0)
+      }
     }
   }
 }
 
 /**
- * Act 4 Quest 2 alternate level-change callback (`cbIdx = 3`, levels `0x68..0x6B`).
+ * Act 5 Quest 1 (Siege on Harrogath / Shenk) level-change callback (`cbIdx = 3`, `__fastcall (ecx=pQuest, edx=pArg)`).
+ * Bound to `ACT4Q2_Callback03_AltLevelChanged` in `k1r14-laneI1-f150-f276.json`.
  *
  * @va D2Game:0x6FC7B380 (266B)
  */
@@ -876,48 +1011,69 @@ export function ACT4Q2_Callback03_AltLevelChanged113c(
   m: Memory113c,
   pQuest: number,
   pArg: number,
-  hooks?: Post150LaneI1Hooks113c,
+  _hooks?: Post150LaneI1Hooks113c,
 ): void {
   hitD2GameVa113c(0x6FC7B380)
-  if (m.u32((pArg + 0x14) >>> 0) === 0x67) {
+  const nOldLevel = m.u32((pArg + 0x14) >>> 0) | 0
+  const nNewLevel = m.u32((pArg + 0x18) >>> 0) | 0
+  if (nNewLevel >= 0x6e && nNewLevel <= 0x70) {
+    if (m.u8((pQuest + 0x09) >>> 0) !== 0) {
+      const cur0c = m.u8((pQuest + 0x0c) >>> 0)
+      if (cur0c === 1 || cur0c === 2) {
+        QUESTS_Act2RadamentSetStateAndDebugPrint_6FC55EB0_113c(m, pQuest, 3)
+        SUNIT_FindFirstLivingPlayerOrMonsterMatching_6FCFFCC0_113c(
+          m,
+          m.u32((pQuest + 0x04) >>> 0) >>> 0,
+          ACT5Q1_SyncPlayerQuestStateWithQuest1F_6FC78890_113c,
+          0,
+          0,
+        )
+      }
+    }
+    return
+  }
+  if (nOldLevel === 0x6d) {
     const pUnit = m.u32((pArg + 0x0c) >>> 0) >>> 0
     const dwGuid = pUnit !== 0 ? m.u32((pUnit + 0x0c) >>> 0) : 0xffffffff
     if (m.u16((pQuest + 0x9c) >>> 0) > 0) {
       QUESTS_GuidListRemove113c(m, (pQuest + 0x1c) >>> 0, dwGuid)
     }
-    const pPlayerData = UNITS_GetPlayerData113c(m, pUnit)
-    const pGame = m.u32(pArg >>> 0) >>> 0
-    const diffIdx = m.u8((pGame + 0x6d) >>> 0)
-    const pQuestFlags = m.u32((pPlayerData + diffIdx * 4 + 0x10) >>> 0) >>> 0
-    if (
-      DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 0x18, 0) !== 1 &&
-      DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 0x18, 1) !== 1 &&
-      m.u8((pQuest + 0x0a) >>> 0) === 1
-    ) {
-      const pQuestData = m.u32((pQuest + 0x18) >>> 0) >>> 0
-      if (pQuestData !== 0 && m.u8((pQuestData + 0x01) >>> 0) !== 1) {
-        m.setU8((pQuest + 0x0b) >>> 0, 1)
-        m.setU32((pQuest + 0x0c) >>> 0, 1)
+    if (m.u8((pQuest + 0x0c) >>> 0) === 2) {
+      const pQuestFlags = getPlayerQuestFlagsFromArg113c(m, pArg)
+      const nQuestNo = m.u32((pQuest + 0xe0) >>> 0) | 0
+      if (
+        DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, nQuestNo, 0) === 1 ||
+        DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, nQuestNo, 1) === 1
+      ) {
+        return
       }
-    }
-  }
-  const nToLevel = m.u32((pArg + 0x18) >>> 0)
-  if ((nToLevel >= 0x68 && nToLevel <= 0x6b) && m.u8((pQuest + 0x0a) >>> 0) === 1) {
-    if (m.u32((pQuest + 0x14) >>> 0) === 1) {
-      m.setU32((pQuest + 0x14) >>> 0, 2)
-      const bState = m.u8((pQuest + 0x0c) >>> 0)
-      statusCyclerExDefault(m, pQuest, bState === 0 || bState > 3 ? 1 : 0, bState, hooks)
-      return
-    }
-    const bState = m.u8((pQuest + 0x0c) >>> 0)
-    if (bState === 0 || bState > 3) {
-      setQuestMainStateDefault(m, pQuest, bState, hooks)
+      QUESTS_Act2RadamentSetStateAndDebugPrint_6FC55EB0_113c(m, pQuest, 3)
+      const pQuestGame = m.u32((pQuest + 0x04) >>> 0) >>> 0
+      if (m.u8((pQuest + 0x0b) >>> 0) === 0) {
+        m.setU8((pQuest + 0x14) >>> 0, 0)
+        m.setU8((pQuest + 0x0b) >>> 0, 1)
+        SUNIT_FindFirstLivingPlayerOrMonsterMatching_6FCFFCC0_113c(
+          m,
+          pQuestGame,
+          ACT5Q1_SendAlert1FIfQuest23Active_6FC79620_113c,
+          0,
+          0,
+        )
+      }
+      SUNIT_FindFirstLivingPlayerOrMonsterMatching_6FCFFCC0_113c(
+        m,
+        pQuestGame,
+        ACT5Q1_SyncPlayerQuestStateWithQuest1F_6FC78890_113c,
+        0,
+        0,
+      )
     }
   }
 }
 
 /**
- * Act 4 Hellforge level-change callback (`cbIdx = 3`, levels `0x67`, `0x6B`).
+ * Act 5 Quest 3 (Prison of Ice / Anya) level-change callback (`cbIdx = 3`, `__fastcall (ecx=pQuest, edx=pArg)`).
+ * Bound to `ACT4Q2_Hellforge_Callback03_LevelChanged` in `k1r14-laneI1-f150-f276.json`.
  *
  * @va D2Game:0x6FC7F3F0 (484B)
  */
@@ -925,98 +1081,111 @@ export function ACT4Q2_Hellforge_Callback03_LevelChanged113c(
   m: Memory113c,
   pQuest: number,
   pArg: number,
-  hooks?: Post150LaneI1Hooks113c,
+  _hooks?: Post150LaneI1Hooks113c,
 ): void {
   hitD2GameVa113c(0x6FC7F3F0)
-  if (m.u32((pArg + 0x14) >>> 0) === 0x67) {
+  const nOldLevel = m.u32((pArg + 0x14) >>> 0) | 0
+  const nNewLevel = m.u32((pArg + 0x18) >>> 0) | 0
+  if (nNewLevel === 0x70) {
+    if (m.u8((pQuest + 0x09) >>> 0) !== 0 && m.u8((pQuest + 0x0c) >>> 0) === 0) {
+      m.setU8((pQuest + 0x0c) >>> 0, 1)
+      ACT5Q3_CleanupFrozenAnyaAndTownNpcState_6FC7EC30_113c(m, pQuest)
+    }
+  } else if (nNewLevel === 0x71 || nNewLevel === 0x72) {
+    if (m.u8((pQuest + 0x09) >>> 0) !== 0) {
+      let bSync = 0
+      if (m.u8((pQuest + 0x0c) >>> 0) <= 2) {
+        QUESTS_Act2RadamentSetStateAndDebugPrint_6FC55EB0_113c(m, pQuest, 3)
+        bSync = 1
+      }
+      const pQuestGame = m.u32((pQuest + 0x04) >>> 0) >>> 0
+      if (m.u8((pQuest + 0x0b) >>> 0) === 0) {
+        m.setU8((pQuest + 0x14) >>> 0, 0)
+        m.setU8((pQuest + 0x0b) >>> 0, 1)
+        SUNIT_FindFirstLivingPlayerOrMonsterMatching_6FCFFCC0_113c(
+          m,
+          pQuestGame,
+          ACT5Q3_SendAlert21IfQuest25Active_6FC791D0_113c,
+          0,
+          0,
+        )
+        bSync = 1
+      }
+      if (bSync !== 0) {
+        SUNIT_FindFirstLivingPlayerOrMonsterMatching_6FCFFCC0_113c(
+          m,
+          pQuestGame,
+          ACT5Q3_SyncPrisonOfIceQuestStateCallback_6FC78110_113c,
+          0,
+          0,
+        )
+      }
+      ACT5Q3_CleanupFrozenAnyaAndTownNpcState_6FC7EC30_113c(m, pQuest)
+    }
+  }
+  if (nOldLevel === 0x6d) {
     const pUnit = m.u32((pArg + 0x0c) >>> 0) >>> 0
     const dwGuid = pUnit !== 0 ? m.u32((pUnit + 0x0c) >>> 0) : 0xffffffff
     if (m.u16((pQuest + 0x9c) >>> 0) > 0) {
       QUESTS_GuidListRemove113c(m, (pQuest + 0x1c) >>> 0, dwGuid)
     }
-    const pPlayerData = UNITS_GetPlayerData113c(m, pUnit)
-    const pGame = m.u32(pArg >>> 0) >>> 0
-    const diffIdx = m.u8((pGame + 0x6d) >>> 0)
-    const pQuestFlags = m.u32((pPlayerData + diffIdx * 4 + 0x10) >>> 0) >>> 0
-    if (
-      DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 0x17, 0) !== 1 &&
-      DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 0x17, 1) !== 1 &&
-      m.u8((pQuest + 0x0a) >>> 0) === 1
-    ) {
-      const pQuestData = m.u32((pQuest + 0x18) >>> 0) >>> 0
-      if (m.u8((pQuestData + 0x04) >>> 0) !== 1) {
-        m.setU8((pQuest + 0x0b) >>> 0, 1)
-        m.setU32((pQuest + 0x0c) >>> 0, 1)
-      }
-    }
-  }
-  if (m.u32((pArg + 0x18) >>> 0) === 0x6b) {
-    const pQuestData = m.u32((pQuest + 0x18) >>> 0) >>> 0
-    if (m.u8((pQuestData + 0x01) >>> 0) !== 1) {
-      m.setU32((pQuestData + 0x0c) >>> 0, 0)
-      iterateUnitsOfTypeDefault(
-        m,
-        m.u32((pQuest + 0x04) >>> 0) >>> 0,
-        0,
-        pQuest,
-        0x59120,
-        hooks,
-      )
-      if (m.u32((pQuestData + 0x0c) >>> 0) === 0) {
-        const bState = m.u8((pQuest + 0x0c) >>> 0)
-        if (bState === 1 || bState === 2) {
-          m.setU8((pQuest + 0x0c) >>> 0, 0)
-        }
-        m.setU32((pQuest + 0xb0) >>> 0, (D2GAME_IMAGE_BASE_113C + 0x5f610) >>> 0)
-      }
-      if (m.u8((pQuest + 0x0a) >>> 0) !== 1) return
-      const stateVal = m.u32((pQuest + 0x14) >>> 0)
-      if (stateVal !== 1 && stateVal !== 2) {
-        const bState = m.u8((pQuest + 0x0c) >>> 0)
-        if (bState === 0 || bState > 5) {
-          setQuestMainStateDefault(m, pQuest, bState, hooks)
-        }
+    if (m.u8((pQuest + 0x0c) >>> 0) === 2) {
+      const pQuestFlags = getPlayerQuestFlagsFromArg113c(m, pArg)
+      const nQuestNo = m.u32((pQuest + 0xe0) >>> 0) | 0
+      if (
+        DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, nQuestNo, 0) === 1 ||
+        DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, nQuestNo, 1) === 1
+      ) {
         return
       }
-      m.setU32((pQuest + 0x14) >>> 0, 3)
-      const bState = m.u8((pQuest + 0x0c) >>> 0)
-      statusCyclerExDefault(
-        m,
-        pQuest,
-        bState !== 1 && bState !== 2 ? 1 : 0,
-        bState,
-        hooks,
-      )
-      return
-    }
-    m.setU32((pQuest + 0xb0) >>> 0, (D2GAME_IMAGE_BASE_113C + 0x58110) >>> 0)
-    if (hooks?.onQuestHelperCall !== undefined) {
-      hooks.onQuestHelperCall(m, 0x591d0, pQuest, pArg)
-    }
-    if (m.u8((pQuest + 0x0a) >>> 0) === 1) {
-      const stateVal = m.u32((pQuest + 0x14) >>> 0)
-      if (stateVal !== 1 && stateVal !== 2) {
-        const bState = m.u8((pQuest + 0x0c) >>> 0)
-        if (bState === 0 || bState > 5) {
-          setQuestMainStateDefault(m, pQuest, bState, hooks)
-        }
-      } else {
-        m.setU32((pQuest + 0x14) >>> 0, 3)
-        const bState = m.u8((pQuest + 0x0c) >>> 0)
-        statusCyclerExDefault(
+      QUESTS_Act2RadamentSetStateAndDebugPrint_6FC55EB0_113c(m, pQuest, 3)
+      const pQuestGame = m.u32((pQuest + 0x04) >>> 0) >>> 0
+      if (m.u8((pQuest + 0x0b) >>> 0) === 0) {
+        m.setU8((pQuest + 0x14) >>> 0, 0)
+        m.setU8((pQuest + 0x0b) >>> 0, 1)
+        SUNIT_FindFirstLivingPlayerOrMonsterMatching_6FCFFCC0_113c(
           m,
-          pQuest,
-          bState !== 1 && bState !== 2 ? 1 : 0,
-          bState,
-          hooks,
+          pQuestGame,
+          ACT5Q3_SendAlert21IfQuest25Active_6FC791D0_113c,
+          0,
+          0,
         )
       }
+      SUNIT_FindFirstLivingPlayerOrMonsterMatching_6FCFFCC0_113c(
+        m,
+        pQuestGame,
+        ACT5Q3_SyncPrisonOfIceQuestStateCallback_6FC78110_113c,
+        0,
+        0,
+      )
+    }
+  }
+  if (
+    nNewLevel >= 0x79 &&
+    nNewLevel <= 0x7c &&
+    m.u8((pQuest + 0x09) >>> 0) !== 0 &&
+    m.u8((pQuest + 0x0c) >>> 0) < 5
+  ) {
+    SUNIT_FindFirstLivingPlayerOrMonsterMatching_6FCFFCC0_113c(
+      m,
+      m.u32(pArg >>> 0) >>> 0,
+      ACT5Q3_SyncPlayerQuest25State0EAlert21_6FC79120_113c,
+      0,
+      m.u32((pArg + 0x08) >>> 0) >>> 0,
+    )
+    m.setU8((pQuest + 0x0c) >>> 0, 6)
+    const pQuestData = m.u32((pQuest + 0x18) >>> 0) >>> 0
+    m.setU32((pQuestData + 0x84) >>> 0, 2)
+    if (m.u32((pQuestData + 0x88) >>> 0) === 0) {
+      m.setU32((pQuestData + 0x88) >>> 0, 1)
     }
   }
 }
 
 /**
- * Act 1 Quest 1 (Den of Evil) level-change callback (`cbIdx = 3`, levels `0x01`, `0x08`).
+ * Act 1 Quest 6 (Sisters to the Slaughter / Andariel) level-change callback
+ * (`cbIdx = 3`, `__fastcall (ecx=pQuest, edx=pArg)`).
+ * Bound to `ACT1Q1_Callback03_LevelChanged` in `k1r14-laneI1-f150-f276.json`.
  *
  * @va D2Game:0x6FC83DD0 (443B)
  */
@@ -1024,74 +1193,92 @@ export function ACT1Q1_Callback03_LevelChanged113c(
   m: Memory113c,
   pQuest: number,
   pArg: number,
-  hooks?: Post150LaneI1Hooks113c,
+  _hooks?: Post150LaneI1Hooks113c,
 ): void {
   hitD2GameVa113c(0x6FC83DD0)
-  const nToLevel = m.u32((pArg + 0x18) >>> 0)
-  if (nToLevel === 8) {
-    if (m.u8((pQuest + 0x0a) >>> 0) === 1) {
-      if (m.u32((pQuest + 0x14) >>> 0) === 1) {
-        m.setU32((pQuest + 0x14) >>> 0, 2)
-        statusCyclerExDefault(
-          m,
-          pQuest,
-          m.u8((pQuest + 0x0c) >>> 0) !== 1 ? 1 : 0,
-          m.u8((pQuest + 0x0c) >>> 0),
-          hooks,
-        )
-      } else {
-        const bState = m.u8((pQuest + 0x0c) >>> 0)
-        if (bState === 0 || bState > 4) {
-          setQuestMainStateDefault(m, pQuest, bState, hooks)
-        }
-      }
+  const nOldLevel = m.u32((pArg + 0x14) >>> 0) | 0
+  const nNewLevel = m.u32((pArg + 0x18) >>> 0) | 0
+  if (nNewLevel >= 0x22 && nNewLevel <= 0x25 && m.u8((pQuest + 0x09) >>> 0) !== 0) {
+    let bUpdated = 0
+    if (m.u8((pQuest + 0x0c) >>> 0) < 3) {
+      QUESTS_Act2RadamentSetStateAndDebugPrint_6FC55EB0_113c(m, pQuest, 3)
+      bUpdated = 1
     }
-    const pQuestData = m.u32((pQuest + 0x18) >>> 0) >>> 0
-    if (m.u8((pQuestData + 0x00) >>> 0) === 1) return
-    m.setU8((pQuestData + 0x00) >>> 0, 1)
-    if (m.u8((pQuest + 0x0a) >>> 0) === 0 || m.u8((pQuest + 0x0c) >>> 0) >= 4) return
-    const pUnit = m.u32((pArg + 0x0c) >>> 0) >>> 0
-    if (pUnit !== 0 && m.u32(pUnit >>> 0) === 0) {
-      const pPlayerData = UNITS_GetPlayerData113c(m, pUnit)
-      const pGame = m.u32(pArg >>> 0) >>> 0
-      const diffIdx = m.u8((pGame + 0x6d) >>> 0)
-      const pQuestFlags = m.u32((pPlayerData + diffIdx * 4 + 0x10) >>> 0) >>> 0
-      if (
-        DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, m.u32((pQuest + 0x10) >>> 0), 0) === 0 &&
-        DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, m.u32((pQuest + 0x10) >>> 0), 0x0d) === 0 &&
-        hooks?.onQuestHelperCall !== undefined
-      ) {
-        hooks.onQuestHelperCall(m, 0xcbe70, pGame, pUnit, 0x08)
+    const pQuestGame = m.u32((pQuest + 0x04) >>> 0) >>> 0
+    let bNeedSync = bUpdated !== 0
+    if (nNewLevel === 0x25) {
+      if (m.u8((pQuest + 0x0b) >>> 0) < 2) {
+        m.setU8((pQuest + 0x14) >>> 0, 0)
+        m.setU8((pQuest + 0x0b) >>> 0, 2)
+        SUNIT_FindFirstLivingPlayerOrMonsterMatching_6FCFFCC0_113c(
+          m,
+          pQuestGame,
+          ACT1Q6_SendAlert06IfQuest06Active_6FC82700_113c,
+          0,
+          0,
+        )
+        bNeedSync = true
       }
+    } else if (m.u8((pQuest + 0x0b) >>> 0) === 0) {
+      m.setU8((pQuest + 0x14) >>> 0, 0)
+      m.setU8((pQuest + 0x0b) >>> 0, 1)
+      bNeedSync = true
+    }
+    if (bNeedSync) {
+      SUNIT_FindFirstLivingPlayerOrMonsterMatching_6FCFFCC0_113c(
+        m,
+        pQuestGame,
+        ACT1Q6_UpdatePlayerQuestStateCallback_6FC80D00_113c,
+        0,
+        0,
+      )
+    }
+    if (m.u32(0x6fd31c20) !== 0) {
+      NET_BroadcastSystemChatMessage_6FCEBE70_113c(
+        m,
+        (D2GAME_IMAGE_BASE_113C + 0xfbe40) >>> 0,
+        m.u32(pArg >>> 0) >>> 0,
+        4,
+      )
     }
     return
   }
-  if (m.u32((pArg + 0x14) >>> 0) === 1) {
-    const pUnit = m.u32((pArg + 0x0c) >>> 0) >>> 0
-    const dwGuid = pUnit !== 0 ? m.u32((pUnit + 0x0c) >>> 0) : 0xffffffff
+  if (m.u8((pQuest + 0x0c) >>> 0) === 4 && nNewLevel === 0x28) {
+    m.setU8((pQuest + 0x0c) >>> 0, 5)
+    broadcastInlineQuestStateDebug113c(m, pQuest, 5)
+    return
+  }
+  if (nOldLevel === 1) {
     if (m.u16((pQuest + 0x9c) >>> 0) > 0) {
+      const pUnit = m.u32((pArg + 0x0c) >>> 0) >>> 0
+      const dwGuid = pUnit !== 0 ? m.u32((pUnit + 0x0c) >>> 0) : 0xffffffff
       QUESTS_GuidListRemove113c(m, (pQuest + 0x1c) >>> 0, dwGuid)
     }
-    const pPlayerData = UNITS_GetPlayerData113c(m, pUnit)
-    const pGame = m.u32(pArg >>> 0) >>> 0
-    const diffIdx = m.u8((pGame + 0x6d) >>> 0)
-    const pQuestFlags = m.u32((pPlayerData + diffIdx * 4 + 0x10) >>> 0) >>> 0
-    if (
-      DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 1, 0) !== 1 &&
-      DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 1, 1) !== 1 &&
-      m.u8((pQuest + 0x0a) >>> 0) === 1
-    ) {
-      const pQuestData = m.u32((pQuest + 0x18) >>> 0) >>> 0
-      if (m.u8((pQuestData + 0x02) >>> 0) !== 1) {
-        m.setU8((pQuest + 0x0b) >>> 0, 1)
-        m.setU32((pQuest + 0x0c) >>> 0, 1)
+    if (m.u8((pQuest + 0x0c) >>> 0) === 2) {
+      const pQuestFlags = getPlayerQuestFlagsFromArg113c(m, pArg)
+      const nQuestNo = m.u32((pQuest + 0xe0) >>> 0) | 0
+      if (
+        DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, nQuestNo, 0) === 1 ||
+        DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, nQuestNo, 1) === 1
+      ) {
+        return
       }
+      QUESTS_Act2RadamentSetStateAndDebugPrint_6FC55EB0_113c(m, pQuest, 3)
+      SUNIT_FindFirstLivingPlayerOrMonsterMatching_6FCFFCC0_113c(
+        m,
+        m.u32((pQuest + 0x04) >>> 0) >>> 0,
+        ACT1Q6_UpdatePlayerQuestStateCallback_6FC80D00_113c,
+        0,
+        0,
+      )
     }
   }
 }
 
 /**
- * Act 1 Quest 2 (Sisters' Burial Grounds / Blood Raven) level-change callback (`cbIdx = 3`).
+ * Act 1 Quest 4 (The Forgotten Tower / Countess) level-change callback
+ * (`cbIdx = 3`, `__fastcall (ecx=pQuest, edx=pArg)`).
+ * Bound to `ACT1Q2_Callback03_LevelChanged` in `k1r14-laneI1-f150-f276.json`.
  *
  * @va D2Game:0x6FC842D0 (350B)
  */
@@ -1099,61 +1286,110 @@ export function ACT1Q2_Callback03_LevelChanged113c(
   m: Memory113c,
   pQuest: number,
   pArg: number,
-  hooks?: Post150LaneI1Hooks113c,
+  _hooks?: Post150LaneI1Hooks113c,
 ): void {
   hitD2GameVa113c(0x6FC842D0)
-  if (m.u32((pArg + 0x14) >>> 0) === 1) {
-    const pUnit = m.u32((pArg + 0x0c) >>> 0) >>> 0
-    const dwGuid = pUnit !== 0 ? m.u32((pUnit + 0x0c) >>> 0) : 0xffffffff
-    const pQuestData = m.u32((pQuest + 0x18) >>> 0) >>> 0
-    if (m.u16((pQuestData + 0x80) >>> 0) > 0) {
-      QUESTS_GuidListRemove113c(m, pQuestData, dwGuid)
-    }
-    const pPlayerData = UNITS_GetPlayerData113c(m, pUnit)
-    const pGame = m.u32(pArg >>> 0) >>> 0
-    const diffIdx = m.u8((pGame + 0x6d) >>> 0)
-    const pQuestFlags = m.u32((pPlayerData + diffIdx * 4 + 0x10) >>> 0) >>> 0
-    if (
-      DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 2, 0) !== 1 &&
-      DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 2, 1) !== 1 &&
-      m.u8((pQuest + 0x0a) >>> 0) === 1 &&
-      m.u8((pQuestData + 0x84) >>> 0) !== 1
-    ) {
-      m.setU8((pQuest + 0x0b) >>> 0, 1)
-      m.setU32((pQuest + 0x0c) >>> 0, 1)
-    }
-  }
-  if (m.u32((pArg + 0x18) >>> 0) === 0x11) {
-    const pQuestData = m.u32((pQuest + 0x18) >>> 0) >>> 0
-    if (m.u8((pQuestData + 0x87) >>> 0) === 1) {
-      m.setU32((pQuest + 0xb0) >>> 0, (D2GAME_IMAGE_BASE_113C + 0x61250) >>> 0)
-      if (hooks?.onQuestHelperCall !== undefined) {
-        hooks.onQuestHelperCall(m, 0x602a0, pQuest, pArg)
+  const bNotIntro = m.u8((pQuest + 0x09) >>> 0)
+  const nNewLevel = m.u32((pArg + 0x18) >>> 0) | 0
+  const nOldLevel = m.u32((pArg + 0x14) >>> 0) | 0
+  if (bNotIntro !== 0) {
+    const pQuestGame = m.u32((pQuest + 0x04) >>> 0) >>> 0
+    if (nNewLevel === 0x14) {
+      const f0c = m.u8((pQuest + 0x0c) >>> 0)
+      if (f0c === 0) {
+        QUESTS_Act2RadamentSetStateAndDebugPrint_6FC55EB0_113c(m, pQuest, 2)
+        m.setU8((pQuest + 0x0b) >>> 0, 3)
+        m.setU8((pQuest + 0x14) >>> 0, 0)
+        SUNIT_FindFirstLivingPlayerOrMonsterMatching_6FCFFCC0_113c(
+          m,
+          pQuestGame,
+          ACT1Q5_SendAlert05IfQuest05Active_6FC82870_113c,
+          0,
+          0,
+        )
+        SUNIT_FindFirstLivingPlayerOrMonsterMatching_6FCFFCC0_113c(
+          m,
+          pQuestGame,
+          ACT1Q3_UpdatePlayerQuestStateCallback_6FC81250_113c,
+          0,
+          0,
+        )
+        return
       }
-    }
-    if (m.u8((pQuest + 0x0a) >>> 0) !== 1) return
-    const stateVal = m.u32((pQuest + 0x14) >>> 0)
-    if (stateVal !== 1 && stateVal !== 2) {
-      const bState = m.u8((pQuest + 0x0c) >>> 0)
-      if (bState === 0 || bState > 4) {
-        setQuestMainStateDefault(m, pQuest, bState, hooks)
+      if (f0c <= 3 && m.u8((pQuest + 0x0b) >>> 0) === 1) {
+        m.setU8((pQuest + 0x0b) >>> 0, 4)
+        m.setU8((pQuest + 0x14) >>> 0, 0)
+        SUNIT_FindFirstLivingPlayerOrMonsterMatching_6FCFFCC0_113c(
+          m,
+          pQuestGame,
+          ACT1Q5_SendAlert05IfQuest05Active_6FC82870_113c,
+          0,
+          0,
+        )
+        SUNIT_FindFirstLivingPlayerOrMonsterMatching_6FCFFCC0_113c(
+          m,
+          pQuestGame,
+          ACT1Q3_UpdatePlayerQuestStateCallback_6FC81250_113c,
+          0,
+          0,
+        )
+        return
+      }
+      return
+    } else if (nNewLevel === 0x19) {
+      const f0c = m.u8((pQuest + 0x0c) >>> 0)
+      if (f0c < 4 && m.u8((pQuest + 0x0b) >>> 0) !== 2) {
+        if (f0c !== 3) {
+          QUESTS_Act2RadamentSetStateAndDebugPrint_6FC55EB0_113c(m, pQuest, 3)
+        }
+        m.setU8((pQuest + 0x0b) >>> 0, 2)
+        m.setU8((pQuest + 0x14) >>> 0, 0)
+        SUNIT_FindFirstLivingPlayerOrMonsterMatching_6FCFFCC0_113c(
+          m,
+          pQuestGame,
+          ACT1Q5_SendAlert05IfQuest05Active_6FC82870_113c,
+          0,
+          0,
+        )
+        SUNIT_FindFirstLivingPlayerOrMonsterMatching_6FCFFCC0_113c(
+          m,
+          pQuestGame,
+          ACT1Q3_UpdatePlayerQuestStateCallback_6FC81250_113c,
+          0,
+          0,
+        )
+        return
       }
       return
     }
-    m.setU32((pQuest + 0x14) >>> 0, 3)
-    const bState = m.u8((pQuest + 0x0c) >>> 0)
-    statusCyclerExDefault(
-      m,
-      pQuest,
-      bState !== 1 && bState !== 2 ? 1 : 0,
-      bState,
-      hooks,
-    )
+  }
+  if (nOldLevel === 1) {
+    const f0c = m.u8((pQuest + 0x0c) >>> 0)
+    if (f0c === 2) {
+      const pQuestFlags = getPlayerQuestFlagsFromArg113c(m, pArg)
+      const nQuestNo = m.u32((pQuest + 0xe0) >>> 0) | 0
+      if (DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, nQuestNo, 0) !== 1) {
+        QUESTS_Act2RadamentSetStateAndDebugPrint_6FC55EB0_113c(m, pQuest, 3)
+      }
+    } else if (f0c === 5 && bNotIntro !== 0) {
+      const pUnit = m.u32((pArg + 0x0c) >>> 0) >>> 0
+      const dwGuid = pUnit !== 0 ? m.u32((pUnit + 0x0c) >>> 0) : 0xffffffff
+      const pQuestData = m.u32((pQuest + 0x18) >>> 0) >>> 0
+      if (
+        ACT1Q6_RemoveGuidFromSelectedList_6FC802A0_113c(m, pQuestData, 0, dwGuid) !== 0 &&
+        m.u16((pQuestData + 0x30) >>> 0) === 0 &&
+        m.u16((pQuestData + 0x64) >>> 0) === 0
+      ) {
+        m.setU8((pQuest + 0x0a) >>> 0, 0)
+      }
+    }
   }
 }
 
 /**
- * Act 1 Quest 4 (The Forgotten Tower / Countess) level-change callback (`cbIdx = 3`).
+ * Act 1 Quest 5 (Tools of the Trade / Charsi Imbue) level-change callback
+ * (`cbIdx = 3`, `__fastcall (ecx=pQuest, edx=pArg)`).
+ * Bound to `ACT1Q4_Callback03_LevelChanged` in `k1r14-laneI1-f150-f276.json`.
  *
  * @va D2Game:0x6FC84D30 (217B)
  */
@@ -1161,73 +1397,51 @@ export function ACT1Q4_Callback03_LevelChanged113c(
   m: Memory113c,
   pQuest: number,
   pArg: number,
-  hooks?: Post150LaneI1Hooks113c,
+  _hooks?: Post150LaneI1Hooks113c,
 ): void {
   hitD2GameVa113c(0x6FC84D30)
-  const nToLevel = m.u32((pArg + 0x18) >>> 0)
-  if (nToLevel === 0x14) {
-    if (m.u8((pQuest + 0x0a) >>> 0) !== 1) return
-    if (m.u32((pQuest + 0x14) >>> 0) === 1) {
-      m.setU32((pQuest + 0x14) >>> 0, 2)
-      const bState = m.u8((pQuest + 0x0c) >>> 0)
-      statusCyclerExDefault(
-        m,
-        pQuest,
-        bState !== 1 && bState !== 2 ? 1 : 0,
-        bState,
-        hooks,
-      )
+  const nOldLevel = m.u32((pArg + 0x14) >>> 0) | 0
+  if (m.u8((pQuest + 0x09) >>> 0) === 0) {
+    m.setU32((pQuest + 0xac) >>> 0, 0)
+    return
+  }
+  if (nOldLevel === 1 && m.u8((pQuest + 0x0c) >>> 0) === 2) {
+    const pQuestFlags = getPlayerQuestFlagsFromArg113c(m, pArg)
+    const nQuestNo = m.u32((pQuest + 0xe0) >>> 0) | 0
+    if (
+      DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, nQuestNo, 0) === 1 ||
+      DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, nQuestNo, 1) === 1
+    ) {
       return
     }
-    const bState = m.u8((pQuest + 0x0c) >>> 0)
-    if (bState === 0 || bState > 4) {
-      setQuestMainStateDefault(m, pQuest, bState, hooks)
-    }
-    return
-  }
-  if (nToLevel === 0x19) {
-    if (m.u8((pQuest + 0x0a) >>> 0) !== 1) return
-    if (m.u32((pQuest + 0x14) >>> 0) !== 3) {
-      const stateVal = m.u32((pQuest + 0x14) >>> 0)
-      if (stateVal === 1 || stateVal === 2) {
-        m.setU32((pQuest + 0x14) >>> 0, 3)
-        const bState = m.u8((pQuest + 0x0c) >>> 0)
-        statusCyclerExDefault(
-          m,
-          pQuest,
-          bState !== 1 && bState !== 2 ? 1 : 0,
-          bState,
-          hooks,
-        )
-        return
-      }
-      const bState = m.u8((pQuest + 0x0c) >>> 0)
-      if (bState === 0 || bState > 4) {
-        setQuestMainStateDefault(m, pQuest, bState, hooks)
-      }
-    }
-    return
-  }
-  const pUnit = m.u32((pArg + 0x0c) >>> 0) >>> 0
-  const pPlayerData = UNITS_GetPlayerData113c(m, pUnit)
-  const pGame = m.u32(pArg >>> 0) >>> 0
-  const diffIdx = m.u8((pGame + 0x6d) >>> 0)
-  const pQuestFlags = m.u32((pPlayerData + diffIdx * 4 + 0x10) >>> 0) >>> 0
-  if (
-    DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 5, 0) !== 1 &&
-    DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 5, 1) !== 1 &&
-    m.u8((pQuest + 0x0a) >>> 0) === 1
-  ) {
-    const pQuestData = m.u32((pQuest + 0x18) >>> 0) >>> 0
-    if (m.u8((pQuestData + 0x09) >>> 0) !== 1) {
+    const pQuestGame = m.u32((pQuest + 0x04) >>> 0) >>> 0
+    if (m.u8((pQuest + 0x0b) >>> 0) !== 1) {
+      m.setU8((pQuest + 0x14) >>> 0, 0)
       m.setU8((pQuest + 0x0b) >>> 0, 1)
-      m.setU32((pQuest + 0x0c) >>> 0, 1)
+      SUNIT_FindFirstLivingPlayerOrMonsterMatching_6FCFFCC0_113c(
+        m,
+        pQuestGame,
+        ACT1Q3_SendAlert03IfQuest03Active_6FC82AE0_113c,
+        0,
+        0,
+      )
     }
+    QUESTS_Act2RadamentSetStateAndDebugPrint_6FC55EB0_113c(m, pQuest, 3)
+    SUNIT_FindFirstLivingPlayerOrMonsterMatching_6FCFFCC0_113c(
+      m,
+      pQuestGame,
+      ACT1Q5_UpdatePlayerQuestStateCallback_6FC81DA0_113c,
+      0,
+      0,
+    )
+    m.setU32((pQuest + 0xac) >>> 0, 0)
   }
 }
 
 /**
- * Act 1 Quest 5 (Tools of the Trade / Charsi Imbue) level-change callback (`cbIdx = 3`).
+ * Act 1 Quest 2 (Sisters' Burial Grounds / Blood Raven) level-change callback
+ * (`cbIdx = 3`, `__fastcall (ecx=pQuest, edx=pArg)`).
+ * Bound to `ACT1Q5_Callback03_LevelChanged` in `k1r14-laneI1-f150-f276.json`.
  *
  * @va D2Game:0x6FC84ED0 (263B)
  */
@@ -1235,53 +1449,73 @@ export function ACT1Q5_Callback03_LevelChanged113c(
   m: Memory113c,
   pQuest: number,
   pArg: number,
-  hooks?: Post150LaneI1Hooks113c,
+  _hooks?: Post150LaneI1Hooks113c,
 ): void {
   hitD2GameVa113c(0x6FC84ED0)
-  if (m.u32((pArg + 0x14) >>> 0) === 1) {
-    const pUnit = m.u32((pArg + 0x0c) >>> 0) >>> 0
-    const dwGuid = pUnit !== 0 ? m.u32((pUnit + 0x0c) >>> 0) : 0xffffffff
-    if (m.u16((pQuest + 0x9c) >>> 0) > 0) {
-      QUESTS_GuidListRemove113c(m, (pQuest + 0x1c) >>> 0, dwGuid)
+  const nOldLevel = m.u32((pArg + 0x14) >>> 0) | 0
+  const nNewLevel = m.u32((pArg + 0x18) >>> 0) | 0
+  if (nNewLevel === 0x11 && m.u8((pQuest + 0x09) >>> 0) === 1) {
+    let bHandled = false
+    if (m.u8((pQuest + 0x0c) >>> 0) < 3) {
+      QUESTS_Act2RadamentSetStateAndDebugPrint_6FC55EB0_113c(m, pQuest, 3)
+      m.setU8((pQuest + 0x14) >>> 0, 0)
+      bHandled = true
     }
-    const pPlayerData = UNITS_GetPlayerData113c(m, pUnit)
-    const pGame = m.u32(pArg >>> 0) >>> 0
-    const diffIdx = m.u8((pGame + 0x6d) >>> 0)
-    const pQuestFlags = m.u32((pPlayerData + diffIdx * 4 + 0x10) >>> 0) >>> 0
-    if (
-      DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 3, 0) !== 1 &&
-      DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 3, 1) !== 1 &&
-      m.u8((pQuest + 0x0a) >>> 0) === 1
-    ) {
-      const pQuestData = m.u32((pQuest + 0x18) >>> 0) >>> 0
-      if (m.u8((pQuestData + 0x04) >>> 0) !== 1) {
-        m.setU8((pQuest + 0x0b) >>> 0, 1)
-        m.setU32((pQuest + 0x0c) >>> 0, 1)
-      }
-    }
-  }
-  const nToLevel = m.u32((pArg + 0x18) >>> 0)
-  if ((nToLevel - 0x1b) >>> 0 <= 4 && m.u8((pQuest + 0x0a) >>> 0) === 1) {
-    if (m.u32((pQuest + 0x14) >>> 0) === 1) {
-      m.setU32((pQuest + 0x14) >>> 0, 2)
-      statusCyclerExDefault(
+    const pQuestGame = m.u32((pQuest + 0x04) >>> 0) >>> 0
+    const f0b = m.u8((pQuest + 0x0b) >>> 0)
+    if (f0b === 1 || f0b === 0) {
+      m.setU8((pQuest + 0x0b) >>> 0, 2)
+      SUNIT_FindFirstLivingPlayerOrMonsterMatching_6FCFFCC0_113c(
         m,
-        pQuest,
-        m.u8((pQuest + 0x0c) >>> 0) !== 1 ? 1 : 0,
-        m.u8((pQuest + 0x0c) >>> 0),
-        hooks,
+        pQuestGame,
+        ACT1Q2_SendAlert02IfQuest02Active_6FC82C00_113c,
+        0,
+        0,
+      )
+      bHandled = true
+    }
+    if (bHandled) {
+      SUNIT_FindFirstLivingPlayerOrMonsterMatching_6FCFFCC0_113c(
+        m,
+        pQuestGame,
+        ACT1Q2_UpdatePlayerQuestStateCallback_6FC82040_113c,
+        0,
+        0,
       )
       return
     }
-    const bState = m.u8((pQuest + 0x0c) >>> 0)
-    if (bState === 0 || bState > 5) {
-      setQuestMainStateDefault(m, pQuest, bState, hooks)
+  }
+  if (nOldLevel === 1) {
+    if (m.u16((pQuest + 0x9c) >>> 0) > 0) {
+      const pUnit = m.u32((pArg + 0x0c) >>> 0) >>> 0
+      const dwGuid = pUnit !== 0 ? m.u32((pUnit + 0x0c) >>> 0) : 0xffffffff
+      QUESTS_GuidListRemove113c(m, (pQuest + 0x1c) >>> 0, dwGuid)
+    }
+    if (m.u8((pQuest + 0x0c) >>> 0) === 2) {
+      const pQuestFlags = getPlayerQuestFlagsFromArg113c(m, pArg)
+      const nQuestNo = m.u32((pQuest + 0xe0) >>> 0) | 0
+      if (
+        DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, nQuestNo, 0) === 1 ||
+        DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, nQuestNo, 1) === 1
+      ) {
+        return
+      }
+      QUESTS_Act2RadamentSetStateAndDebugPrint_6FC55EB0_113c(m, pQuest, 3)
+      SUNIT_FindFirstLivingPlayerOrMonsterMatching_6FCFFCC0_113c(
+        m,
+        m.u32((pQuest + 0x04) >>> 0) >>> 0,
+        ACT1Q2_UpdatePlayerQuestStateCallback_6FC82040_113c,
+        0,
+        0,
+      )
     }
   }
 }
 
 /**
- * Act 1 Quest 6 (Sisters to the Slaughter / Andariel) level-change callback (`cbIdx = 3`).
+ * Act 1 Quest 1 (Den of Evil) level-change callback
+ * (`cbIdx = 3`, `__fastcall (ecx=pQuest, edx=pArg)`).
+ * Bound to `ACT1Q6_Callback03_LevelChanged` in `k1r14-laneI1-f150-f276.json`.
  *
  * @va D2Game:0x6FC85040 (437B)
  */
@@ -1289,92 +1523,91 @@ export function ACT1Q6_Callback03_LevelChanged113c(
   m: Memory113c,
   pQuest: number,
   pArg: number,
-  hooks?: Post150LaneI1Hooks113c,
+  _hooks?: Post150LaneI1Hooks113c,
 ): void {
   hitD2GameVa113c(0x6FC85040)
-  if (m.u32((pArg + 0x14) >>> 0) === 1) {
-    const pUnit = m.u32((pArg + 0x0c) >>> 0) >>> 0
-    const dwGuid = pUnit !== 0 ? m.u32((pUnit + 0x0c) >>> 0) : 0xffffffff
+  const nOldLevel = m.u32((pArg + 0x14) >>> 0) | 0
+  const nNewLevel = m.u32((pArg + 0x18) >>> 0) | 0
+  const pQuestData = m.u32((pQuest + 0x18) >>> 0) >>> 0
+  if (nNewLevel === 8) {
+    if (m.u8((pQuest + 0x09) >>> 0) === 0) return
+    let bSyncNeeded = false
+    const f0c = m.u8((pQuest + 0x0c) >>> 0)
+    if (f0c === 1 || f0c === 2) {
+      m.setU8((pQuest + 0x0c) >>> 0, 3)
+      broadcastInlineQuestStateDebug113c(m, pQuest, 3)
+      bSyncNeeded = true
+    }
+    m.setU8((pQuestData + 0x85) >>> 0, 1)
+    const pQuestGame = m.u32((pQuest + 0x04) >>> 0) >>> 0
+    if (m.u8((pQuest + 0x0b) >>> 0) < 2) {
+      m.setU8((pQuest + 0x14) >>> 0, 0)
+      m.setU8((pQuest + 0x0b) >>> 0, 2)
+      SUNIT_FindFirstLivingPlayerOrMonsterMatching_6FCFFCC0_113c(
+        m,
+        pQuestGame,
+        ACT1Q1_SendAlert01IfQuest01Active_6FC82D30_113c,
+        0,
+        0,
+      )
+      m.setU32((pQuest + 0xa8) >>> 0, 0)
+      bSyncNeeded = true
+    }
+    if (bSyncNeeded) {
+      SUNIT_FindFirstLivingPlayerOrMonsterMatching_6FCFFCC0_113c(
+        m,
+        pQuestGame,
+        ACT1Q1_UpdatePlayerQuestStateCallback_6FC82370_113c,
+        0,
+        0,
+      )
+    }
+    return
+  }
+  if (nOldLevel === 1) {
     if (m.u16((pQuest + 0x9c) >>> 0) > 0) {
+      const pUnit = m.u32((pArg + 0x0c) >>> 0) >>> 0
+      const dwGuid = pUnit !== 0 ? m.u32((pUnit + 0x0c) >>> 0) : 0xffffffff
       QUESTS_GuidListRemove113c(m, (pQuest + 0x1c) >>> 0, dwGuid)
     }
-    const pPlayerData = UNITS_GetPlayerData113c(m, pUnit)
-    const pGame = m.u32(pArg >>> 0) >>> 0
-    const diffIdx = m.u8((pGame + 0x6d) >>> 0)
-    const pQuestFlags = m.u32((pPlayerData + diffIdx * 4 + 0x10) >>> 0) >>> 0
-    if (
-      DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 6, 0) !== 1 &&
-      DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 6, 1) !== 1 &&
-      m.u8((pQuest + 0x0a) >>> 0) === 1
-    ) {
-      const pQuestData = m.u32((pQuest + 0x18) >>> 0) >>> 0
-      if (m.u8((pQuestData + 0x89) >>> 0) !== 1) {
-        m.setU8((pQuest + 0x0b) >>> 0, 1)
-        m.setU32((pQuest + 0x0c) >>> 0, 1)
+    if (m.u8((pQuest + 0x0c) >>> 0) === 2) {
+      const pQuestFlags = getPlayerQuestFlagsFromArg113c(m, pArg)
+      const nQuestNo = m.u32((pQuest + 0xe0) >>> 0) | 0
+      if (
+        DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, nQuestNo, 0) === 1 ||
+        DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, nQuestNo, 1) === 1
+      ) {
+        return
       }
-    }
-  }
-  const nToLevel = m.u32((pArg + 0x18) >>> 0)
-  if ((nToLevel >= 0x22 && nToLevel <= 0x24) && m.u8((pQuest + 0x0a) >>> 0) === 1) {
-    if (m.u32((pQuest + 0x14) >>> 0) === 1) {
-      m.setU32((pQuest + 0x14) >>> 0, 2)
-      statusCyclerExDefault(
+      const pQuestGame = m.u32((pQuest + 0x04) >>> 0) >>> 0
+      QUESTS_Act2RadamentSetStateAndDebugPrint_6FC55EB0_113c(m, pQuest, 3)
+      SUNIT_FindFirstLivingPlayerOrMonsterMatching_6FCFFCC0_113c(
         m,
-        pQuest,
-        m.u8((pQuest + 0x0c) >>> 0) !== 1 ? 1 : 0,
-        m.u8((pQuest + 0x0c) >>> 0),
-        hooks,
+        pQuestGame,
+        ACT1Q1_UpdatePlayerQuestStateCallback_6FC82370_113c,
+        0,
+        0,
       )
-    } else {
-      const bState = m.u8((pQuest + 0x0c) >>> 0)
-      if (bState === 0 || bState > 4) {
-        setQuestMainStateDefault(m, pQuest, bState, hooks)
-      }
-    }
-  }
-  if (nToLevel === 0x25) {
-    const pQuestData = m.u32((pQuest + 0x18) >>> 0) >>> 0
-    if (m.u8((pQuestData + 0x8c) >>> 0) === 0) {
-      const pUnit = m.u32((pArg + 0x0c) >>> 0) >>> 0
-      m.setU8((pQuestData + 0x8c) >>> 0, 1)
-      if (pUnit !== 0 && m.u32(pUnit >>> 0) === 0) {
-        const pPlayerData = UNITS_GetPlayerData113c(m, pUnit)
-        const pGame = m.u32(pArg >>> 0) >>> 0
-        const diffIdx = m.u8((pGame + 0x6d) >>> 0)
-        const pQuestFlags = m.u32((pPlayerData + diffIdx * 4 + 0x10) >>> 0) >>> 0
-        if (
-          DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, m.u32((pQuest + 0x10) >>> 0), 0) === 0 &&
-          DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, m.u32((pQuest + 0x10) >>> 0), 0x0d) === 0 &&
-          hooks?.onQuestHelperCall !== undefined
-        ) {
-          hooks.onQuestHelperCall(m, 0xcbe70, pGame, pUnit, 0x3b)
-        }
-      }
-    }
-    if (m.u8((pQuest + 0x0a) >>> 0) === 1) {
-      const stateVal = m.u32((pQuest + 0x14) >>> 0)
-      if (stateVal !== 1 && stateVal !== 2) {
-        const bState = m.u8((pQuest + 0x0c) >>> 0)
-        if (bState === 0 || bState > 4) {
-          setQuestMainStateDefault(m, pQuest, bState, hooks)
-        }
-      } else {
-        m.setU32((pQuest + 0x14) >>> 0, 3)
-        const bState = m.u8((pQuest + 0x0c) >>> 0)
-        statusCyclerExDefault(
+      if (m.u8((pQuest + 0x0b) >>> 0) !== 1) {
+        m.setU8((pQuest + 0x14) >>> 0, 0)
+        m.setU8((pQuest + 0x0b) >>> 0, 1)
+        SUNIT_FindFirstLivingPlayerOrMonsterMatching_6FCFFCC0_113c(
           m,
-          pQuest,
-          bState !== 1 && bState !== 2 ? 1 : 0,
-          bState,
-          hooks,
+          pQuestGame,
+          ACT1Q1_SendAlert01IfQuest01Active_6FC82D30_113c,
+          0,
+          0,
         )
+        m.setU32((pQuest + 0xa8) >>> 0, 0)
       }
     }
   }
 }
 
 /**
- * Act 1 Quest 3 (The Search for Cain) level-change callback (`cbIdx = 3`, levels `0x01`, `0x26`, `0x28`).
+ * Act 1 Quest 3 (The Search for Cain) level-change callback
+ * (`cbIdx = 3`, `__fastcall (ecx=pQuest, edx=pArg)`, levels `0x01`, `0x26`, `0x28`).
+ * Bound to `ACT1Q3_Callback03_LevelChanged` in `k1r14-laneI1-f150-f276.json`.
  *
  * @va D2Game:0x6FC884B0 (635B)
  */
@@ -1382,121 +1615,98 @@ export function ACT1Q3_Callback03_LevelChanged113c(
   m: Memory113c,
   pQuest: number,
   pArg: number,
-  hooks?: Post150LaneI1Hooks113c,
+  _hooks?: Post150LaneI1Hooks113c,
 ): void {
   hitD2GameVa113c(0x6FC884B0)
-  const nFromLevel = m.u32((pArg + 0x14) >>> 0)
-  if (nFromLevel === 1) {
+  const nOldLevel = m.u32((pArg + 0x14) >>> 0) | 0
+  const nNewLevel = m.u32((pArg + 0x18) >>> 0) | 0
+  const pQuestData = m.u32((pQuest + 0x18) >>> 0) >>> 0
+  if (nNewLevel === 0x26) {
+    if (
+      m.u8((pQuestData + 0x51) >>> 0) === 0 &&
+      m.u8((pQuestData + 0x50) >>> 0) === 0 &&
+      m.u8((pQuest + 0x0c) >>> 0) >= 6
+    ) {
+      ACT1Q4_BroadcastDebugQuestNotice_6FC835B0_113c(m, pQuest)
+      QUESTS_Act2RadamentSetStateAndDebugPrint_6FC55EB0_113c(m, pQuest, 5)
+      m.setU8((pQuest + 0x14) >>> 0, 0)
+      m.setU8((pQuest + 0x0b) >>> 0, 4)
+      SUNIT_FindFirstLivingPlayerOrMonsterMatching_6FCFFCC0_113c(
+        m,
+        m.u32((pQuest + 0x04) >>> 0) >>> 0,
+        ACT1Q4_UpdatePlayerQuestStateCallback_6FC819B0_113c,
+        0,
+        0,
+      )
+    }
+  }
+  if (nOldLevel === 1) {
     const pUnit = m.u32((pArg + 0x0c) >>> 0) >>> 0
     const dwGuid = pUnit !== 0 ? m.u32((pUnit + 0x0c) >>> 0) : 0xffffffff
     if (m.u16((pQuest + 0x9c) >>> 0) > 0) {
       QUESTS_GuidListRemove113c(m, (pQuest + 0x1c) >>> 0, dwGuid)
     }
-    const pQuestData0 = m.u32((pQuest + 0x18) >>> 0) >>> 0
-    if (pQuestData0 !== 0) {
-      QUESTS_GuidListRemove113c(m, (pQuestData0 + 0xb4) >>> 0, dwGuid)
+    QUESTS_GuidListRemove113c(m, (pQuestData + 0xb4) >>> 0, dwGuid)
+    const pQuestFlags = getPlayerQuestFlagsFromArg113c(m, pArg)
+    const nQuestNo = m.u32((pQuest + 0xe0) >>> 0) | 0
+    if (
+      DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, nQuestNo, 0) === 1 ||
+      DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, nQuestNo, 1) === 1
+    ) {
+      return
     }
-    const pPlayerData = UNITS_GetPlayerData113c(m, pUnit)
+    if (m.u8((pQuest + 0x0c) >>> 0) === 2) {
+      QUESTS_Act2RadamentSetStateAndDebugPrint_6FC55EB0_113c(m, pQuest, 3)
+    }
+  }
+  if (nNewLevel === 1) {
+    const pd2 = m.u32((pQuest + 0x18) >>> 0) >>> 0
+    if (m.u8((pd2 + 0x70) >>> 0) === 0) return
     const pGame = m.u32(pArg >>> 0) >>> 0
-    const diffIdx = m.u8((pGame + 0x6d) >>> 0)
-    const pQuestFlags = m.u32((pPlayerData + diffIdx * 4 + 0x10) >>> 0) >>> 0
-    if (
-      DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 4, 0) !== 1 &&
-      DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 4, 1) !== 1 &&
-      m.u8((pQuest + 0x0a) >>> 0) === 1
-    ) {
-      const pQuestData = m.u32((pQuest + 0x18) >>> 0) >>> 0
-      if (m.u8((pQuestData + 0x17) >>> 0) !== 1) {
-        m.setU8((pQuest + 0x0b) >>> 0, 1)
-        m.setU32((pQuest + 0x0c) >>> 0, 1)
-      }
+    if (pGame === 0) {
+      throw new D2CommonAssertError('a1q4.cpp', 0x2d3)
     }
-    if (m.u8((m.u32((pQuest + 0x18) >>> 0) + 0x14) >>> 0) === 0) {
-      iterateUnitsOfTypeDefault(
+    const pObj = lookupObjectByGuidInGame113c(m, pGame, m.u32((pd2 + 0x6c) >>> 0))
+    if (pObj !== 0 && m.u8((pd2 + 0x52) >>> 0) === 1 && m.u8((pd2 + 0x51) >>> 0) === 0) {
+      const pRoom = UNITS_GetRoom113c(m, pObj)
+      const nX = UNIT_GetPosX113c(m, pObj)
+      const nY = UNIT_GetPosY113c(m, pObj)
+      ACT1Q4_SpawnGriswoldInTristram_6FC860D0_113c(m, pGame, pRoom, nX, nY)
+    }
+    return
+  }
+  if (nNewLevel === 0x28) {
+    const pQuestFlags = getPlayerQuestFlagsFromArg113c(m, pArg)
+    const nQuestNo = m.u32((pQuest + 0xe0) >>> 0) | 0
+    if (
+      DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, nQuestNo, 0) === 1 ||
+      DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, nQuestNo, 1) === 1
+    ) {
+      return
+    }
+    if (m.u8((pQuestData + 0x50) >>> 0) === 0 && m.u8((pQuest + 0x0c) >>> 0) < 6) {
+      ACT1Q4_BroadcastDebugQuestNotice_6FC835B0_113c(m, pQuest)
+      ACT1Q4_UpdateGibbetModeAndCainState_6FC88280_113c(m, pQuest, 0, 1)
+      QUESTS_Act2RadamentSetStateAndDebugPrint_6FC55EB0_113c(m, pQuest, 7)
+      m.setU8((pQuest + 0x14) >>> 0, 0)
+      m.setU8((pQuest + 0x0b) >>> 0, 5)
+      const pQuestGame = m.u32((pQuest + 0x04) >>> 0) >>> 0
+      SUNIT_FindFirstLivingPlayerOrMonsterMatching_6FCFFCC0_113c(
         m,
-        m.u32(pArg >>> 0) >>> 0,
+        pQuestGame,
+        ACT1Q4_SendAlert04IfQuest04Active_6FC82A80_113c,
         0,
-        m.u32((pQuest + 0x18) >>> 0) >>> 0,
-        0x61910,
-        hooks,
+        m.u32((pArg + 0x0c) >>> 0) >>> 0,
       )
-    }
-  }
-  const nToLevel = m.u32((pArg + 0x18) >>> 0)
-  if (nToLevel === 0x26) {
-    const pQuestData = m.u32((pQuest + 0x18) >>> 0) >>> 0
-    const pUnit = m.u32((pArg + 0x0c) >>> 0) >>> 0
-    if (m.u8((pQuestData + 0x07) >>> 0) === 0) {
-      const pRoom = UNITS_GetRoom113c(m, pUnit)
-      const posX = UNIT_GetPosX113c(m, pUnit)
-      const posY = UNIT_GetPosY113c(m, pUnit)
-      m.setU8((pQuestData + 0x07) >>> 0, 1)
-      if (hooks?.onQuestHelperCall !== undefined) {
-        hooks.onQuestHelperCall(m, 0x7a030, pRoom, posX, posY)
-      }
-    }
-    if (m.u8((pQuest + 0x0a) >>> 0) === 1) {
-      const pPlayerData = UNITS_GetPlayerData113c(m, pUnit)
-      const pGame = m.u32(pArg >>> 0) >>> 0
-      const diffIdx = m.u8((pGame + 0x6d) >>> 0)
-      const pQuestFlags = m.u32((pPlayerData + diffIdx * 4 + 0x10) >>> 0) >>> 0
-      if (
-        DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 4, 2) !== 1 &&
-        m.u8((pQuest + 0x0c) >>> 0) < 5
-      ) {
-        setQuestMainStateDefault(m, pQuest, 4, hooks)
-      }
-    }
-    if (m.u8((pQuestData + 0x19) >>> 0) === 1) {
-      m.setU32((pQuest + 0xb0) >>> 0, (D2GAME_IMAGE_BASE_113C + 0x619b0) >>> 0)
-      if (hooks?.onQuestHelperCall !== undefined) {
-        hooks.onQuestHelperCall(m, 0x635b0, pQuest, pArg)
-      }
-    }
-  } else if (nFromLevel === 0x26) {
-    const pQuestData = m.u32((pQuest + 0x18) >>> 0) >>> 0
-    if (m.u8((pQuestData + 0x06) >>> 0) === 1 && m.u8((pQuestData + 0x09) >>> 0) === 0) {
-      const pCainUnit = iterateUnitsOfTypeDefault(
+      QUESTS_SetGlobalQuestState_6FC53920_113c(m, pQuestGame, 4, 0x0d)
+      SUNIT_FindFirstLivingPlayerOrMonsterMatching_6FCFFCC0_113c(
         m,
-        m.u32(pArg >>> 0) >>> 0,
-        1,
-        pQuestData,
-        0x660d0,
-        hooks,
+        pQuestGame,
+        ACT1Q4_SetCompletedBeforeAndAddGuidCallback_6FC81910_113c,
+        0,
+        0,
       )
-      if (pCainUnit !== 0 && hooks?.onQuestHelperCall !== undefined) {
-        hooks.onQuestHelperCall(m, 0x68280, m.u32((pQuest + 0x04) >>> 0) >>> 0, pCainUnit)
-      }
-      writeGameQuestState(m, m.u32(pArg >>> 0) >>> 0, 4, 0x0b)
-      if (m.u8((pQuest + 0x0a) >>> 0) === 1) {
-        m.setU32((pQuest + 0x14) >>> 0, 5)
-        setQuestMainStateDefault(m, pQuest, 5, hooks)
-      }
-    }
-  }
-  if (nToLevel === 0x28) {
-    const pUnit = m.u32((pArg + 0x0c) >>> 0) >>> 0
-    const pPlayerData = UNITS_GetPlayerData113c(m, pUnit)
-    const pGame = m.u32((pQuest + 0x04) >>> 0) >>> 0
-    const diffIdx = m.u8((pGame + 0x6d) >>> 0)
-    const pQuestFlags = m.u32((pPlayerData + diffIdx * 4 + 0x10) >>> 0) >>> 0
-    if (
-      DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 4, 0) !== 1 &&
-      DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 4, 0x0d) !== 1 &&
-      DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 4, 0x0c) !== 1
-    ) {
-      const pQuestData = m.u32((pQuest + 0x18) >>> 0) >>> 0
-      if (m.u8((pQuestData + 0x06) >>> 0) === 0) {
-        m.setU8((pQuestData + 0x0c) >>> 0, 1)
-        m.setU8((pQuestData + 0x06) >>> 0, 1)
-      }
-      m.setU8((pQuestData + 0x0a) >>> 0, 1)
-      writeGameQuestState(m, m.u32((pQuest + 0x04) >>> 0) >>> 0, 4, 0x0b)
-      m.setU8((pQuestData + 0x16) >>> 0, 0)
-      m.setU32((pQuestData + 0x64) >>> 0, 0)
-      if (hooks?.onQuestHelperCall !== undefined) {
-        hooks.onQuestHelperCall(m, 0x68280, m.u32((pQuest + 0x04) >>> 0) >>> 0, pQuestData)
-      }
+      m.setU32((pQuestData + 0x58) >>> 0, 1)
     }
   }
 }
@@ -2715,9 +2925,50 @@ export function PARTY_SendPartyPetsToClient113c(
 // F276 (14 VAs)
 // ============================================================================
 
+function findMonsterAiCommandType113c(
+  m: Memory113c,
+  pUnit: number,
+  dwCmdType: number,
+): number {
+  if (pUnit === 0 || m.u32(pUnit >>> 0) !== 1) return 0
+  const pMonData = m.u32((pUnit + 0x14) >>> 0) >>> 0
+  if (pMonData === 0) return 0
+  const pAiGen = m.u32((pMonData + 0x28) >>> 0) >>> 0
+  if (pAiGen === 0) return 0
+  const pTail = m.u32((pAiGen + 0x20) >>> 0) >>> 0
+  if (pTail === 0) return 0
+  let cur = m.u32(pTail >>> 0) >>> 0
+  while (cur !== 0) {
+    if ((m.u32((cur + 0x08) >>> 0) >>> 0) === (dwCmdType >>> 0)) {
+      return cur
+    }
+    if (cur === pTail) break
+    cur = m.u32(cur >>> 0) >>> 0
+  }
+  return 0
+}
+
+function ensureMonsterAiCmd10ForSave113c(
+  m: Memory113c,
+  pUnit: number,
+  pGame: number,
+): number {
+  const existing = findMonsterAiCommandType113c(m, pUnit, 0x0a)
+  if (existing !== 0) return existing
+  const savedStack = laneI1StackPtr
+  const pSrcCmd = allocStackFrame(m, 0x20)
+  try {
+    m.setU32((pSrcCmd + 0x08) >>> 0, 0x0a)
+    AIGENERAL_CopyAiCommandParams113c(m, pGame, pUnit, pSrcCmd)
+  } finally {
+    freeStackFrame(savedStack)
+  }
+  return findMonsterAiCommandType113c(m, pUnit, 0x0a)
+}
+
 /**
- * Packs monster AI command circular list, mount/rider (`0x219`), carried object (`0x21E`),
- * and owner state (`0x21F`) into an inactive monster preset save node (`pNode`).
+ * Packs monster preset flags, `cmd 0x0A` state, AI save pointer (`+0x38` -> `[pNode+0x24]`),
+ * boss/mount target fields, and `0x137`/`0x138` byte into an inactive preset save node (`pNode`).
  *
  * @va D2Game:0x6FC3EF50 (883B)
  */
@@ -2725,73 +2976,89 @@ export function MONSTER_PackPresetSaveData113c(
   m: Memory113c,
   pUnit: number,
   pNode: number,
-  _pGame: number,
+  pGame: number,
 ): number {
   hitD2GameVa113c(0x6FC3EF50)
-  if (pUnit === 0 || m.u32(pUnit >>> 0) !== 1) return 0
-  const pMonsterData = m.u32((pUnit + 0x14) >>> 0) >>> 0
-  if (pMonsterData === 0) return 0
-  const pAiGeneral = m.u32((pMonsterData + 0x28) >>> 0) >>> 0
-  if (pAiGeneral === 0) return 0
+  const unit = pUnit >>> 0
+  const node = pNode >>> 0
+  const game = pGame >>> 0
+  if (unit === 0 || node === 0) return 0
 
-  let pCmdHead = m.u32((pAiGeneral + 0x24) >>> 0) >>> 0
-  if (pCmdHead !== 0) {
-    m.setU32((pNode + 0x4c) >>> 0, m.u32((pAiGeneral + 0x20) >>> 0) >>> 0)
-    do {
-      const pAllocCmd = m.alloc(0x20) >>> 0
-      m.setU32(pAllocCmd >>> 0, 0)
-      m.setU32((pAllocCmd + 0x04) >>> 0, 0)
-      AIGENERAL_CopyAiCommandParams113c(m, pAllocCmd, pCmdHead)
-      const pExistingHead = m.u32((pNode + 0x50) >>> 0) >>> 0
-      if (pExistingHead === 0) {
-        m.setU32(pAllocCmd >>> 0, pAllocCmd)
-        m.setU32((pAllocCmd + 0x04) >>> 0, pAllocCmd)
-        m.setU32((pNode + 0x50) >>> 0, pAllocCmd)
-      } else {
-        const pTail = m.u32((pExistingHead + 0x04) >>> 0) >>> 0
-        m.setU32(pAllocCmd >>> 0, pExistingHead)
-        m.setU32((pAllocCmd + 0x04) >>> 0, pTail)
-        if (pTail !== 0) {
-          m.setU32(pTail >>> 0, pAllocCmd)
-        }
-        m.setU32((pExistingHead + 0x04) >>> 0, pAllocCmd)
-      }
-      if (m.u32((pNode + 0x4c) >>> 0) >>> 0 === pCmdHead) {
-        m.setU32((pNode + 0x4c) >>> 0, pAllocCmd)
-      }
-      pCmdHead = m.u32(pCmdHead >>> 0) >>> 0
-    } while (pCmdHead !== 0 && pCmdHead !== (m.u32((pAiGeneral + 0x24) >>> 0) >>> 0))
+  const nClassId = m.u32((unit + 0x04) >>> 0) | 0
+  const sgpt = getSgptDataTablesPtr(m)
+  const monStatsCount = sgpt !== 0 ? (m.u32((sgpt + 0xa80) >>> 0) | 0) : 0
+  const monStatsBase = sgpt !== 0 ? (m.u32((sgpt + 0xa78) >>> 0) >>> 0) : 0
+  const pMonStats =
+    nClassId >= 0 && nClassId < monStatsCount && monStatsBase !== 0
+      ? (monStatsBase + nClassId * 0x1a8) >>> 0
+      : 0
+
+  const unitFlags = m.u32((unit + 0xc4) >>> 0) >>> 0
+  if (((unitFlags >>> 0x1a) & 1) !== 0) {
+    m.setU32((node + 0x50) >>> 0, (m.u32((node + 0x50) >>> 0) | 1) >>> 0)
+    m.setU32((node + 0x4c) >>> 0, 0xdeaddead)
+  }
+  if (((unitFlags >>> 0x11) & 1) !== 0) {
+    m.setU32((node + 0x4c) >>> 0, 0xdeaddead)
+    m.setU32((node + 0x50) >>> 0, (m.u32((node + 0x50) >>> 0) | 2) >>> 0)
   }
 
-  DRLGPRESET_MovePointerAndClear113c(m, (pAiGeneral + 0x38) >>> 0, (pNode + 0x24) >>> 0)
+  const monStatByte0D = pMonStats !== 0 ? m.u8((pMonStats + 0x0d) >>> 0) : 0
+  const b0 = getBitMaskByte(m, 0x00, 1)
+  const b1 = getBitMaskByte(m, 0x04, 2)
+  const b2 = getBitMaskByte(m, 0x08, 4)
+  if ((monStatByte0D & (b0 | b1 | b2)) !== 0) {
+    const cmd10 = ensureMonsterAiCmd10ForSave113c(m, unit, game)
+    if (cmd10 !== 0) {
+      const p0c = m.u32((cmd10 + 0x0c) >>> 0) >>> 0
+      if (p0c !== 0) {
+        m.setU32((node + 0x4c) >>> 0, p0c)
+        m.setU32((node + 0x50) >>> 0, m.u32((cmd10 + 0x10) >>> 0) >>> 0)
+      }
+    }
+    const pAiGen =
+      m.u32(unit >>> 0) === 1 && m.u32((unit + 0x14) >>> 0) !== 0
+        ? m.u32((m.u32((unit + 0x14) >>> 0) + 0x28) >>> 0) >>> 0
+        : 0
+    if (pAiGen !== 0 && m.u32((pAiGen + 0x38) >>> 0) !== 0) {
+      DRLGPRESET_MovePointerAndClear113c(m, (pAiGen + 0x38) >>> 0, (node + 0x24) >>> 0)
+    }
+  }
 
-  const sgpt = getSgptDataTablesPtr(m)
-  const monStatsBase = sgpt !== 0 ? m.u32((sgpt + 0xa78) >>> 0) >>> 0 : 0
-  const monStatsCount = sgpt !== 0 ? (m.u32((sgpt + 0xa80) | 0) >>> 0) : 0
-  const monStats2Base = sgpt !== 0 ? m.u32((sgpt + 0xa90) >>> 0) >>> 0 : 0
-  const monStats2Count = sgpt !== 0 ? (m.u32((sgpt + 0xa98) | 0) >>> 0) : 0
-  const hcIdx = m.u32((pUnit + 0x04) >>> 0) >>> 0
-  if (hcIdx < monStatsCount && monStatsBase !== 0) {
-    const pMonStats = (monStatsBase + hcIdx * 0x1a8) >>> 0
-    const monStatsExIdx = (m.u16((pMonStats + 0x18) >>> 0) << 16) >> 16
-    if (monStatsExIdx >= 0 && monStatsExIdx < monStats2Count && monStats2Base !== 0) {
-      const pMonStats2 = (monStats2Base + monStatsExIdx * 0x134) >>> 0
-      const compBit = getBitMaskByte(m, 0x24, 2)
-      if ((m.u8((pMonStats2 + 0x05) >>> 0) & compBit) !== 0 && m.u8((pMonsterData + 0x16) >>> 0) === 1) {
-        const pMountSave = m.alloc(0x14) >>> 0
-        for (let i = 0; i < 0x14; i += 4) m.setU32((pMountSave + i) >>> 0, 0)
-        m.setU32(pMountSave >>> 0, 0x219)
-        m.setU32((pMountSave + 0x04) >>> 0, 0x14)
-        const pCurHead = m.u32((pNode + 0x24) >>> 0) >>> 0
-        m.setU32((pNode + 0x24) >>> 0, pMountSave)
-        if (pCurHead !== 0) {
-          m.setU32((pMountSave + 0x08) >>> 0, pCurHead)
-        }
-        m.setU8((pMountSave + 0x10) >>> 0, 1)
+  const nodeFlags = m.u32((node + 0x18) >>> 0) >>> 0
+  if (
+    nClassId === 0x10b ||
+    nClassId === 0xf3 ||
+    ((nodeFlags & 0x800) !== 0 && m.u16((node + 0x3c) >>> 0) === 6)
+  ) {
+    const cmd10 = ensureMonsterAiCmd10ForSave113c(m, unit, game)
+    if (cmd10 !== 0) {
+      m.setU32((node + 0x4c) >>> 0, m.u32((cmd10 + 0x0c) >>> 0) >>> 0)
+      m.setU32((node + 0x50) >>> 0, m.u32((cmd10 + 0x10) >>> 0) >>> 0)
+    }
+  }
+
+  if (m.u32(unit >>> 0) === 1 && nClassId >= 0) {
+    let baseId = nClassId
+    if (pMonStats !== 0) {
+      baseId = (m.u16((pMonStats + 0x02) >>> 0) << 16) >> 16
+    }
+    if (baseId >= 0 && baseId < monStatsCount) {
+      const pMonData = m.u32((unit + 0x14) >>> 0) >>> 0
+      const pAiGen = pMonData !== 0 ? (m.u32((pMonData + 0x28) >>> 0) >>> 0) : 0
+      if (baseId === 0x44) {
+        m.setU32((node + 0x4c) >>> 0, pAiGen !== 0 ? m.u32((pAiGen + 0x1c) >>> 0) >>> 0 : 0)
+      } else if (baseId === 0x21f) {
+        m.setU32((node + 0x4c) >>> 0, pAiGen !== 0 ? m.u32((pAiGen + 0x14) >>> 0) >>> 0 : 0)
       }
     }
   }
 
+  if (nClassId === 0x138 || nClassId === 0x137) {
+    const pMonData =
+      m.u32(unit >>> 0) === 1 ? (m.u32((unit + 0x14) >>> 0) >>> 0) : 0
+    m.setU32((node + 0x4c) >>> 0, pMonData !== 0 ? m.u8((pMonData + 0x0e) >>> 0) : 0)
+  }
   return 1
 }
 
@@ -3102,19 +3369,27 @@ export function MONSTER_FreeAiCmdCircularList113c(
 ): void {
   hitD2GameVa113c(0x6FC40B60)
   if (pAiGeneral === 0) return
-  let pHead = m.u32((pAiGeneral + 0x24) >>> 0) >>> 0
-  if (pHead === 0) return
-  const pTail = m.u32((pHead + 0x04) >>> 0) >>> 0
-  if (pTail !== 0) {
-    m.setU32(pTail >>> 0, 0)
-  }
-  while (pHead !== 0) {
+  if (m.u32((pAiGeneral + 0x24) >>> 0) === 0) return
+  while (m.u32((pAiGeneral + 0x24) >>> 0) !== 0) {
+    const pHead = m.u32((pAiGeneral + 0x20) >>> 0) >>> 0
+    if (pHead === 0) break
     const pNext = m.u32(pHead >>> 0) >>> 0
+    if (pHead === pNext) {
+      m.setU32((pAiGeneral + 0x24) >>> 0, 0)
+      m.setU32((pAiGeneral + 0x20) >>> 0, 0)
+    } else {
+      if ((m.u32((pAiGeneral + 0x24) >>> 0) >>> 0) === pHead) {
+        m.setU32((pAiGeneral + 0x24) >>> 0, pNext)
+      }
+      const nextReload = m.u32(pHead >>> 0) >>> 0
+      m.setU32((pAiGeneral + 0x20) >>> 0, nextReload)
+      const pPrev = m.u32((pHead + 0x04) >>> 0) >>> 0
+      m.setU32(pPrev >>> 0, m.u32(pHead >>> 0) >>> 0)
+      const pNextNode = m.u32(pHead >>> 0) >>> 0
+      m.setU32((pNextNode + 0x04) >>> 0, m.u32((pHead + 0x04) >>> 0) >>> 0)
+    }
     freeMemBlock(m, pHead)
-    pHead = pNext
   }
-  m.setU32((pAiGeneral + 0x20) >>> 0, 0)
-  m.setU32((pAiGeneral + 0x24) >>> 0, 0)
 }
 
 /**
@@ -3130,14 +3405,16 @@ export function MONSTER_FreeAiGeneral113c(
 ): void {
   hitD2GameVa113c(0x6FC40C00)
   if (pAiGeneral === 0) return
-  DRLGPRESET_FreeSaveHeaderBlock113c(m, m.u32((pGame + 0x1c) >>> 0) >>> 0, (pAiGeneral + 0x38) >>> 0)
+  const pSaveHdr = m.u32((pAiGeneral + 0x38) >>> 0) >>> 0
+  if (pSaveHdr !== 0) {
+    DRLGPRESET_FreeSaveHeaderBlock113c(m, pGame !== 0 ? m.u32((pGame + 0x1c) >>> 0) >>> 0 : 0, pSaveHdr)
+  }
   let pMinion = m.u32((pAiGeneral + 0x34) >>> 0) >>> 0
   while (pMinion !== 0) {
     const pNext = m.u32((pMinion + 0x04) >>> 0) >>> 0
     freeMemBlock(m, pMinion)
     pMinion = pNext
   }
-  m.setU32((pAiGeneral + 0x34) >>> 0, 0)
   MONSTER_FreeAiCmdCircularList113c(m, pGame, pAiGeneral)
   freeMemBlock(m, pAiGeneral)
 }
@@ -3349,10 +3626,10 @@ export function SUNIT_DeactivateAndRemoveUnit113c(
 }
 
 /**
- * Iterates `pUnit->pInventory` (`[pUnit + 0x60]`), removes every item (including the cursor item),
- * and deletes each item server unit.
+ * Iterates `pUnit->pInventory` (`[pUnit + 0x60]`), deactivates equipped stats (`0x6FCF46B0`),
+ * removes every item node (`#10646`), and deletes each server unit (`0x6FD020A0`), plus cursor item (`#11017`).
  *
- * @va D2Game:0x6FD01110 (445B)
+ * @va D2Game:0x6FD01110 (445B, `__stdcall(pGame, pUnit)`, `calleePop = 8`, void)
  */
 export function SUNIT_ClearUnitInventoryItems113c(
   m: Memory113c,
@@ -3361,114 +3638,85 @@ export function SUNIT_ClearUnitInventoryItems113c(
   hooks?: Post150LaneI1Hooks113c,
 ): void {
   hitD2GameVa113c(0x6FD01110)
-  if (pUnit === 0) return
-  const pInv = m.u32((pUnit + 0x60) >>> 0) >>> 0
+  const unit = pUnit >>> 0
+  if (unit === 0) {
+    throw new D2CommonAssertError('SUnit.cpp', 0x9d7)
+  }
+  const pInv = m.u32((unit + 0x60) >>> 0) >>> 0
   if (pInv === 0) return
-
-  const savedStack = laneI1StackPtr
-  const pScratch = allocStackFrame(m, 0x20)
 
   let pItem = INVENTORY_GetFirstItem113c(m, pInv)
   while (pItem !== 0) {
     const pNext = INVENTORY_GetNextItem113c(m, pItem)
-    const pValidItem = INVENTORY_UnitIsItem113c(m, pItem)
-    const invPage = ITEMS_GetInvPage113c(m, pValidItem)
-
-    let posX = 0
-    let posY = 0
-    const itemType = m.u32(pValidItem >>> 0)
-    if (itemType === 0 || itemType === 1 || itemType === 3) {
-      const pPath = m.u32((pValidItem + 0x2c) >>> 0) >>> 0
-      if (pPath !== 0) {
-        posX = PATH_GetPosX113c(m, pPath)
-        posY = PATH_GetPosY113c(m, pPath)
-      }
-    } else {
-      const pStaticPath = m.u32((pValidItem + 0x2c) >>> 0) >>> 0
-      if (pStaticPath !== 0) {
-        posX = (m.u32((pStaticPath + 0x04) | 0) >>> 0)
-        posY = (m.u32((pStaticPath + 0x08) | 0) >>> 0)
-      }
+    const pValidItem = INVENTORY_UnitIsItem113c(m, pItem) >>> 0
+    if (pValidItem === 0) {
+      throw new D2CommonAssertError('SUnit.cpp', 0x9ea)
     }
 
-    const posOther = INVENTORY_GetItemNodePositionOther113c(m, pValidItem)
-    const bodyLoc = INVENTORY_GetItemBodyLocFromX113c(m, pInv, pValidItem)
-
-    if (posOther === 4) {
-      if (invPage !== 0xff) {
+    if (m.u32(pValidItem) === 4) {
+      ITEMS_DeactivateEquippedItemStats113c(m, unit, pValidItem, pGame >>> 0, 0, 1)
+      const posOther = INVENTORY_GetItemNodePositionOther113c(m, pValidItem)
+      if (posOther === 3) {
+        const bodyLoc = INVENTORY_GetItemBodyLocFromX113c(m, pInv, pValidItem)
+        INVENTORY_NoOpRet8B113c(m, pInv, bodyLoc)
+      } else if (ITEMS_CanUseCharmInInventory113c(m, pValidItem, unit) !== 0) {
+        const invPage = ITEMS_GetInvPage113c(m, pValidItem) & 0xff
         const invRecId = UNITS_GetInventoryRecordId113c(
           m,
-          pUnit,
+          unit,
           invPage,
           m.u32((pGame + 0x70) >>> 0) >>> 0,
         )
-        INVENTORY_NoOpRet20113c(
-          m,
-          pUnit,
-          invRecId,
-          pValidItem,
-          posX,
-          posY,
-          0,
-          pScratch,
-          (pScratch + 4) >>> 0,
-        )
-        {
-          INVENTORY_RemoveItemFromInventory113c(m, pInv, pValidItem)
-          if (
-            invPage === 0 &&
-            ITEMS_CanUseCharmInInventory113c(m, pUnit, pValidItem) !== 0 &&
-            hooks?.onNotifyCharmUnequip !== undefined
-          ) {
-            hooks.onNotifyCharmUnequip(m, pGame, pUnit, pValidItem)
+        const itemType = m.u32(pValidItem) | 0
+        const pPath = m.u32((pValidItem + 0x2c) >>> 0) >>> 0
+        let posY = 0
+        let posX = 0
+        if (itemType === 2 || itemType === 4 || itemType === 5) {
+          if (pPath !== 0) {
+            posY = m.u32((pPath + 0x10) >>> 0) >>> 0
+            posX = m.u32((pPath + 0x0c) >>> 0) >>> 0
           }
-          if (hooks?.onDeleteServerUnit !== undefined) {
-            hooks.onDeleteServerUnit(m, pGame, pValidItem)
-          } else {
-            SUNIT_RemoveServerUnit113c(m, pGame, pValidItem)
-          }
+        } else if (pPath !== 0) {
+          posY = PATH_GetPosY113c(m, pPath) >>> 0
+          posX = PATH_GetPosX113c(m, pPath) >>> 0
+        }
+        INVENTORY_NoOpRet20113c(m, 0x6fd1b02c, 0xa04, pInv, posX, posY, invRecId, 0, invPage)
+        if (invPage === 0 && hooks?.onNotifyCharmUnequip !== undefined) {
+          hooks.onNotifyCharmUnequip(m, pGame, unit, pValidItem)
         }
       }
-    } else if (posOther === 1) {
-      INVENTORY_NoOpRet8B113c(m, pInv, pValidItem)
-      if (bodyLoc >= 0) {
-        INVENTORY_RemoveItemFromInventory113c(m, pInv, pValidItem)
-        if (hooks?.onDeleteServerUnit !== undefined) {
-          hooks.onDeleteServerUnit(m, pGame, pValidItem)
-        } else {
-          SUNIT_RemoveServerUnit113c(m, pGame, pValidItem)
-        }
-      }
-    } else if (posOther === 3) {
-      INVENTORY_RemoveItemFromInventory113c(m, pInv, pValidItem)
+    }
+
+    if (INVENTORY_RemoveItemFromInventory113c(m, pInv, pValidItem) === 0) {
+      throw new D2CommonAssertError('SUnit.cpp', 0xa08)
+    }
+    if ((m.u32(pValidItem) | 0) < 6) {
       if (hooks?.onDeleteServerUnit !== undefined) {
         hooks.onDeleteServerUnit(m, pGame, pValidItem)
       } else {
-        SUNIT_RemoveServerUnit113c(m, pGame, pValidItem)
+        SUNIT_FreeUnit113c(m, pGame, pValidItem)
       }
     }
 
     pItem = pNext
   }
 
-  const pCursorItem = INVENTORY_GetCursorItem113c(m, pInv)
-  if (pCursorItem !== 0) {
-    INVENTORY_RemoveItemFromInventory113c(m, pInv, pCursorItem)
+  const pCursorItem = INVENTORY_GetCursorItem113c(m, pInv) >>> 0
+  if (pCursorItem !== 0 && (m.u32(pCursorItem) | 0) < 6) {
     if (hooks?.onDeleteServerUnit !== undefined) {
       hooks.onDeleteServerUnit(m, pGame, pCursorItem)
     } else {
-      SUNIT_RemoveServerUnit113c(m, pGame, pCursorItem)
+      SUNIT_FreeUnit113c(m, pGame, pCursorItem)
     }
   }
-
-  freeStackFrame(savedStack)
 }
 
 /**
- * Unlinks `pUnit` (`esi`) from its room update list at `[pGame + listIdx*4 + 0x10F8]`
- * (`listIdx = [pUnit + 0xD0]`), frees the 12-byte doubly-linked node, and sets `[pUnit + 0xD0] = 0x0B`.
+ * Unlinks `pUnit` (`esi`) from its room update list at `[pGame + listIdx*4 + 0x10F8]` (`listIdx = [pUnit + 0xD0]`),
+ * using sentinel head skip (`[head + 0x08]`) for `listIdx < 8` and head/prev/next at `+0x08`/`+0x0C`,
+ * frees the 16-byte doubly-linked node, and resets `[pUnit + 0xD0] = 0x0B`.
  *
- * @va D2Game:0x6FD0FC60 (209B)
+ * @va D2Game:0x6FD0FC60 (209B, `edi = pGame`, `esi = pUnit`, `calleePop = 0`, void)
  */
 export function SUNIT_UnlinkFromRoomUpdateList113c(
   m: Memory113c,
@@ -3476,26 +3724,61 @@ export function SUNIT_UnlinkFromRoomUpdateList113c(
   pUnit: number,
 ): void {
   hitD2GameVa113c(0x6FD0FC60)
-  if (pUnit === 0 || pGame === 0) return
-  const listIdx = m.u32((pUnit + 0xd0) >>> 0) >>> 0
+  const game = pGame >>> 0
+  const unit = pUnit >>> 0
+  if (game === 0 || unit === 0) return
+  const unitType = m.u32(unit) >>> 0
+  if (unitType !== 0 && unitType !== 1) return
+  const listIdx = m.u32((unit + 0xd0) >>> 0) >>> 0
   if (listIdx >= 0x0b) return
-  let pNode = m.u32((pGame + listIdx * 4 + 0x10f8) >>> 0) >>> 0
-  while (pNode !== 0) {
-    if (m.u32(pNode >>> 0) >>> 0 === (pUnit >>> 0)) {
-      const pNext = m.u32((pNode + 0x04) >>> 0) >>> 0
-      if (pNext !== 0) {
-        m.setU32((pNext + 0x08) >>> 0, m.u32((pNode + 0x08) >>> 0) >>> 0)
+  const pHead = m.u32((game + listIdx * 4 + 0x10f8) >>> 0) >>> 0
+  if (pHead === 0) return
+
+  if (listIdx < 8) {
+    let pNode = m.u32((pHead + 0x08) >>> 0) >>> 0
+    while (pNode !== 0) {
+      if (m.u32(pNode >>> 0) >>> 0 === unit) {
+        const pPrev = m.u32((pNode + 0x0c) >>> 0) >>> 0
+        const pNext = m.u32((pNode + 0x08) >>> 0) >>> 0
+        if (pPrev !== 0) {
+          m.setU32((pPrev + 0x08) >>> 0, pNext)
+        }
+        if (pNext !== 0) {
+          m.setU32((pNext + 0x0c) >>> 0, pPrev)
+        }
+        freeMemBlock(m, pNode)
+        m.setU32((unit + 0xd0) >>> 0, 0x0b)
+        return
       }
-      const pPrev = m.u32((pNode + 0x08) >>> 0) >>> 0
-      if (pPrev !== 0) {
-        m.setU32((pPrev + 0x04) >>> 0, m.u32((pNode + 0x04) >>> 0) >>> 0)
+      pNode = m.u32((pNode + 0x08) >>> 0) >>> 0
+    }
+    m.setU32((unit + 0xd0) >>> 0, 0x0b)
+    return
+  }
+
+  let pNode = pHead
+  while (pNode !== 0) {
+    if (m.u32(pNode >>> 0) >>> 0 === unit) {
+      const pNext = m.u32((pNode + 0x08) >>> 0) >>> 0
+      if (pNode === pHead) {
+        m.setU32((game + listIdx * 4 + 0x10f8) >>> 0, pNext)
+        if (pNext !== 0) {
+          m.setU32((pNext + 0x0c) >>> 0, 0)
+        }
       } else {
-        m.setU32((pGame + listIdx * 4 + 0x10f8) >>> 0, m.u32((pNode + 0x04) >>> 0) >>> 0)
+        const pPrev = m.u32((pNode + 0x0c) >>> 0) >>> 0
+        if (pPrev !== 0) {
+          m.setU32((pPrev + 0x08) >>> 0, pNext)
+        }
+        if (pNext !== 0) {
+          m.setU32((pNext + 0x0c) >>> 0, pPrev)
+        }
       }
       freeMemBlock(m, pNode)
-      m.setU32((pUnit + 0xd0) >>> 0, 0x0b)
+      m.setU32((unit + 0xd0) >>> 0, 0x0b)
       return
     }
-    pNode = m.u32((pNode + 0x04) >>> 0) >>> 0
+    pNode = m.u32((pNode + 0x08) >>> 0) >>> 0
   }
+  m.setU32((unit + 0xd0) >>> 0, 0x0b)
 }

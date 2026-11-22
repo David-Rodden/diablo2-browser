@@ -14,7 +14,7 @@
  *
  * Zero legacy server imports: runs purely against `SparseMemory113c` + `D2TimerStrc` (`0x6FCAF070`).
  */
-import type { Memory113c } from '../mem/sparse-memory.ts'
+import type { Memory113c, SparseMemory113c } from '../mem/sparse-memory.ts'
 import {
   D2ActiveRoomStrc,
   D2ActiveRoomStrc_SIZE,
@@ -42,6 +42,7 @@ import {
   D2UnitStrc,
 } from '../mem/layout.generated.ts'
 import { seedNext, seedRoll, type D2SeedStrc } from '../prng.ts'
+import { ANIMSEQ_GetEventAtFrame113c } from '../common/composit.ts'
 import { mulDiv113c } from '../common/int-math.ts'
 import {
   SKILLS_AddSkillToUnit113c,
@@ -90,6 +91,7 @@ import { D2COMMON_SGPT_DATATABLES_VA_113C } from '../common/inline-helpers.ts'
 import {
   DATATBLS_CalculateMonsterStatsByLevel113c,
   STATLIST_FreeModStats113c,
+  STATLIST_FreeStatListIfNonExtended113c,
   STATLIST_GetMaxLifeFromUnit113c,
   STATLIST_GetMaxManaFromUnit113c,
   STATLIST_GetMaxStaminaFromUnit113c,
@@ -99,6 +101,7 @@ import {
   STATLIST_GetUnitStat113c,
   STATLIST_RemoveStatListFromUnit113c,
   STATLIST_SetUnitStat113c,
+  STATLIST_UnlinkSubList113c,
   STATLIST_UnlinkUnitStatList113c,
   STATES_CheckState113c,
   STATES_ToggleState113c,
@@ -180,6 +183,7 @@ import {
   MONSTER_IsContinuousMode113c,
   MONSTER_RegisterContinuousModeEvent113c,
   SUNIT_IsDeadOrDying113c,
+  registerMonsterAiThinkVaHandler113c,
 } from './monster-events.ts'
 import {
   bindK2KernelGlobals113c,
@@ -296,14 +300,17 @@ import {
   SUNIT_FreeUnit113c,
 } from './replay-final11-113c.ts'
 import {
+  D2GAME_FP_REMOVE_TIMED_STATE_VA_113C,
   MISSILE_DispatchFrameTick113c,
   MONSTER_Event03_RegenAndPoisonTick113c,
   MONSTER_Event12_ExpireTimedStats113c,
   MONSTER_ExpireDeathStateSubLists113c,
+  MONSTER_QueuePacket0xAB_LifeNotify113c,
   MONSTER_SendPacket0x0C_LifeSync113c,
   PLAYER_StartCastSkillAtCoords113c,
   SKILLS_AssignHandSkillAndSyncAura113c,
   SKILLS_SrvDo_NovaRing113c,
+  STATES_OnTimedStateRemoved113c,
   type K2GapMeleeDotHooks113c,
 } from './k2-gap-melee-dot-113c.ts'
 import {
@@ -325,6 +332,9 @@ import {
   D2GAME_ITEMS_UpdateAllInventoryAndEquipmentStats113c,
 } from './boot-init-gap-b-113c.ts'
 import { SUNIT_FindItemEventNode113c } from './k2-items-tc-w1-113c.ts'
+import { MONSTER_StartGetHitOrScheduleAi_6FC965E0_113c } from './k2-w3b7-113c.ts'
+import { MONSTER_TickPathStepAndAnim_6FC96A10_113c } from './k2-w4b4-113c.ts'
+import { SKILLS_ApplyMeleeHitAuraStatesAndExecuteEvents_6FCC3220_113c } from './k2-w4b6-113c.ts'
 import {
   COLLISION_CheckMaskWithPattern2_113c,
   COLLISION_SetMaskWithPattern113c,
@@ -393,6 +403,10 @@ import {
   OBJECTS_SpawnShrineFromGroupEntry_6FC527D0_113c,
   OBJECTS_SpawnWellFromGroupEntry_6FC52A10_113c,
 } from './k2-w4b1-113c.ts'
+import { MONSTER_SpawnUniqueBossWithChampionMinionPack_6FC679B0_113c } from './k2-w12b1-113c.ts'
+import { MONAI_CorruptRogueArcherThink_6FCA26B0_113c } from './k2-w5b6-113c.ts'
+
+registerMonsterAiThinkVaHandler113c(0x6fca26b0, MONAI_CorruptRogueArcherThink_6FCA26B0_113c)
 import {
   NET_QueuePacketToClient113c,
   drainFrameS2CPackets113c,
@@ -527,8 +541,10 @@ export const VA_AI_ZOMBIE_113C = 0x6fca38b0
 export const VA_MONSTER_STEP_WALK_113C = 0x6fc97010
 export const VA_MONSTER_STEP_RUN_113C = 0x6fc96fe0
 export const VA_MONSTER_STEP_ATTACK_113C = 0x6fc95ce0
+export const VA_MONSTER_STEP_KNOCKBACK_113C = 0x6fc96a10
 export const VA_MONSTER_CLEAR_STEP_113C = 0x6fc95320
 export const VA_MONSTER_END_DEATH_113C = 0x6fc96040
+export const VA_MONSTER_END_KNOCKBACK_113C = 0x6fc965e0
 export const VA_MONSTER_END_TO_AI_113C = 0x6fc96bf0
 
 const STAT_STRENGTH = 0
@@ -577,7 +593,7 @@ const STAT_PASSIVE_WEAPON_MASTERY_MELEE_CRIT = 344
 const STAT_PASSIVE_WEAPON_MASTERY_THROW_TH = 345
 const STAT_PASSIVE_WEAPON_MASTERY_THROW_DMG = 346
 const STAT_PASSIVE_WEAPON_MASTERY_THROW_CRIT = 347
-const STAT_HP_TIER_ICON = 352
+const STAT_LAST_SENT_HP_PCT = 0x160
 
 const PLR_EVENT_MODE_STEP = 0
 const PLR_EVENT_MODE_END = 1
@@ -1353,7 +1369,7 @@ function buildSliceMeleeCombatHooks113c(
       }
     },
     onMonsterStartMode: (_mem, _pg, pDef, mode, pTarget) => {
-      MONSTER_StartMode113c(world, pDef, mode, mode === 6 ? pTarget : 0, 0, 0)
+      MONSTER_StartMode113c(world, pDef, mode, mode === 6 || mode === 13 ? pTarget : 0, 0, 0)
     },
     onUnitFlagsUpdated: (_mem, pUnit, nextFlags) => {
       const pu = world.pathUnitByPtr.get(pUnit)
@@ -1506,34 +1522,54 @@ export function PLAYER_DrainRunStamina113c(m: Memory113c, pPlayer: number): numb
  * (`0x6FC97CE2..0x6FC97CFA`), clamps `if (nextHp < 0x100) nextHp = 0x100` (`0x6FC97CFE`), and updates
  * `stat 352` (`0x6FC97D17..0x6FC97D80`).
  */
-export function PLAYER_UpdateHpRegen113c(m: Memory113c, pPlayer: number): void {
+/**
+ * `@va D2Game:0x6FC97CB0` (`PLAYER_UpdateHpRegen`, `eax = pUnit`, `calleePop = 0`, returns `1`):
+ * Works for any unit (`player` or `monster`) with non-zero `STAT_HPREGEN (0x4A)`.
+ * Clamps `[0x100, GetMaxLife]`, unlinks & frees `STATE_HEALTHPOT (0x64)` list when capped,
+ * and emits S2C `0xAB` via `0x6FC9A260` + updates `stat 0x160` if shifted life percentage (`0..0x80`) changed by `> 4`.
+ */
+export function PLAYER_UpdateHpRegen113c(m: Memory113c, pPlayer: number): number {
   hitD2GameVa113c(0x6FC97CB0)
-  if (pPlayer === 0 || m.get(pPlayer, D2UnitStrc.dwUnitType) !== UNIT_PLAYER) return
-  const curHp = STATLIST_GetUnitStat113c(m, pPlayer, STAT_HITPOINTS, 0) | 0
-  if (curHp <= 0) return
-  const maxHp = STATLIST_GetUnitStat113c(m, pPlayer, STAT_MAXHP, 0) | 0
-  const hpRegen = STATLIST_GetUnitStat113c(m, pPlayer, STAT_HPREGEN, 0) | 0
+  const esi = pPlayer >>> 0
+  const hpRegen = STATLIST_GetUnitStat113c(m, esi, STAT_HPREGEN, 0) | 0
+  if (hpRegen === 0) return 1
+
+  const curHp = STATLIST_GetUnitStat113c(m, esi, STAT_HITPOINTS, 0) | 0
+  const maxHp = isSgptDataTablesLoaded113c(m)
+    ? STATLIST_GetMaxLifeFromUnit113c(m, esi) | 0
+    : STATLIST_GetUnitStat113c(m, esi, STAT_MAXHP, 0) | 0
   let nextHp = (curHp + hpRegen) | 0
   if (nextHp > maxHp) {
     nextHp = maxHp
-    if (STATES_CheckState113c(m, pPlayer, 100) !== 0) {
-      const pPotList = STATLIST_GetStatListFromUnitAndStateMemPort113c(m, pPlayer, 100)
-      if (pPotList !== 0) {
-        STATLIST_RemoveStatListFromUnit113c(m, pPlayer, pPotList)
+    const pPotList = STATLIST_GetStatListFromUnitAndStateMemPort113c(m, esi, 0x64)
+    if (pPotList !== 0) {
+      const fpRemove = m.get(pPotList, D2StatListStrc.fpRemove) >>> 0
+      STATLIST_UnlinkSubList113c(m, esi, pPotList)
+      if (fpRemove === D2GAME_FP_REMOVE_TIMED_STATE_VA_113C) {
+        STATES_OnTimedStateRemoved113c(m, esi, 0x64, pPotList)
       }
-      STATES_ToggleState113c(m, pPlayer, 100, false)
+      STATLIST_FreeStatListIfNonExtended113c(m, pPotList)
     }
   }
   if (nextHp < 0x100) nextHp = 0x100
-  if (nextHp !== curHp) {
-    STATLIST_SetUnitStat113c(m, pPlayer, STAT_HITPOINTS, nextHp, 0)
-    const hpPct = maxHp > 0 ? mulDiv113c(nextHp, 100, maxHp) : 0
-    const hpTier = hpPct > 8 ? 3 : hpPct > 4 ? 2 : 1
-    if (STATLIST_GetUnitStat113c(m, pPlayer, STAT_HP_TIER_ICON, 0) !== hpTier) {
-      STATLIST_SetUnitStat113c(m, pPlayer, STAT_HP_TIER_ICON, hpTier, 0)
-      UNITROOM_RefreshUnit113c(m, pPlayer)
+  STATLIST_SetUnitStat113c(m, esi, STAT_HITPOINTS, nextHp, 0)
+
+  const prevPct = STATLIST_GetUnitStat113c(m, esi, STAT_LAST_SENT_HP_PCT, 0) & 0xff
+  let pctByte = 0x80
+  if (esi !== 0) {
+    const curShift = (STATLIST_GetUnitStat113c(m, esi, STAT_HITPOINTS, 0) | 0) >> 8
+    const maxShift = (isSgptDataTablesLoaded113c(m)
+      ? STATLIST_GetMaxLifeFromUnit113c(m, esi) | 0
+      : STATLIST_GetUnitStat113c(m, esi, STAT_MAXHP, 0) | 0) >> 8
+    if (maxShift > 0 && curShift < maxShift) {
+      pctByte = Math.trunc((curShift << 7) / maxShift) & 0xff
     }
   }
+  if (Math.abs(prevPct - pctByte) > 4) {
+    MONSTER_QueuePacket0xAB_LifeNotify113c(m, esi, pctByte)
+    STATLIST_SetUnitStat113c(m, esi, STAT_LAST_SENT_HP_PCT, pctByte, 0)
+  }
+  return 1
 }
 
 /**
@@ -1632,40 +1668,64 @@ export function PLAYER_UpdateStaminaRegen113c(m: Memory113c, pPlayer: number): v
 }
 
 /**
- * `@va D2Game:0x6FC99B10` (`PLAYER_Event3_RegenTick`):
- * Reschedules `Event 3` (`+1` frame) BEFORE the dead check (`0x6FC99B18..0x6FC99B26`), then
- * executes `HP -> Stamina -> Mana` in exact binary order (`0x6FC99B47..0x6FC99B58`).
+ * `@va D2Game:0x6FC99B10` (`PLAYER_Event3_RegenTick`, `ecx = pGame`, `edx = pUnit`, `[esp+4]=nArg0`, `[esp+8]=nArg1`, `calleePop = 8`):
+ * Always reschedules `Event 3` (`frame + 1`) forwarding `(nArg0, nArg1)`, skips null/dead-flag (`+0xc6 & 1`) and
+ * terminal modes (`player 0/17`, `monster 0/12`), then executes `HP -> Stamina -> Mana` regen in exact order.
  */
 export function PLAYER_Event3_RegenTick113c(
   m: Memory113c,
   pGame: number,
   pPlayer: number,
+  nArg0 = 0,
+  nArg1 = 0,
 ): void {
   hitD2GameVa113c(0x6FC99B10)
   const frame = m.get(pGame, D2GameStrc.dwGameFrame) >>> 0
-  EVENT_SetEventFull113c(m, pGame, pPlayer, PLR_EVENT_STAMINA, (frame + 1) >>> 0, 0, 0, 0)
-  if (SUNIT_IsDeadOrDying113c(m, pPlayer) !== 0) return
-  PLAYER_UpdateHpRegen113c(m, pPlayer)
-  PLAYER_UpdateStaminaRegen113c(m, pPlayer)
-  PLAYER_UpdateManaRegen113c(m, pPlayer)
+  EVENT_SetEventFull113c(
+    m,
+    pGame,
+    pPlayer,
+    PLR_EVENT_STAMINA,
+    (frame + 1) >>> 0,
+    0,
+    nArg0 | 0,
+    nArg1 | 0,
+  )
+  const u = pPlayer >>> 0
+  if (u === 0) return
+  if ((m.u8((u + 0xc6) >>> 0) & 1) !== 0) return
+  const unitType = m.get(u, D2UnitStrc.dwUnitType) >>> 0
+  const animMode = m.get(u, D2UnitStrc.dwAnimMode) >>> 0
+  if (unitType === UNIT_PLAYER) {
+    if (animMode === 0 || animMode === 0x11) return
+  } else if (unitType === UNIT_MONSTER) {
+    if (animMode === 0 || animMode === 0x0c) return
+  } else {
+    return
+  }
+  if (PLAYER_UpdateHpRegen113c(m, u) !== 0) {
+    PLAYER_UpdateStaminaRegen113c(m, u)
+    PLAYER_UpdateManaRegen113c(m, u)
+  }
 }
 
-/** `@va D2Game:0x6FC99A60` (`PLAYER_Event11_PeriodicTick`): cleans/syncs pets (`0x6FCB8250`) and reschedules `Event 11` (`+30` frames, `0x1E`). */
+/**
+ * `@va D2Game:0x6FC99A60` (`PLAYER_Event11_PeriodicTick`, `ecx = pGame`, `edx = pPlayer`, `[esp+4..8]` unused, `calleePop = 8`):
+ * Unconditionally dispatches `0x6FCBC620` (`PARTY_SendPartyPetsToClient`), `0x6FCB8250` (`PLRINTRO_SendAllPlayerPetsToClient`),
+ * and reschedules `Event 11` (`frame + 0x1E`).
+ */
 export function PLAYER_Event11_PeriodicTick113c(
   m: Memory113c,
   pGame: number,
   pPlayer: number,
 ): void {
   hitD2GameVa113c(0x6FC99A60)
-  if (SUNIT_IsDeadOrDying113c(m, pPlayer) !== 0) return
-  const pPlayerData = m.get(pPlayer, D2UnitStrc.pUnitData) >>> 0
+  const pPlayerData = pPlayer !== 0 ? m.get(pPlayer, D2UnitStrc.pUnitData) >>> 0 : 0
   const pClient = pPlayerData !== 0 ? (m.u32((pPlayerData + 0x9c) >>> 0) >>> 0) : 0
-  if (pClient !== 0) {
-    PARTY_SendPartyPetsToClient113c(m, pGame, pPlayer)
-    PLRINTRO_SendAllPlayerPetsToClient113c(m, pClient, pPlayer, pGame)
-  }
+  PARTY_SendPartyPetsToClient113c(m, pGame, pPlayer)
+  PLRINTRO_SendAllPlayerPetsToClient113c(m, pClient, pPlayer, pGame)
   const frame = m.get(pGame, D2GameStrc.dwGameFrame) >>> 0
-  EVENT_SetEventFull113c(m, pGame, pPlayer, PLR_EVENT_IDLE, (frame + 30) >>> 0, 0, 0, 0)
+  EVENT_SetEventFull113c(m, pGame, pPlayer, PLR_EVENT_IDLE, (frame + 0x1e) >>> 0, 0, 0, 0)
 }
 
 function startPlayerBlockMode113c(world: FallenSliceWorld113c, pPlayer: number): void {
@@ -1733,19 +1793,19 @@ function transitionPlayerToNeutral113c(
 }
 
 /**
- * `@va D2Game:0x6FCFF7B0` (`SUNIT_ScheduleModeAnimEvents`):
- * Exact x86 fixed-point animation event scheduler (`0x6FCFF7B9..0x6FCFF8F0`):
- * steps `acc = (startFrame << 8) + stepSpeed` while `acc < (clip.frames << 8)`, scanning
- * `AnimData.d2` event bytes `edi <= (acc >> 8)` (`edi < 0x90`) to register `Event 0`
- * (`arg14 = evCode`, `arg18 = hitIdx` for codes `1..2`) and finally `Event 1` (`MODE_END`)
- * at `ebx + 1`.
+ * `@va D2Game:0x6FCFF7B0` (`SUNIT_ScheduleModeAnimEvents`, `esi = pUnit`, `[esp+4] = pGame`, `calleePop = 4`, void):
+ * Exact x86 fixed-point animation event scheduler (`0x6FCFF7B0..0x6FCFF902`):
+ * reads `pGfxInfo = [pUnit + 0x30]` (`+0x3C` speed, `+0x34` frames256, `D2Common.#10153` `0x6FD7E6B0` event bytes)
+ * or `[pUnit + 0x50]` `AnimData.d2` (`+0x4C` `i16` speed, `+0x48` frames256), scans `edi <= (acc >> 8)` (`edi < 0x90`)
+ * to emit `Event 0` (`arg14 = evCode` `1..4`, `arg18 = hitIdx++` for codes `1, 2, 4` per `0x6FCFF908`, `0` for `3`),
+ * and emits `Event 1` (`MODE_END`) at `ebx + 1` while recording `dwGameFrame << 8` at `[pUnit + 0x44]` when `stepSpeed !== 0`.
  */
-export function SUNIT_ScheduleModeAnimEvents113c<T extends PureCharAnimClip113c | number>(
+export function SUNIT_ScheduleModeAnimEvents113c<T extends PureCharAnimClip113c | number = number>(
   m: Memory113c,
   pGame: number,
   pUnit: number,
-  clipOrEvStepType: T,
-  startFrameOrEvEndType: number,
+  clipOrEvStepType: T = 0 as T,
+  startFrameOrEvEndType = 1,
   stepSpeedArg?: number,
 ): T extends number ? number : void {
   hitD2GameVa113c(0x6FCFF7B0)
@@ -1753,32 +1813,51 @@ export function SUNIT_ScheduleModeAnimEvents113c<T extends PureCharAnimClip113c 
   if (typeof clipOrEvStepType === 'number') {
     const evStepType = clipOrEvStepType
     const evEndType = startFrameOrEvEndType
-    const stepSpeed = (m.u16((pUnit + 0x4c) >>> 0) << 16) >> 16
+    const pGfxInfo = m.u32((pUnit + 0x30) >>> 0) >>> 0
+    const stepSpeed =
+      pGfxInfo !== 0
+        ? (m.u32((pUnit + 0x3c) >>> 0) | 0)
+        : ((m.u16((pUnit + 0x4c) >>> 0) << 16) >> 16)
+    const frameCount256 =
+      pGfxInfo !== 0
+        ? (m.u32((pUnit + 0x34) >>> 0) | 0)
+        : (m.u32((pUnit + 0x48) >>> 0) | 0)
     if (stepSpeed <= 0) {
       const endF = (gameFrame + 1) >>> 0
       EVENT_SetEventFull113c(m, pGame, pUnit, evEndType, endF, 0, 0, 0)
-      m.setU32((pUnit + 0x44) >>> 0, (gameFrame << 8) >>> 0)
       return endF as never
     }
-    const frameCount256 = m.u32((pUnit + 0x48) >>> 0) | 0
     const pAnimData = m.u32((pUnit + 0x50) >>> 0)
     let edi = UNITS_GetAnimStartFrame113c(m, pUnit) | 0
     let acc = ((edi << 8) + stepSpeed) | 0
     let ebx = gameFrame
     let hitIdx = 0
 
-    while (acc < frameCount256) {
-      const frameIdx = acc >> 8
-      ebx = (ebx + 1) >>> 0
-      while (edi <= frameIdx && edi < 0x90) {
-        const evCode = pAnimData !== 0 ? m.u8((pAnimData + 0x10 + edi) >>> 0) : 0
-        if (evCode >= 1 && evCode <= 4) {
-          const arg18 = evCode === 1 || evCode === 2 ? hitIdx++ : 0
-          EVENT_SetEventFull113c(m, pGame, pUnit, evStepType, ebx, 0, evCode, arg18)
+    const savedSp = replayStackPtr113c
+    const pEvOut = savedSp >>> 0
+    replayStackPtr113c = (savedSp + 8) >>> 0
+    try {
+      while (acc < frameCount256) {
+        const frameIdx = acc >> 8
+        ebx = (ebx + 1) >>> 0
+        while (edi <= frameIdx && edi < 0x90) {
+          let evCode = 0
+          if (pGfxInfo !== 0) {
+            ANIMSEQ_GetEventAtFrame113c(m, pGfxInfo, edi << 8, pEvOut)
+            evCode = m.u32(pEvOut) >>> 0
+          } else {
+            evCode = pAnimData !== 0 ? m.u8((pAnimData + 0x10 + edi) >>> 0) : 0
+          }
+          if (evCode >= 1 && evCode <= 4) {
+            const arg18 = evCode === 1 || evCode === 2 || evCode === 4 ? hitIdx++ : 0
+            EVENT_SetEventFull113c(m, pGame, pUnit, evStepType, ebx, 0, evCode, arg18)
+          }
+          edi++
         }
-        edi++
+        acc = (acc + stepSpeed) | 0
       }
-      acc = (acc + stepSpeed) | 0
+    } finally {
+      replayStackPtr113c = savedSp
     }
     if (ebx === gameFrame) {
       ebx = (ebx + 1) >>> 0
@@ -1814,7 +1893,7 @@ export function SUNIT_ScheduleModeAnimEvents113c<T extends PureCharAnimClip113c 
         }
       }
       if (evCode >= 1 && evCode <= 4) {
-        const arg18 = evCode === 1 || evCode === 2 ? hitIdx++ : 0
+        const arg18 = evCode === 1 || evCode === 2 || evCode === 4 ? hitIdx++ : 0
         EVENT_SetEventFull113c(m, pGame, pUnit, PLR_EVENT_MODE_STEP, ebx, 0, evCode, arg18)
       }
       edi++
@@ -2618,7 +2697,23 @@ export function stepFallenSliceFrame113c(
                   hitRetDmg = ret
                 })
                 PLAYER_StartModeDispatch113c(m, pGame, pUnit, arg14, arg18, '1HS', (mem, pg, plr) =>
-                  SKILLS_DoUsedSkillAction113c(mem, plr, pg, undefined, meleeHooks),
+                  SKILLS_DoUsedSkillAction113c(
+                    mem,
+                    plr,
+                    pg,
+                    (doIdx, skId, effLvl) =>
+                      doIdx === 2
+                        ? SKILLS_ApplyMeleeHitAuraStatesAndExecuteEvents_6FCC3220_113c(
+                            mem,
+                            pg,
+                            plr,
+                            skId,
+                            effLvl,
+                            meleeHooks,
+                          )
+                        : 1,
+                    meleeHooks,
+                  ),
                 )
                 if (recordedHit) {
                   world.lastFrameDmg.push({
@@ -2682,6 +2777,8 @@ export function stepFallenSliceFrame113c(
             MONSTER_StepRun113c(world, pMon)
           } else if (entry.pfnStep === VA_MONSTER_STEP_ATTACK_113C) {
             stepMonsterAttackOrSkillActionK3_113c(world, pMon, arg14, k2MeleeDotHooks)
+          } else if (entry.pfnStep === VA_MONSTER_STEP_KNOCKBACK_113C) {
+            MONSTER_TickPathStepAndAnim_6FC96A10_113c(m, pGame, pMon, { world })
           } else if (entry.pfnStep === VA_MONSTER_CLEAR_STEP_113C) {
             MONSTER_ClearStepEvents113c(m, pGame, pMon)
           }
@@ -2689,6 +2786,8 @@ export function stepFallenSliceFrame113c(
         onModeEnd(_m, _pg, pMon, entry) {
           if (entry.pfnEnd === VA_MONSTER_END_DEATH_113C) {
             MONSTER_EndDeath113c(world, pMon)
+          } else if (entry.pfnEnd === VA_MONSTER_END_KNOCKBACK_113C) {
+            MONSTER_StartGetHitOrScheduleAi_6FC965E0_113c(m, pGame, pMon)
           } else if (entry.pfnEnd === VA_MONSTER_END_TO_AI_113C) {
             MONSTER_EndToAiOrNeutral113c(world, pMon)
           }
@@ -2760,21 +2859,11 @@ export function stepFallenSliceFrame113c(
   }
 
   // 0x6FC4E07D -> 0x6FC4D9B0 (`GAME_StepClientJoinStatesAndTimeouts`) -> 0x6FC6B400 (`CLIENTS_UpdatePlayerRoom`)
+  // Note: `0x6FC6B400` syncs `pOldRoom`'s adjacent units FIRST (`0x6FCBDEC0`), then changes rooms via
+  // `CLIENTS_SetPlayerCurrentRoom113c` (`0x6FC6B1D0`, emitting `0x07`/`0x08`) and triggers `onRoomChanged`.
   const pClient = m.u32((pGame + 0x88) >>> 0) >>> 0
   if (pClient !== 0) {
     const pPlr = (m.u32((pClient + 0x174) >>> 0) || m.u32((pClient + 0x1a8) >>> 0)) >>> 0
-    const pOldRoom = m.u32((pClient + 0x1b4) >>> 0) >>> 0
-    const pNewRoom = pPlr !== 0 ? (UNITS_GetRoom113c(m, pPlr) >>> 0) : 0
-    if (world.hasFullDrlg === true && pOldRoom !== 0 && pNewRoom !== 0 && pOldRoom !== pNewRoom) {
-      const oldLvl = DUNGEON_GetLevelIdFromRoom113c(m, pOldRoom)
-      const newLvl = DUNGEON_GetLevelIdFromRoom113c(m, pNewRoom)
-      CLIENTS_SetPlayerCurrentRoom113c(m, pClient, pNewRoom)
-      if (oldLvl !== newLvl) {
-        QUESTS_NotifyLevelChange113c(m, pGame, pPlr, oldLvl, newLvl)
-        NPCS_OnPlayerLevelChange113c(m, pGame, oldLvl, pPlr, newLvl)
-      }
-      syncActRoomsAndUnitsIntoWorld113c(world)
-    }
     if (world.dirtyKillPlayerIds !== undefined && world.playerKillsById !== undefined && world.dirtyKillPlayerIds.size > 0) {
       const pArenaCtrl = m.u32((pGame + 0x1d28) >>> 0) >>> 0
       for (const plrId of world.dirtyKillPlayerIds) {
@@ -3136,8 +3225,8 @@ function buildClientRoomSyncCallees113c(
       const extraVel =
         !hasVelOvList67 && pAiCtrl !== 0 ? (mem.u32((pAiCtrl + 0x10) >>> 0) | 0) : 0
       if (op === 0x67) {
-        const outStep = a8 !== 0 || a9 !== 0 ? (a8 & 0xff) : (a7 & 0xff)
-        const maxDistOvr = a8 !== 0 || a9 !== 0 ? (a7 & 0xff) : -1
+        const outStep = a7 & 0xff
+        const maxDistOvr = a8 !== 0 || a9 !== 0 ? (a8 & 0xff) : -1
         D2NET_SendUnitPosSync0x15ToClient113c(
           mem,
           dwUnitId,
@@ -3154,8 +3243,8 @@ function buildClientRoomSyncCallees113c(
         return
       }
       if (op === 0x68) {
-        const stepByte = a8 !== 0 || a9 !== 0 ? (a8 & 0xff) : (a7 & 0xff)
-        const maxDistOvr = a8 !== 0 || a9 !== 0 ? (a7 & 0xff) : -1
+        const stepByte = a7 & 0xff
+        const maxDistOvr = a8 !== 0 || a9 !== 0 ? (a8 & 0xff) : -1
         S2C_SendPacket0F_UnitWalkToTarget113c(
           mem,
           pCl,
@@ -4305,6 +4394,16 @@ function buildActRoomsCallees113c(_world: FallenSliceWorld113c): ActRoomsCallees
     getLevelRoomCountInAct(mem, pAct, nLevelId) {
       return DUNGEON_CountNonPresetRoomsInLevel113c(mem, pAct, nLevelId)
     },
+    onSpawnChampionOrUniquePack(mem, nRarityType, pRoom, pGame, nClassId, pCoordNode = 0) {
+      if (nRarityType !== 0) return 0
+      return MONSTER_SpawnUniqueBossWithChampionMinionPack_6FC679B0_113c(
+        mem as SparseMemory113c,
+        pCoordNode,
+        pRoom,
+        pGame,
+        nClassId,
+      )
+    },
   }
   const objectSpawnCallees: ObjectSpawnCallees113c = {
     initObject(mem, pUnit, pg, nUnitId, pr, x, y) {
@@ -5367,8 +5466,6 @@ export function hydrateSnapshotKernelTables113c(
         } else if (!didBootObjSync && oType === 2) {
           const pObjRoom = UNITS_GetRoom113c(m, pOtherUnit)
           if (pObjRoom !== 0) {
-            OBJECT_CheckRespawnOrPortalInRoom113c(m, pOtherUnit, pObjRoom)
-            QUEST_Act1TownPortalUpdateState113c(m, pOtherUnit, pGame)
             const savedObjMode = m.u32((pOtherUnit + 0x10) >>> 0) >>> 0
             const savedObjFlags = m.u32((pOtherUnit + 0xc4) >>> 0) >>> 0
             const savedObjFlags2 = m.u32((pOtherUnit + 0xc8) >>> 0) >>> 0
@@ -5376,6 +5473,8 @@ export function hydrateSnapshotKernelTables113c(
             const savedObjRoomUpd = m.u32((pObjRoom + 0x1c) >>> 0) >>> 0
             const pObjActFlag = m.get(pObjRoom, D2ActiveRoomStrc.pActUpdateFlag) >>> 0
             const savedObjActFlag = pObjActFlag !== 0 ? (m.u32(pObjActFlag) >>> 0) : 0
+            OBJECT_CheckRespawnOrPortalInRoom113c(m, pOtherUnit, pObjRoom)
+            QUEST_Act1TownPortalUpdateState113c(m, pOtherUnit, pGame)
             OBJECT_SetAnimMode2Wrapper113c(m, pGame, pOtherUnit)
             m.setU32((pOtherUnit + 0x10) >>> 0, savedObjMode)
             m.setU32((pOtherUnit + 0xc4) >>> 0, savedObjFlags)

@@ -92,6 +92,7 @@ import { SKILLS_ApplySkillDelayState121OnPlayer_6FCBFF70_113c } from './k2-w4b6-
 import {
   MISSILES_SrvHit_ChainBounceProjectile_6FC5D020_113c,
   SKILLS_CanCastAtNonTownTargetCoords_6FC62AD0_113c,
+  SKILLS_SrvDo017_FeralRageOrMaulHit_6FC473C0_113c,
   SKILLS_SrvDo031_ChargedBoltProjectiles_6FC63B60_113c,
 } from './k2-w5b1-113c.ts'
 import { STATES_RemoveMorphStateAndClampVitals_6FCB8450_113c } from './k2-w5b2-113c.ts'
@@ -279,6 +280,9 @@ export function dispatchSkillSrvStK3_113c(
   }
   if (stIdx === 25) {
     return SKILLS_SrvSt25_ValidateDistinctTarget_6FCB1B40_113c(mem, pg, pu, skId, skLvl)
+  }
+  if (stIdx === 32) {
+    return SKILLS_SrvDo017_FeralRageOrMaulHit_6FC473C0_113c(mem, pg, pu, skId, skLvl)
   }
   if (stIdx === 36) {
     return SKILLS_SrvSt36_HasEquippedShield_6FCB8390_113c(mem, pu, pg, skId, skLvl)
@@ -630,7 +634,7 @@ export function PLAYER_IsNonMeleeSequenceSkillK3_113c(m: Memory113c, pPlayer: nu
   const pSkillsTxt = SKILLS_GetRecordPtrFast113c(m, skillId)
   if (pSkillsTxt === 0) return false
   const wSrvDo = sx16(m.u16((pSkillsTxt + 0x2e) >>> 0))
-  return wSrvDo !== 1
+  return wSrvDo !== 1 && wSrvDo !== 2
 }
 
 /**

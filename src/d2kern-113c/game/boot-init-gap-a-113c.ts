@@ -49,7 +49,6 @@ import {
 import {
   DATATBLS_GetObjectsTxtRecord113c,
   UNITS_GetGfxStateFlagsPtr113c,
-  UNITS_GetRoom113c,
   UNITS_GetStateFlagsPtr113c,
   UNITS_HasAnyGfxStateFlag113c,
   UNITS_SetUnitUpdateFlags113c,
@@ -86,9 +85,11 @@ import { D2CommonAssertError, D2COMMON_SGPT_DATATABLES_VA_113C } from '../common
 import {
   NET_SendPacket47_UnitRelator1_6FCAAEC0_113c,
   NET_SendPacket48_UnitRequestStatus_6FCAAE60_113c,
+  NET_SendPacket60_PortalInfo_6FCAAAE0_113c,
   OBJ_FinishOperatingToOpenedMode_6FC89DA0_113c,
   OBJ_ResetSubClassBit0ObjectToNeutral_6FC89D60_113c,
 } from './k2-w2b3-113c.ts'
+import { NET_SendPacket82_PortalOwnerInfo_6FCAD040_113c } from './k2-w4b5-113c.ts'
 import {
   ITEMS_ExpireTimedStatSubListsEvent_6FCF1780_113c,
   SUNIT_ClearPlayerTimeoutEvent_6FD00410_113c,
@@ -138,7 +139,10 @@ import {
   MONUMOD_ScheduleInitialAiAndEvent7_6FC43320_113c,
   QUESTS_CheckNotIntro_6FC53970_113c,
 } from './k2-laneJ-0x6fc4-w1-113c.ts'
-import { SUNIT_PlaceUnitAtRoomAndCoords_6FD00D00_113c } from './k2-w5b7-113c.ts'
+import {
+  SUNIT_EnsurePortalDestRoomPopulatedAndGetOwner_6FD01570_113c,
+  SUNIT_PlaceUnitAtRoomAndCoords_6FD00D00_113c,
+} from './k2-w5b7-113c.ts'
 import {
   PLAYERSAVE_SaveAllClientCharactersInGame_6FC4C830_113c,
   QUESTS_ObjectEvent07_FastcallThunk_6FC8F510_113c,
@@ -157,6 +161,7 @@ import {
   MONUMOD_EventScarabChargedBoltsWrapper_6FC468C0_113c,
 } from './k2-w4b1-113c.ts'
 import {
+  ACT1Q4_SpawnGriswoldInTristram_6FC860D0_113c,
   MONUMOD_PropagatePackDeathToBoss_6FC43BF0_113c,
   MONUMOD_SpectralHitMissileDamage_6FC43650_113c,
   OBJ_DropChestLootFromObjectUnit_6FC8B6F0_113c,
@@ -224,6 +229,11 @@ export const HIRELING_BONUS_TABLE_6FD1BBF0: readonly number[] = [0, 0, 8, 16, 24
 export const D2GAME_PERF_TICK_ARRAY_PTR_VA_113C = 0x6fd27d30
 /** `D2Game.dll` `.bss` accumulator `gdwTotalMemPoolBytes` at `0x6FD4DC28`. */
 export const D2GAME_TOTAL_MEMPOOL_BYTES_VA_113C = 0x6fd4dc28
+/** `D2Game.dll` `.data` game tick rate global `gdwTicksPerSecond` at `0x6FD2E360`. */
+export const D2GAME_TICKS_PER_SECOND_VA_113C = 0x6fd2e360
+/** `D2Game.dll` `.bss` peak mempool usage global at `0x6FD31C34` and timestamp at `0x6FD31F88`. */
+export const D2GAME_PEAK_MEMPOOL_KB_VA_113C = 0x6fd31c34
+export const D2GAME_PEAK_MEMPOOL_TICK_VA_113C = 0x6fd31f88
 /** `D2Game.dll` `.data` flag `gbDisableClientTimeout` at `0x6FD286A0`. */
 export const D2GAME_DISABLE_CLIENT_TIMEOUT_VA_113C = 0x6fd286a0
 /** `D2Game.dll` `.data` minion component callback table ptr (`0x6FD27D14`) and count (`0x6FD2A7E0`). */
@@ -272,6 +282,7 @@ export interface BootInitGapACallees113c {
     pNode: number,
   ) => void
   readonly getTickCountMs?: (m: Memory113c) => number
+  readonly getPoolUsageKB?: (m: Memory113c, pMemPool: number) => number
   readonly getClientPartyId?: (m: Memory113c, pUnit: number) => number
   readonly syncPlayerPartyRelations?: (
     m: Memory113c,
@@ -573,50 +584,81 @@ function seedRollMem113c(m: Memory113c, pSeed: number, nMax: number): number {
 }
 
 /**
- * Checks whether an object in `pRoom` should respawn or block room deactivation due to an active portal.
+ * Checks `[pObjectControl + 0x1110]` respawn/portal node against `pRoom` (`[pRoom]` match or
+ * `(x, y)` bounds containment); if matched and object mode is `0`, sets mode `1`, schedules event `1`
+ * at `dwGameFrame + (pObjTxt[+0xDC] >> 8)`, frees node (`[pObjCtrl+0x1110] = 0`). Otherwise if `pRoom`
+ * is town, switches `pUnit` anim mode to `2`.
+ *
+ * Accepts either 1-arg `pArgs` (`ecx`, `{+0x00: pGame, +0x04: pUnit, +0x08: pRoom}`) matching
+ * `D2Game.dll@0x6FC2BD10` or 2-arg `(pUnit, pRoom)` compatibility form.
  *
  * @va D2Game:0x6FC2BD10
  */
 export function OBJECT_CheckRespawnOrPortalInRoom113c(
   m: Memory113c,
-  pUnit: number,
-  pRoom: number,
+  pUnitOrArgs: number,
+  pRoomArg?: number,
 ): number {
   hitD2GameVa113c(0x6FC2BD10)
-  if (pUnit === 0 || pRoom === 0) return 1
-  if (m.u32((pUnit + 0x10) >>> 0) !== 2) return 1
-  if (DUNGEON_CheckRoomIsTownMemPort113c(m, pRoom) !== 0) return 1
-
-  const nClassId = pUnit !== 0 ? m.u32((pUnit + 0x04) >>> 0) | 0 : -1
-  const pObjTxt = DATATBLS_GetObjectsTxtRecord113c(m, nClassId) >>> 0
-  if (pObjTxt === 0) {
-    throw new Error('OBJECT_CheckRespawnOrPortalInRoom113c: pObjTxt == NULL (line 620)')
+  let pGame = 0
+  let pUnit = 0
+  let pRoom = 0
+  if (pRoomArg === undefined) {
+    const pArgs = pUnitOrArgs >>> 0
+    if (pArgs === 0) return 1
+    pGame = m.u32(pArgs >>> 0) >>> 0
+    pUnit = m.u32((pArgs + 0x04) >>> 0) >>> 0
+    pRoom = m.u32((pArgs + 0x08) >>> 0) >>> 0
+  } else {
+    pUnit = pUnitOrArgs >>> 0
+    pRoom = pRoomArg >>> 0
+    if (pUnit === 0) return 1
+    pGame = m.u32((pUnit + 0x80) >>> 0) >>> 0
   }
 
-  const isRespawnableShrineOrWell =
-    nClassId > 0x132
-      ? nClassId === 0x18e
-      : nClassId >= 0x130 || nClassId === 0x18 || nClassId === 0x9c
-
-  if (isRespawnableShrineOrWell) {
-    const pGame = m.u32((pUnit + 0x80) >>> 0) >>> 0
-    if (m.u8((pGame + 0x6d) >>> 0) >= 3) return 1
-    const dwRespawnFrame = m.u32((pUnit + 0x7c) >>> 0) >>> 0
-    const dwGameFrame = m.u32((pGame + 0xa8) >>> 0) >>> 0
-    if (dwRespawnFrame >= dwGameFrame) {
-      UNITS_ChangeAnimMode113c(m, pUnit, 0)
-      const dwNewFrame = (((m.u32((pObjTxt + 0xac) >>> 0) | 0) >> 8) + (dwGameFrame | 0)) >>> 0
-      EVENT_SetEventFull113c(m, pGame, pUnit, 5, dwNewFrame, 0, 0, 0)
-      return 1
+  const pObjCtrl = pGame !== 0 ? (m.u32((pGame + 0x10f0) >>> 0) >>> 0) : 0
+  let pNode = pObjCtrl !== 0 ? (m.u32((pObjCtrl + 0x1110) >>> 0) >>> 0) : 0
+  let matched = false
+  while (pNode !== 0) {
+    const nodeRoom = m.u32(pNode >>> 0) >>> 0
+    if (nodeRoom === pRoom) {
+      matched = true
+      break
     }
+    if (pRoom !== 0) {
+      const rx = m.u32((pRoom + 0x4c) >>> 0) | 0
+      const rw = m.u32((pRoom + 0x54) >>> 0) | 0
+      const nx = m.u32((pNode + 0x04) >>> 0) | 0
+      if (nx >= rx && nx < rx + rw) {
+        const ry = m.u32((pRoom + 0x50) >>> 0) | 0
+        const rh = m.u32((pRoom + 0x58) >>> 0) | 0
+        const ny = m.u32((pNode + 0x08) >>> 0) | 0
+        if (ny >= ry && ny < ry + rh) {
+          matched = true
+          break
+        }
+      }
+    }
+    pNode = m.u32((pNode + 0x0c) >>> 0) >>> 0
   }
 
-  if (nClassId !== 0x3c) return 1
-  const pObjData = m.u32((pUnit + 0x14) >>> 0) >>> 0
-  if ((m.u8((pObjData + 0x04) >>> 0) & 3) !== 1) return 1
-  const pPath = m.u32((pUnit + 0x2c) >>> 0) >>> 0
-  const pUnitRoom = pPath !== 0 ? m.u32((pPath + 0x1c) >>> 0) >>> 0 : 0
-  return pUnitRoom === (pRoom >>> 0) ? 0 : 1
+  if (matched) {
+    if (pUnit === 0 || m.u32((pUnit + 0x10) >>> 0) === 0) {
+      UNITS_ChangeAnimMode113c(m, pUnit, 1)
+      const nClassId = pUnit !== 0 ? m.u32((pUnit + 0x04) >>> 0) | 0 : -1
+      const pObjTxt = DATATBLS_GetObjectsTxtRecord113c(m, nClassId) >>> 0
+      const dwDelay = (m.u32((pObjTxt + 0xdc) >>> 0) >>> 8) >>> 0
+      const dwFrame = ((m.u32((pGame + 0xa8) >>> 0) | 0) + (dwDelay | 0)) >>> 0
+      EVENT_SetEventFull113c(m, pGame, pUnit, 1, dwFrame, 0, 0, 0)
+    }
+    m.setU32((pObjCtrl + 0x1110) >>> 0, 0)
+    return 1
+  }
+
+  if (pRoom !== 0 && DUNGEON_CheckRoomIsTownMemPort113c(m, pRoom) !== 0) {
+    UNITS_ChangeAnimMode113c(m, pUnit, 2)
+  }
+  return 1
 }
 
 function relocateRestoredServerUnit113c(
@@ -1303,10 +1345,10 @@ export function CLIENTS_ForEachInGameClient113c(
 ): void {
   hitD2GameVa113c(0x6FC49820)
   if (pGame === 0) {
-    throw new Error('CLIENTS_ForEachInGameClient113c: pGame == NULL (line 1231)')
+    throw new D2CommonAssertError('0x6fd19ff9', 0x1525)
   }
   if (pfnCallback === 0 && callback === undefined) {
-    throw new Error('CLIENTS_ForEachInGameClient113c: pfnCallback == NULL (line 1232)')
+    throw new D2CommonAssertError('0x6fd19ff9', 0x1526)
   }
   let pClient = m.u32((pGame + 0x88) >>> 0) >>> 0
   while (pClient !== 0) {
@@ -1320,7 +1362,8 @@ export function CLIENTS_ForEachInGameClient113c(
 }
 
 /**
- * Updates `pGame` tick rate metrics (`+0xAC`, `+0xB0`, `+0xB4`) and optional performance array slot.
+ * Updates `pGame` tick rate metrics (`+0xB4` prev tick, `+0xB0` frame counter, `+0xAC` rate,
+ * `0x6FD2E360` global rate) and mempool usage tracking (`0x6FD31C34`, `0x6FD31F88`).
  *
  * @va D2Game:0x6FC49BE0
  */
@@ -1330,48 +1373,48 @@ export function GAME_UpdateTickRateMetrics113c(
   callees?: BootInitGapACallees113c,
 ): void {
   hitD2GameVa113c(0x6FC49BE0)
-  let pPerfInfo = 0
-  try {
-    pPerfInfo = m.u32(D2GAME_PERF_TICK_ARRAY_PTR_VA_113C) >>> 0
-  } catch {
-    pPerfInfo = 0
-  }
-  const pMemPool = m.u32((pGame + 0x1c) >>> 0) >>> 0
-  let poolBytes = 0
-  if (pMemPool !== 0) {
-    try {
-      poolBytes = m.u32((pMemPool + 0x17a8) >>> 0)
-    } catch {
-      poolBytes = 0
-    }
-  }
-  let curTotalPool = 0
-  try {
-    curTotalPool = m.u32(D2GAME_TOTAL_MEMPOOL_BYTES_VA_113C) >>> 0
-  } catch {
-    curTotalPool = 0
-  }
-  m.setU32(
-    D2GAME_TOTAL_MEMPOOL_BYTES_VA_113C,
-    (curTotalPool + poolBytes) >>> 0,
-  )
-
+  const game = pGame >>> 0
   const dwTickMs =
     callees !== undefined && callees.getTickCountMs !== undefined
       ? callees.getTickCountMs(m) >>> 0
-      : m.u32((pGame + 0xac) >>> 0) >>> 0
-  const deltaMs = (dwTickMs - m.u32((pGame + 0xac) >>> 0)) | 0
-  if (deltaMs >= 1000) {
-    const framesDelta = (m.u32((pGame + 0xa8) >>> 0) - m.u32((pGame + 0xb0) >>> 0)) | 0
-    const rate = Math.trunc(imul32(framesDelta, 1000) / deltaMs) | 0
-    m.setU32((pGame + 0xb4) >>> 0, rate >>> 0)
-    m.setU32((pGame + 0xac) >>> 0, dwTickMs)
-    m.setU32((pGame + 0xb0) >>> 0, m.u32((pGame + 0xa8) >>> 0))
+      : m.u32((game + 0xb4) >>> 0) >>> 0
+  const prevTick = m.u32((game + 0xb4) >>> 0) >>> 0
+  const deltaMs = (dwTickMs - prevTick) >>> 0
+  if (deltaMs >= 0x3e8) {
+    const frames = m.u32((game + 0xb0) >>> 0) >>> 0
+    const rate = Math.floor((frames * 1000) / deltaMs) >>> 0
+    const pMemPool = m.u32((game + 0x1c) >>> 0) >>> 0
+    m.setU32((game + 0xb0) >>> 0, 0)
+    m.setU32((game + 0xb4) >>> 0, dwTickMs)
+    m.setU32((game + 0xac) >>> 0, rate)
+    m.setU32(D2GAME_TICKS_PER_SECOND_VA_113C, rate)
+    const poolUsage =
+      callees !== undefined && callees.getPoolUsageKB !== undefined
+        ? callees.getPoolUsageKB(m, pMemPool) >>> 0
+        : 0
+    let lastResetTick = 0
+    try {
+      lastResetTick = m.u32(D2GAME_PEAK_MEMPOOL_TICK_VA_113C) >>> 0
+    } catch {
+      lastResetTick = 0
+    }
+    let peakPool = 0
+    try {
+      peakPool = m.u32(D2GAME_PEAK_MEMPOOL_KB_VA_113C) >>> 0
+    } catch {
+      peakPool = 0
+    }
+    if (((dwTickMs - lastResetTick) >>> 0) > 0x2710) {
+      m.setU32(D2GAME_PEAK_MEMPOOL_KB_VA_113C, poolUsage)
+      m.setU32(D2GAME_PEAK_MEMPOOL_TICK_VA_113C, dwTickMs)
+      m.setU32((game + 0xb0) >>> 0, (m.u32((game + 0xb0) >>> 0) + 1) >>> 0)
+      return
+    }
+    if (poolUsage > peakPool) {
+      m.setU32(D2GAME_PEAK_MEMPOOL_KB_VA_113C, poolUsage)
+    }
   }
-  if (pPerfInfo !== 0) {
-    const idx = m.u16((pGame + 0x28) >>> 0)
-    m.setU32((pPerfInfo + idx * 4) >>> 0, m.u32((pGame + 0xb4) >>> 0))
-  }
+  m.setU32((game + 0xb0) >>> 0, (m.u32((game + 0xb0) >>> 0) + 1) >>> 0)
 }
 
 /**
@@ -1384,13 +1427,11 @@ export function GAME_ExpireItemsAndMinionListsPeriodic113c(
   pGame: number,
 ): void {
   hitD2GameVa113c(0x6FC4C0F0)
-  const dwFrame = m.u32((pGame + 0xa8) >>> 0) >>> 0
-  if ((dwFrame & 0x7f) === 0) {
-    const nAct = ((dwFrame >>> 7) % 5) >>> 0
-    const pAct = m.u32((pGame + nAct * 4 + 0xbc) >>> 0) >>> 0
-    if (pAct !== 0) {
-      ITEMS_ExpireGroundItemsInAct113c(m, pGame, pAct)
-      AIGENERAL_ExpireMinionListsInAct113c(m, pGame, pAct)
+  const dwFrame = m.u32((pGame + 0xa8) >>> 0) | 0
+  if (dwFrame % 1500 === 0) {
+    for (let nAct = 0; nAct < 5; nAct++) {
+      ITEMS_ExpireGroundItemsInAct113c(m, pGame, nAct)
+      AIGENERAL_ExpireMinionListsInAct113c(m, pGame, nAct)
     }
   }
 }
@@ -1769,18 +1810,22 @@ export function GAME_StepClientJoinStatesAndTimeouts113c(
 
 /**
  * Sets object animation mode to `2` via `D2Common.#11090` (`UNITS_ChangeAnimMode`).
+ * Accepts either 1-arg `pObjEvtArgs` (`ecx`, `{+0x04: pObject}`) matching `D2Game.dll@0x6FC4E750`
+ * or `(m, pGame, pObject)` compatibility call.
  *
  * @va D2Game:0x6FC4E750
  */
 export function OBJECT_SetAnimMode2Wrapper113c(
   m: Memory113c,
-  _pGame: number,
-  pObject: number,
+  pGameOrArgs: number,
+  pObject?: number,
   _pPlayer = 0,
   _bFlag = 0,
 ): number {
   hitD2GameVa113c(0x6FC4E750)
-  return UNITS_ChangeAnimMode113c(m, pObject, 2)
+  const targetObj =
+    pObject === undefined ? m.u32(((pGameOrArgs >>> 0) + 0x04) >>> 0) >>> 0 : pObject >>> 0
+  return UNITS_ChangeAnimMode113c(m, targetObj, 2)
 }
 
 /**
@@ -1925,17 +1970,56 @@ export function MONSTER_SpawnPresetOrEvilUrn113c(
 }
 
 /**
- * Checks if `pPortalUnit` or its linked twin portal is in Tristram (`levelId == 0x26`) and advances Act 1 Quest 3 state.
+ * Act 1 Quest 4 (`Rescue Cain`) portal/object arrival hook (`0x6FC86320`).
+ * Real DLL signature: `ecx = pQuestEventArgs` (`[+0x00]=pGame`, `[+0x04]=pPlayer`, `[+0x08]=pRoomOrObj`,
+ * `[+0x14]=nX`, `[+0x18]=nY`), updating Quest 4 `pQuestDataEx` (`[pQuest+0x18]`: `+0x6C`, `+0x70`,
+ * `+0x84`, `+0x88`) and calling `ACT1Q4_SpawnGriswoldInTristram_6FC860D0_113c` when `+0x52 == 1 && +0x51 == 0`.
+ * Also preserves the legacy `(m, pPortalUnit, pGame)` 2-arg room check overload for internal TS callers.
  *
  * @va D2Game:0x6FC86320
  */
 export function QUEST_Act1TownPortalUpdateState113c(
   m: Memory113c,
-  pPortalUnit: number,
-  pGame: number,
+  pQuestEventArgsOrPortal: number,
+  pGameOrCallees?: number | BootInitGapACallees113c,
   callees?: BootInitGapACallees113c,
 ): number {
   hitD2GameVa113c(0x6FC86320)
+  if (typeof pGameOrCallees !== 'number') {
+    const pArgs = pQuestEventArgsOrPortal >>> 0
+    if (pArgs === 0) return 0
+    const game = m.u32(pArgs) >>> 0
+    const pQuestCtrl = game !== 0 ? (m.u32((game + 0x10f4) >>> 0) >>> 0) : 0
+    let pQuest4 = pQuestCtrl !== 0 ? (m.u32(pQuestCtrl) >>> 0) : 0
+    while (pQuest4 !== 0 && (m.u32(pQuest4) | 0) !== 4) {
+      pQuest4 = m.u32((pQuest4 + 0xf4) >>> 0) >>> 0
+    }
+    if (pQuest4 === 0) return 0
+    const pQuestDataEx = m.u32((pQuest4 + 0x18) >>> 0) >>> 0
+    if (pQuestDataEx === 0) return 0
+    const pUnit = m.u32((pArgs + 0x04) >>> 0) >>> 0
+    const dwUnitId = pUnit !== 0 ? (m.u32((pUnit + 0x0c) >>> 0) >>> 0) : 0xffffffff
+    const bFlag52 = m.u8((pQuestDataEx + 0x52) >>> 0)
+    m.setU32((pQuestDataEx + 0x6c) >>> 0, dwUnitId)
+    m.setU8((pQuestDataEx + 0x70) >>> 0, 1)
+    const nX = m.u32((pArgs + 0x14) >>> 0) | 0
+    const nY = m.u32((pArgs + 0x18) >>> 0) | 0
+    m.setU32((pQuestDataEx + 0x84) >>> 0, nX >>> 0)
+    m.setU32((pQuestDataEx + 0x88) >>> 0, nY >>> 0)
+    if (bFlag52 === 1 && m.u8((pQuestDataEx + 0x51) >>> 0) === 0) {
+      ACT1Q4_SpawnGriswoldInTristram_6FC860D0_113c(
+        m as SparseMemory113c,
+        game,
+        m.u32((pArgs + 0x08) >>> 0) >>> 0,
+        nX,
+        nY,
+      )
+    }
+    return 1
+  }
+
+  const pPortalUnit = pQuestEventArgsOrPortal >>> 0
+  const pGame = pGameOrCallees >>> 0
   const pPath = pPortalUnit !== 0 ? m.u32((pPortalUnit + 0x2c) >>> 0) >>> 0 : 0
   const pRoom = pPath !== 0 ? m.u32((pPath + 0x1c) >>> 0) >>> 0 : 0
   const nLevelId = DUNGEON_GetLevelIdFromRoom113c(m, pRoom)
@@ -1950,9 +2034,10 @@ export function QUEST_Act1TownPortalUpdateState113c(
     return 0
   }
 
+  const resolvedCallees = callees
   const pQuest =
-    callees !== undefined && callees.getQuestDescriptor !== undefined
-      ? callees.getQuestDescriptor(m, pGame, 3) >>> 0
+    resolvedCallees !== undefined && resolvedCallees.getQuestDescriptor !== undefined
+      ? resolvedCallees.getQuestDescriptor(m, pGame, 3) >>> 0
       : 0
   if (pQuest === 0) return 1
   const pQuestExt = m.u32((pQuest + 0xf0) >>> 0) >>> 0
@@ -2005,6 +2090,8 @@ export function OBJECT_SendUpdatePacketsToClient113c(
     if ((subClass & 0x04) !== 0) {
       if (callees !== undefined && callees.onObjectQuestSync !== undefined) {
         callees.onObjectQuestSync(m, m.u32((pObject + 0x80) >>> 0), pObject, pClient)
+      } else {
+        NET_SendPacket60_PortalInfo_6FCAAAE0_113c(m, pObject, pClient)
       }
       return
     }
@@ -2092,23 +2179,16 @@ export function OBJECT_SyncStateAndEventsToClient113c(
  */
 export function MONSTER_CalcLifePercentage128_113c(m: Memory113c, pUnit: number): number {
   hitD2GameVa113c(0x6FC97060)
-  if (pUnit === 0) return 0
-  const curLife = STATLIST_GetUnitStat113c(m, pUnit, 6, 0) | 0
-  const maxLife = STATLIST_GetMaxLifeFromUnit113c(m, pUnit) | 0
-  const maxLifeShr = maxLife >> 8
-  if (maxLifeShr <= 0) return 0x80
-  let pct = Math.trunc(((curLife >> 8) << 7) / maxLifeShr) | 0
-  if (pct === 0 && curLife > 0) {
-    pct = 1
-  }
-  if (pct > 0x80) {
-    pct = 0x80
-  }
+  if (pUnit === 0) return 0x80
+  const curLifeShr = (STATLIST_GetUnitStat113c(m, pUnit, 6, 0) | 0) >> 8
+  const maxLifeShr = (STATLIST_GetMaxLifeFromUnit113c(m, pUnit) | 0) >> 8
+  if (maxLifeShr <= 0 || curLifeShr >= maxLifeShr) return 0x80
+  const pct = Math.trunc((curLifeShr << 7) / maxLifeShr) | 0
   return pct & 0xff
 }
 
 /**
- * Looks up `0x6FD1BBF0[nIndex]` (`[0, 0, 8, 16, 24, 32, 40, 48]`) when `pGame != 0`, `nIndex < 8`, and `pGame->dwGameType == 0`.
+ * Computes hireling level bonus factor (`0` on Normal or `nIndex < 2`, `0x6FD1BBF0[nIndex]` for `2..8`, `nIndex * 8 - 16` for `>= 9`).
  *
  * @va D2Game:0x6FC970A0
  */
@@ -2119,9 +2199,13 @@ export function MONSTER_GetHirelingLevelBonusFactor113c(
 ): number {
   hitD2GameVa113c(0x6FC970A0)
   if (pGame === 0) return 0
-  if ((nIndex >>> 0) >= 8) return 0
-  if (m.u32((pGame + 0x70) >>> 0) !== 0) return 0
-  return HIRELING_BONUS_TABLE_6FD1BBF0[nIndex >>> 0]!
+  const nDiff = m.u8((pGame + 0x6d) >>> 0)
+  const idx = nIndex | 0
+  if (nDiff === 0 || idx < 2) return 0
+  if (idx < 9) {
+    return HIRELING_BONUS_TABLE_6FD1BBF0[idx]!
+  }
+  return (Math.imul(idx, 8) - 0x10) | 0
 }
 
 /**
@@ -2748,12 +2832,41 @@ export function UNIT_SendFullUnitSyncToClient113c(
     const dwUnitType = m.u32(pUnit >>> 0)
     switch (dwUnitType) {
       case 0:
-      case 2:
       case 4:
         if (callees !== undefined && callees.onUnitFullSyncPreSwitch !== undefined) {
           callees.onUnitFullSyncPreSwitch(m, dwUnitType, pClient, pUnit, dwFlags)
         }
         break
+      case 2: {
+        if (callees !== undefined && callees.onUnitFullSyncPreSwitch !== undefined) {
+          callees.onUnitFullSyncPreSwitch(m, dwUnitType, pClient, pUnit, dwFlags)
+        }
+        const pObjData = m.u32((pUnit + 0x14) >>> 0) >>> 0
+        const pObjTxtRaw = pObjData !== 0 ? (m.u32(pObjData >>> 0) >>> 0) : 0
+        const pObjTxt =
+          pObjTxtRaw !== 0
+            ? pObjTxtRaw
+            : m.u32(D2COMMON_SGPT_DATATABLES_VA_113C) !== 0
+              ? (DATATBLS_GetObjectsTxtRecord113c(m, m.u32((pUnit + 4) >>> 0) | 0) >>> 0)
+              : 0
+        if (pObjTxt !== 0 && (m.u8((pObjTxt + 0x167) >>> 0) & 0x04) !== 0) {
+          NET_SendPacket60_PortalInfo_6FCAAAE0_113c(m, pUnit, pClient)
+          if ((m.u32((pUnit + 4) >>> 0) & 0xffff) === 0x3b) {
+            const pDestPortal =
+              SUNIT_EnsurePortalDestRoomPopulatedAndGetOwner_6FD01570_113c(m, pGame, pUnit) >>> 0
+            const dwTargetGuid =
+              pDestPortal !== 0 ? (m.u32((pDestPortal + 0x0c) >>> 0) >>> 0) : 0xffffffff
+            NET_SendPacket82_PortalOwnerInfo_6FCAD040_113c(
+              m,
+              pGame,
+              m.u32((pUnit + 0x0c) >>> 0) >>> 0,
+              pClient,
+              dwTargetGuid,
+            )
+          }
+        }
+        break
+      }
       case 3: {
         const pPath = m.u32((pUnit + 0x2c) >>> 0) >>> 0
         if (pPath !== 0) {
@@ -2853,13 +2966,13 @@ export function UNIT_SendFullUnitSyncToClient113c(
 export function NET_QueuePacketToClientBuffer113c(
   m: Memory113c,
   pClient: number,
-  nChannel: number,
+  _nChannel: number,
   pPacket: number,
   nSize: number,
 ): number {
   hitD2GameVa113c(0x6FCAA3E0)
   const esi = pClient >>> 0
-  if (esi === 0 || nChannel !== 1) return 0
+  if (esi === 0) return 0
   const size = nSize | 0
   if (size <= 0) return 0
   if (size > 0x200) {
@@ -2989,7 +3102,7 @@ function dispatchDefaultObjectTimerEvent113c(
       OBJECTS_LinkHellPortalToDestinationLevel_6FC8B930_113c(sm, pGame, pUnit)
       break
     default:
-      break
+      throw new D2CommonAssertError('Event.cpp', 0x240)
   }
 }
 
@@ -3011,14 +3124,14 @@ function dispatchDefaultItemTimerEvent113c(
       ITEMS_ExpireTimedStatSubListsEvent_6FCF1780_113c(m, pGame, pUnit)
       break
     default:
-      break
+      throw new D2CommonAssertError('Event.cpp', 0x15eb)
   }
 }
 
 /**
  * Executes persistent and timed slot events for Partition 0 (`UNIT_PLAYER`).
  *
- * @va D2Game:0x6FCAE9A0
+ * @va D2Game:0x6FCAECC0
  */
 export function EVENT_ExecutePlayerEvents113c(
   m: Memory113c,
@@ -3027,7 +3140,7 @@ export function EVENT_ExecutePlayerEvents113c(
   nSlot: number,
   callees?: BootInitGapACallees113c,
 ): number {
-  hitD2GameVa113c(0x6FCAE9A0)
+  hitD2GameVa113c(0x6FCAECC0)
   let firedCount = 0
   let node = m.get(pTimer, D2TimerStrc.pPersistentHead, 0)
   while (node !== 0) {
@@ -3154,9 +3267,9 @@ export function EVENT_ExecuteMonsterEvents113c(
 }
 
 /**
- * Executes persistent and timed slot events for Partition 3 (`UNIT_OBJECT`), freeing orphaned events whose room is NULL.
+ * Executes persistent and timed slot events for Partition 3 (`UNIT_OBJECT`), dispatching `0x6FD1BDB8[0..11]`.
  *
- * @va D2Game:0x6FCAECC0
+ * @va D2Game:0x6FCAEF20
  */
 export function EVENT_ExecuteObjectEvents113c(
   m: Memory113c,
@@ -3165,17 +3278,40 @@ export function EVENT_ExecuteObjectEvents113c(
   nSlot: number,
   callees?: BootInitGapACallees113c,
 ): number {
-  hitD2GameVa113c(0x6FCAECC0)
+  hitD2GameVa113c(0x6FCAEF20)
   let firedCount = 0
   let node = m.get(pTimer, D2TimerStrc.pPersistentHead, 3)
   while (node !== 0) {
     m.set(pTimer, D2TimerStrc.pSavedNext, m.get(node, D2EventStrc.pWheelNewer))
     const pUnit = m.get(node, D2EventStrc.pUnit)
-    const pPath = pUnit !== 0 ? m.u32((pUnit + 0x2c) >>> 0) >>> 0 : 0
-    const pRoom = (UNITS_GetRoom113c(m, pUnit) || (pPath !== 0 ? m.u32((pPath + 0x1c) >>> 0) : 0)) >>> 0
-    if (pRoom === 0) {
+    m.set(node, D2EventStrc.fFlags, m.get(node, D2EventStrc.fFlags) | EVENT_FLAG_FIRING)
+    const evType = m.get(node, D2EventStrc.nType)
+    const arg14 = m.get(node, D2EventStrc.dwArg14)
+    const arg18 = m.get(node, D2EventStrc.dwArg18)
+    const pfn = m.get(node, D2EventStrc.pfnHandler) >>> 0
+    firedCount++
+    if (callees !== undefined && callees.dispatchObjectEvent !== undefined) {
+      callees.dispatchObjectEvent(m, pGame, pUnit, evType, arg14, arg18, node)
+    } else if (pfn === 0x6fd00410) {
+      SUNIT_ClearPlayerTimeoutEvent_6FD00410_113c(m, pGame, pUnit, evType, arg14, arg18)
+    } else if (pfn === 0) {
+      dispatchDefaultObjectTimerEvent113c(m, pGame, pUnit, evType)
+    }
+    const postFlags = m.get(node, D2EventStrc.fFlags) & ~EVENT_FLAG_FIRING
+    m.set(node, D2EventStrc.fFlags, postFlags)
+    if ((postFlags & EVENT_FLAG_DEFERRED_FREE) !== 0) {
       EVENT_FreeNode113c(m, pGame, node)
-    } else {
+    }
+    node = m.get(pTimer, D2TimerStrc.pSavedNext)
+  }
+
+  const slot = 192 + (nSlot & 63)
+  node = m.get(pTimer, D2TimerStrc.pSlotTail, slot)
+  const frame = m.get(pGame, D2GameStrc.dwGameFrame) >>> 0
+  while (node !== 0) {
+    m.set(pTimer, D2TimerStrc.pSavedNext, m.get(node, D2EventStrc.pWheelNewer))
+    if ((m.get(node, D2EventStrc.dwFrame) >>> 0) === frame) {
+      const pUnit = m.get(node, D2EventStrc.pUnit)
       m.set(node, D2EventStrc.fFlags, m.get(node, D2EventStrc.fFlags) | EVENT_FLAG_FIRING)
       const evType = m.get(node, D2EventStrc.nType)
       const arg14 = m.get(node, D2EventStrc.dwArg14)
@@ -3191,42 +3327,7 @@ export function EVENT_ExecuteObjectEvents113c(
       }
       const postFlags = m.get(node, D2EventStrc.fFlags) & ~EVENT_FLAG_FIRING
       m.set(node, D2EventStrc.fFlags, postFlags)
-      if ((postFlags & EVENT_FLAG_DEFERRED_FREE) !== 0) {
-        EVENT_FreeNode113c(m, pGame, node)
-      }
-    }
-    node = m.get(pTimer, D2TimerStrc.pSavedNext)
-  }
-
-  const slot = 192 + (nSlot & 63)
-  node = m.get(pTimer, D2TimerStrc.pSlotTail, slot)
-  const frame = m.get(pGame, D2GameStrc.dwGameFrame) >>> 0
-  while (node !== 0) {
-    m.set(pTimer, D2TimerStrc.pSavedNext, m.get(node, D2EventStrc.pWheelNewer))
-    if ((m.get(node, D2EventStrc.dwFrame) >>> 0) === frame) {
-      const pUnit = m.get(node, D2EventStrc.pUnit)
-      const pPath = pUnit !== 0 ? m.u32((pUnit + 0x2c) >>> 0) >>> 0 : 0
-      const pRoom = (UNITS_GetRoom113c(m, pUnit) || (pPath !== 0 ? m.u32((pPath + 0x1c) >>> 0) : 0)) >>> 0
-      if (pRoom === 0) {
-        EVENT_FreeNode113c(m, pGame, node)
-      } else {
-        m.set(node, D2EventStrc.fFlags, m.get(node, D2EventStrc.fFlags) | EVENT_FLAG_FIRING)
-        const evType = m.get(node, D2EventStrc.nType)
-        const arg14 = m.get(node, D2EventStrc.dwArg14)
-        const arg18 = m.get(node, D2EventStrc.dwArg18)
-        const pfn = m.get(node, D2EventStrc.pfnHandler) >>> 0
-        firedCount++
-        if (callees !== undefined && callees.dispatchObjectEvent !== undefined) {
-          callees.dispatchObjectEvent(m, pGame, pUnit, evType, arg14, arg18, node)
-        } else if (pfn === 0x6fd00410) {
-          SUNIT_ClearPlayerTimeoutEvent_6FD00410_113c(m, pGame, pUnit, evType, arg14, arg18)
-        } else if (pfn === 0) {
-          dispatchDefaultObjectTimerEvent113c(m, pGame, pUnit, evType)
-        }
-        const postFlags = m.get(node, D2EventStrc.fFlags) & ~EVENT_FLAG_FIRING
-        m.set(node, D2EventStrc.fFlags, postFlags)
-        EVENT_FreeNode113c(m, pGame, node)
-      }
+      EVENT_FreeNode113c(m, pGame, node)
     }
     node = m.get(pTimer, D2TimerStrc.pSavedNext)
   }
@@ -3235,9 +3336,9 @@ export function EVENT_ExecuteObjectEvents113c(
 }
 
 /**
- * Executes persistent and timed slot events for Partition 2 (`UNIT_MISSILE`), invoking `pNode->pfnHandler`.
+ * Executes persistent and timed slot events for Partition 2 (`UNIT_MISSILE`), invoking `pNode->pfnHandler` or `0x6FC5E3F0`.
  *
- * @va D2Game:0x6FCAEDD0
+ * @va D2Game:0x6FCAE9A0
  */
 export function EVENT_ExecuteMissileEvents113c(
   m: Memory113c,
@@ -3246,106 +3347,72 @@ export function EVENT_ExecuteMissileEvents113c(
   nSlot: number,
   callees?: BootInitGapACallees113c,
 ): number {
-  hitD2GameVa113c(0x6FCAEDD0)
-  const sp = bootInitGapStackPtr
-  bootInitGapStackPtr = (sp + 0x10) >>> 0
+  hitD2GameVa113c(0x6FCAE9A0)
   let firedCount = 0
   const allowZero = callees !== undefined && callees.allowZeroHandler === true
-  try {
-    let node = m.get(pTimer, D2TimerStrc.pPersistentHead, 2)
-    while (node !== 0) {
-      m.set(pTimer, D2TimerStrc.pSavedNext, m.get(node, D2EventStrc.pWheelNewer))
-      const pUnit = m.get(node, D2EventStrc.pUnit)
-      const pPath = pUnit !== 0 ? m.u32((pUnit + 0x2c) >>> 0) >>> 0 : 0
-      const pRoom = pPath !== 0 ? m.u32((pPath + 0x1c) >>> 0) >>> 0 : 0
-      if (pRoom === 0) {
-        EVENT_FreeNode113c(m, pGame, node)
-      } else {
-        if (m.u32(pUnit >>> 0) === 3 && (m.u8((pUnit + 0xc4) >>> 0) & 4) !== 0) {
-          PATH_GetTargetTypeAndPosition113c(m, pUnit, sp)
-        }
-        m.set(node, D2EventStrc.fFlags, m.get(node, D2EventStrc.fFlags) | EVENT_FLAG_FIRING)
-        const pfn = m.get(node, D2EventStrc.pfnHandler) >>> 0
-        const evType = m.get(node, D2EventStrc.nType)
-        const arg14 = m.get(node, D2EventStrc.dwArg14)
-        const arg18 = m.get(node, D2EventStrc.dwArg18)
-        if (callees !== undefined && callees.dispatchMissileEvent !== undefined) {
-          if (pfn !== 0 || allowZero) {
-            firedCount++
-            callees.dispatchMissileEvent(m, pfn, pGame, pUnit, evType, arg14, arg18, node)
-          } else {
-            m.set(
-              node,
-              D2EventStrc.fFlags,
-              m.get(node, D2EventStrc.fFlags) | EVENT_FLAG_DEFERRED_FREE,
-            )
-          }
-        } else if (pfn === 0x6fd00410) {
-          firedCount++
-          SUNIT_ClearPlayerTimeoutEvent_6FD00410_113c(m, pGame, pUnit, evType, arg14, arg18)
-        } else if (pfn === 0) {
-          firedCount++
-          MISSILE_DispatchFrameTick113c(m, pGame, pUnit)
-        }
-        const postFlags = m.get(node, D2EventStrc.fFlags) & ~EVENT_FLAG_FIRING
-        m.set(node, D2EventStrc.fFlags, postFlags)
-        if ((postFlags & EVENT_FLAG_DEFERRED_FREE) !== 0) {
-          EVENT_FreeNode113c(m, pGame, node)
-        }
+  let node = m.get(pTimer, D2TimerStrc.pPersistentHead, 2)
+  while (node !== 0) {
+    m.set(pTimer, D2TimerStrc.pSavedNext, m.get(node, D2EventStrc.pWheelNewer))
+    const pUnit = m.get(node, D2EventStrc.pUnit)
+    m.set(node, D2EventStrc.fFlags, m.get(node, D2EventStrc.fFlags) | EVENT_FLAG_FIRING)
+    const pfn = m.get(node, D2EventStrc.pfnHandler) >>> 0
+    const evType = m.get(node, D2EventStrc.nType)
+    const arg14 = m.get(node, D2EventStrc.dwArg14)
+    const arg18 = m.get(node, D2EventStrc.dwArg18)
+    firedCount++
+    if (callees !== undefined && callees.dispatchMissileEvent !== undefined) {
+      if (pfn !== 0 || allowZero) {
+        callees.dispatchMissileEvent(m, pfn, pGame, pUnit, evType, arg14, arg18, node)
       }
-      node = m.get(pTimer, D2TimerStrc.pSavedNext)
+    } else if (pfn === 0x6fd00410) {
+      SUNIT_ClearPlayerTimeoutEvent_6FD00410_113c(m, pGame, pUnit, evType, arg14, arg18)
+    } else if (pfn === 0) {
+      MISSILE_DispatchFrameTick113c(m, pGame, pUnit)
     }
-
-    const slot = 128 + (nSlot & 63)
-    node = m.get(pTimer, D2TimerStrc.pSlotTail, slot)
-    const frame = m.get(pGame, D2GameStrc.dwGameFrame) >>> 0
-    while (node !== 0) {
-      m.set(pTimer, D2TimerStrc.pSavedNext, m.get(node, D2EventStrc.pWheelNewer))
-      if ((m.get(node, D2EventStrc.dwFrame) >>> 0) === frame) {
-        const pUnit = m.get(node, D2EventStrc.pUnit)
-        const pPath = pUnit !== 0 ? m.u32((pUnit + 0x2c) >>> 0) >>> 0 : 0
-        const pRoom = pPath !== 0 ? m.u32((pPath + 0x1c) >>> 0) >>> 0 : 0
-        if (pRoom === 0) {
-          EVENT_FreeNode113c(m, pGame, node)
-        } else {
-          if (m.u32(pUnit >>> 0) === 3 && (m.u8((pUnit + 0xc4) >>> 0) & 4) !== 0) {
-            PATH_GetTargetTypeAndPosition113c(m, pUnit, sp)
-          }
-          m.set(node, D2EventStrc.fFlags, m.get(node, D2EventStrc.fFlags) | EVENT_FLAG_FIRING)
-          const pfn = m.get(node, D2EventStrc.pfnHandler) >>> 0
-          const evType = m.get(node, D2EventStrc.nType)
-          const arg14 = m.get(node, D2EventStrc.dwArg14)
-          const arg18 = m.get(node, D2EventStrc.dwArg18)
-          if (callees !== undefined && callees.dispatchMissileEvent !== undefined) {
-            if (pfn !== 0 || allowZero) {
-              firedCount++
-              callees.dispatchMissileEvent(m, pfn, pGame, pUnit, evType, arg14, arg18, node)
-            }
-          } else if (pfn === 0x6fd00410) {
-            firedCount++
-            SUNIT_ClearPlayerTimeoutEvent_6FD00410_113c(m, pGame, pUnit, evType, arg14, arg18)
-          } else if (pfn === 0) {
-            firedCount++
-            MISSILE_DispatchFrameTick113c(m, pGame, pUnit)
-          }
-          const postFlags = m.get(node, D2EventStrc.fFlags) & ~EVENT_FLAG_FIRING
-          m.set(node, D2EventStrc.fFlags, postFlags)
-          EVENT_FreeNode113c(m, pGame, node)
-        }
-      }
-      node = m.get(pTimer, D2TimerStrc.pSavedNext)
+    const postFlags = m.get(node, D2EventStrc.fFlags) & ~EVENT_FLAG_FIRING
+    m.set(node, D2EventStrc.fFlags, postFlags)
+    if ((postFlags & EVENT_FLAG_DEFERRED_FREE) !== 0) {
+      EVENT_FreeNode113c(m, pGame, node)
     }
-    m.set(pTimer, D2TimerStrc.pSavedNext, 0)
-  } finally {
-    bootInitGapStackPtr = sp
+    node = m.get(pTimer, D2TimerStrc.pSavedNext)
   }
+
+  const slot = 128 + (nSlot & 63)
+  node = m.get(pTimer, D2TimerStrc.pSlotTail, slot)
+  const frame = m.get(pGame, D2GameStrc.dwGameFrame) >>> 0
+  while (node !== 0) {
+    m.set(pTimer, D2TimerStrc.pSavedNext, m.get(node, D2EventStrc.pWheelNewer))
+    if ((m.get(node, D2EventStrc.dwFrame) >>> 0) === frame) {
+      const pUnit = m.get(node, D2EventStrc.pUnit)
+      m.set(node, D2EventStrc.fFlags, m.get(node, D2EventStrc.fFlags) | EVENT_FLAG_FIRING)
+      const pfn = m.get(node, D2EventStrc.pfnHandler) >>> 0
+      const evType = m.get(node, D2EventStrc.nType)
+      const arg14 = m.get(node, D2EventStrc.dwArg14)
+      const arg18 = m.get(node, D2EventStrc.dwArg18)
+      firedCount++
+      if (callees !== undefined && callees.dispatchMissileEvent !== undefined) {
+        if (pfn !== 0 || allowZero) {
+          callees.dispatchMissileEvent(m, pfn, pGame, pUnit, evType, arg14, arg18, node)
+        }
+      } else if (pfn === 0x6fd00410) {
+        SUNIT_ClearPlayerTimeoutEvent_6FD00410_113c(m, pGame, pUnit, evType, arg14, arg18)
+      } else if (pfn === 0) {
+        MISSILE_DispatchFrameTick113c(m, pGame, pUnit)
+      }
+      const postFlags = m.get(node, D2EventStrc.fFlags) & ~EVENT_FLAG_FIRING
+      m.set(node, D2EventStrc.fFlags, postFlags)
+      EVENT_FreeNode113c(m, pGame, node)
+    }
+    node = m.get(pTimer, D2TimerStrc.pSavedNext)
+  }
+  m.set(pTimer, D2TimerStrc.pSavedNext, 0)
   return firedCount
 }
 
 /**
- * Executes persistent and timed slot events for Partition 4 (`UNIT_ITEM`), invoking `pNode->pfnHandler`.
+ * Executes persistent and timed slot events for Partition 4 (`UNIT_ITEM`), dispatching `0x6FD1B110[3|4|12]`.
  *
- * @va D2Game:0x6FCAEF20
+ * @va D2Game:0x6FCAEDD0
  */
 export function EVENT_ExecuteItemEvents113c(
   m: Memory113c,
@@ -3354,7 +3421,7 @@ export function EVENT_ExecuteItemEvents113c(
   nSlot: number,
   callees?: BootInitGapACallees113c,
 ): number {
-  hitD2GameVa113c(0x6FCAEF20)
+  hitD2GameVa113c(0x6FCAEDD0)
   let firedCount = 0
   const allowZero = callees !== undefined && callees.allowZeroHandler === true
   let node = m.get(pTimer, D2TimerStrc.pPersistentHead, 4)

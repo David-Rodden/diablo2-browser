@@ -1107,8 +1107,8 @@
     },
     {
       "va": "0x6FCAE9A0",
-      "name": "EVENT_ExecutePlayerEvents",
-      "tsSymbol": "EVENT_ExecutePlayerEvents113c",
+      "name": "EVENT_ExecuteMissileEvents",
+      "tsSymbol": "EVENT_ExecuteMissileEvents113c",
       "kernFile": "src/d2kern-113c/game/boot-init-gap-a-113c.ts",
       "size": 212,
       "category": "vtable_or_struct_table",
@@ -1197,8 +1197,8 @@
     },
     {
       "va": "0x6FCAECC0",
-      "name": "EVENT_ExecuteObjectEvents",
-      "tsSymbol": "EVENT_ExecuteObjectEvents113c",
+      "name": "EVENT_ExecutePlayerEvents",
+      "tsSymbol": "EVENT_ExecutePlayerEvents113c",
       "kernFile": "src/d2kern-113c/game/boot-init-gap-a-113c.ts",
       "size": 272,
       "category": "static_table",
@@ -1298,8 +1298,8 @@
     },
     {
       "va": "0x6FCAEDD0",
-      "name": "EVENT_ExecuteMissileEvents",
-      "tsSymbol": "EVENT_ExecuteMissileEvents113c",
+      "name": "EVENT_ExecuteItemEvents",
+      "tsSymbol": "EVENT_ExecuteItemEvents113c",
       "kernFile": "src/d2kern-113c/game/boot-init-gap-a-113c.ts",
       "size": 325,
       "category": "static_table",
@@ -1378,8 +1378,8 @@
     },
     {
       "va": "0x6FCAEF20",
-      "name": "EVENT_ExecuteItemEvents",
-      "tsSymbol": "EVENT_ExecuteItemEvents113c",
+      "name": "EVENT_ExecuteObjectEvents",
+      "tsSymbol": "EVENT_ExecuteObjectEvents113c",
       "kernFile": "src/d2kern-113c/game/boot-init-gap-a-113c.ts",
       "size": 325,
       "category": "static_table",

@@ -71,7 +71,7 @@ const K6_SCENARIO_SPECS_113C: readonly K6ScenarioSpec113c[] = [
     totalHits: 1248,
     d2CommonExecuted: 719,
     d2GameExecuted: 529,
-    minStrictHorizon: 130,
+    minStrictHorizon: 230,
     minPosHorizon: 231,
   },
   {
@@ -89,8 +89,8 @@ const K6_SCENARIO_SPECS_113C: readonly K6ScenarioSpec113c[] = [
     totalHits: 1284,
     d2CommonExecuted: 716,
     d2GameExecuted: 568,
-    minStrictHorizon: 214,
-    minPosHorizon: 291,
+    minStrictHorizon: 340,
+    minPosHorizon: 340,
   },
   {
     name: 'k6-town-npc-gamble-waypoint',
@@ -107,8 +107,8 @@ const K6_SCENARIO_SPECS_113C: readonly K6ScenarioSpec113c[] = [
     totalHits: 1070,
     d2CommonExecuted: 577,
     d2GameExecuted: 493,
-    minStrictHorizon: 168,
-    minPosHorizon: 168,
+    minStrictHorizon: 307,
+    minPosHorizon: 307,
   },
 ]
 

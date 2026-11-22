@@ -726,7 +726,7 @@ export function OBJECTS_ApplyTrapDamageToTarget_6FD142D0_113c(
 
     const ediGame = pGame >>> 0
     SUNITDMG_ApplyResistancesAndAbsorb113c(m, esiObj, ebpTarget, pDmg)
-    SUNITDMG_ApplyDamage113c(m, ediGame, esiObj, ebpTarget, pDmg)
+    SUNITDMG_ApplyDamage113c(m, ediGame, esiObj, ebpTarget, pDmg, 0, undefined, 1)
     SUNITDMG_ApplySideEffectsAndKill113c(m, ediGame, esiObj, ebpTarget, pDmg)
   } finally {
     k2W6B7StackPtr = sp

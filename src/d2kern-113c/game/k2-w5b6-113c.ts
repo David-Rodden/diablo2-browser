@@ -457,8 +457,8 @@ export function HIRELING_LevelUpHirelingAndSyncSkills_6FC68BA0_113c(
     const pPetWrap = m.u32((pPlayerData + 0x44) >>> 0) >>> 0
     if (pPetWrap === 0) return
     const pPetArr = m.u32(pPetWrap >>> 0) >>> 0
+    if (pPetArr === 0) return
     const pSlot7 = (pPetArr + 0x54) >>> 0
-    if (pSlot7 === 0) return
     let pPetNode = m.u32(pSlot7) >>> 0
     if (pPetNode === 0) return
     while ((m.u8(pPetNode) & 1) !== 0) {
@@ -557,7 +557,7 @@ export function HIRELING_LevelUpHirelingAndSyncSkills_6FC68BA0_113c(
     const skillId = rdI32(m, (pHirelingTxt + 0x78 + slot * 4) >>> 0)
     if (skillId <= 0) break
     const pDataTables = getSgptDataTablesPtr(m)
-    if (skillId >= rdI32(m, (pDataTables + 0xba0) >>> 0)) break
+    if (pDataTables === 0 || skillId >= rdI32(m, (pDataTables + 0xba0) >>> 0)) break
     if (sx8(m.u8((pHirelingTxt + 0xc0 + slot) >>> 0)) >= 0x10) break
     const pSkillsTxt = SKILLS_GetRecordPtrFast113c(m, skillId) >>> 0
     if (pSkillsTxt !== 0 && targetLvl >= sx16(m.u16((pSkillsTxt + 0x174) >>> 0))) {

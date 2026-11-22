@@ -299,16 +299,16 @@ describe('K2 Wave 11 Batch 1 (w11b1): 30 D2Game.dll 1.13c functions (0x6FC3CAE0.
     expect(() => fn(m, 99, pGame, pPlayer)).not.toThrow();
   });
 
-  it('26. 0x6FCE8990 sets handled=1, skipDefault=0 when quest 11 is absent', () => {
+  it('26. 0x6FCE8990 sets outRunNormalAi=1, outStallAi=0 when quest 11 is absent', () => {
     const m = createTestMem();
     const fn = resolveExportByVa('0x6FCE8990');
     const pGame = 0x10000;
     const pNpc = 0x12000;
-    const pSkip = 0x13000;
-    const pHandled = 0x13004;
-    fn(m, pGame, pNpc, pSkip, pHandled);
-    expect(m.u32(pHandled)).toBe(1);
-    expect(m.u32(pSkip)).toBe(0);
+    const pOutRunNormalAi = 0x13000;
+    const pOutStallAi = 0x13004;
+    fn(m, pGame, pNpc, pOutRunNormalAi, pOutStallAi);
+    expect(m.u32(pOutRunNormalAi)).toBe(1);
+    expect(m.u32(pOutStallAi)).toBe(0);
   });
 
   it('27. 0x6FCEDA20 returns 3 when packet length is not 3', () => {

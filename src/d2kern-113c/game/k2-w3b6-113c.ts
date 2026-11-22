@@ -79,6 +79,7 @@ const ACT1Q2_DIALOG_STATE_MAP_VA = 0x6fd28ee0;
 const ACT1Q1_DIALOG_STATE_MAP_VA = 0x6fd28a30;
 
 const DEFAULT_DIALOG_STATE_MAP_01234: readonly number[] = [0xffffffff, 0, 1, 2, 3, 4];
+const DEFAULT_DIALOG_STATE_MAP_Q2: readonly number[] = [0xffffffff, 0, 1, 2, 3, 4, 154, 146];
 const DEFAULT_DIALOG_STATE_MAP_Q3: readonly number[] = [0xffffffff, 0xffffffff, 0, 1, 2, 3];
 
 let k2W3B6StackPtr = 0x7ecc0000;
@@ -874,55 +875,60 @@ export function ACT1Q3_Callback00_NpcActivate_6FC81030_113c(
   const pQuestFlags = getPlayerQuestFlags113c(m, pGame, pPlayer);
   const bit0 = DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 5, 0);
   const bit0d = DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 5, 0x0d);
+  if (bit0 === 1 && bit0d === 0) {
+    return;
+  }
   const pNpc = m.u32((pQuestArg + 0x08) >>> 0) >>> 0;
   const nNpcId = pNpc !== 0 ? m.u32((pNpc + 0x04) >>> 0) | 0 : -1;
   const dwPlayerGuid = pPlayer !== 0 ? m.u32((pPlayer + 0x0c) >>> 0) >>> 0 : 0xffffffff;
+  const bState = m.u8((pQuest + 0x0c) >>> 0);
   const pQuestDataEx = m.u32((pQuest + 0x18) >>> 0) >>> 0;
-  if (bit0d === 1) {
-    const countSecond = m.u16((pQuestDataEx + 0x64) >>> 0);
-    let inSecond = false;
-    for (let i = 0; i < countSecond; i = (i + 1) | 0) {
+  const pTextHeader = m.u32((pQuestArg + 0x14) >>> 0) >>> 0;
+  if (bState >= 4) {
+    const countSecond0 = m.u16((pQuestDataEx + 0x64) >>> 0);
+    let inSecond0 = false;
+    for (let i = 0; i < countSecond0; i = (i + 1) | 0) {
       if ((m.u32((pQuestDataEx + 0x34 + i * 4) >>> 0) >>> 0) === dwPlayerGuid) {
-        inSecond = true;
+        inSecond0 = true;
         break;
       }
     }
-    if (inSecond) {
-      QUESTS_AddNpcDialogTextNodes113c(m, pQuest, 2, m.u32((pQuestArg + 0x10) >>> 0), nNpcId);
+    if (!inSecond0) {
+      const countFirst0 = m.u16((pQuestDataEx + 0x30) >>> 0);
+      let inFirst0 = false;
+      for (let i = 0; i < countFirst0; i = (i + 1) | 0) {
+        if ((m.u32((pQuestDataEx + i * 4) >>> 0) >>> 0) === dwPlayerGuid) {
+          inFirst0 = true;
+          break;
+        }
+      }
+      if (!inFirst0) {
+        return;
+      }
+    }
+  }
+  const countSecond = m.u16((pQuestDataEx + 0x64) >>> 0);
+  for (let i = 0; i < countSecond; i = (i + 1) | 0) {
+    if ((m.u32((pQuestDataEx + 0x34 + i * 4) >>> 0) >>> 0) === dwPlayerGuid) {
+      QUESTS_AddNpcDialogTextNodes113c(m, pQuest, 2, pTextHeader, nNpcId);
       return;
     }
+  }
+  if (bit0 === 1 && bit0d === 1) {
     const countFirst = m.u16((pQuestDataEx + 0x30) >>> 0);
-    let inFirst = false;
     for (let i = 0; i < countFirst; i = (i + 1) | 0) {
       if ((m.u32((pQuestDataEx + i * 4) >>> 0) >>> 0) === dwPlayerGuid) {
-        inFirst = true;
-        break;
+        QUESTS_AddNpcDialogTextNodes113c(m, pQuest, 3, pTextHeader, nNpcId);
+        return;
       }
     }
-    if (inFirst) {
-      QUESTS_AddNpcDialogTextNodes113c(m, pQuest, 3, m.u32((pQuestArg + 0x10) >>> 0), nNpcId);
-      return;
-    }
-    if (m.u8((pQuest + 0x08) >>> 0) !== 0) {
-      QUESTS_AddNpcDialogTextNodes113c(m, pQuest, 4, m.u32((pQuestArg + 0x10) >>> 0), nNpcId);
-    }
-    return;
-  }
-  const bState = m.u8((pQuest + 0x0b) >>> 0);
-  if (bState >= 6) {
     return;
   }
   const nMsgIdx = m.u32((ACT1Q3_DIALOG_STATE_MAP_VA + bState * 4) >>> 0) | 0;
-  if (nMsgIdx === -1 || bit0 === 1) {
+  if (nMsgIdx === -1 || (nMsgIdx >>> 0) >= 5) {
     return;
   }
-  if (nMsgIdx === 4) {
-    if (m.u8((pQuest + 0x08) >>> 0) === 1) {
-      QUESTS_AddNpcDialogTextNodes113c(m, pQuest, 4, m.u32((pQuestArg + 0x10) >>> 0), nNpcId);
-    }
-    return;
-  }
-  QUESTS_AddNpcDialogTextNodes113c(m, pQuest, nMsgIdx, m.u32((pQuestArg + 0x10) >>> 0), nNpcId);
+  QUESTS_AddNpcDialogTextNodes113c(m, pQuest, nMsgIdx, pTextHeader, nNpcId);
 }
 
 /**
@@ -1232,47 +1238,36 @@ export function ACT1Q5_Callback00_NpcActivate_6FC81C60_113c(
   const pPlayer = m.u32((pQuestArg + 0x0c) >>> 0) >>> 0;
   const pGame = m.u32(pQuestArg >>> 0) >>> 0;
   const pQuestFlags = getPlayerQuestFlags113c(m, pGame, pPlayer);
+  const bit0d = DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 3, 0x0d);
+  const bit0 = DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 3, 0);
   const pNpc = m.u32((pQuestArg + 0x08) >>> 0) >>> 0;
   const nNpcId = pNpc !== 0 ? m.u32((pNpc + 0x04) >>> 0) | 0 : -1;
-  if (DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 3, 0x0d) === 1) {
-    const dwPlayerGuid = pPlayer !== 0 ? m.u32((pPlayer + 0x0c) >>> 0) >>> 0 : 0xffffffff;
-    if (QUESTS_GuidListContains113c(m, (pQuest + 0x1c) >>> 0, dwPlayerGuid) !== 0) {
-      QUESTS_AddNpcDialogTextNodes113c(m, pQuest, 4, m.u32((pQuestArg + 0x10) >>> 0), nNpcId);
-      return;
-    }
-    if (m.u8((pQuest + 0x08) >>> 0) !== 0) {
-      QUESTS_AddNpcDialogTextNodes113c(m, pQuest, 3, m.u32((pQuestArg + 0x10) >>> 0), nNpcId);
-    }
+  if (bit0 === 1 && bit0d === 0) {
     return;
   }
-  const bit0 = DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 3, 0);
+  const pTextHeader = m.u32((pQuestArg + 0x14) >>> 0) >>> 0;
+  if (ITEMS_FindQuestItemByBaseCode_6FC2E660_113c(m, pPlayer, pGame, 0x206d6468) !== 0) {
+    if ((STATLIST_GetUnitBaseStat113c(m, pPlayer, 0x0c, 0) | 0) < 8) {
+      return;
+    }
+    if (DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 3, 0) !== 0) {
+      return;
+    }
+    QUESTS_AddNpcDialogTextNodes113c(m, pQuest, 3, pTextHeader, nNpcId);
+    return;
+  }
   if (bit0 === 1) {
     return;
   }
-  if (ITEMS_FindQuestItemByBaseCode_6FC2E660_113c(m, pPlayer, pGame, 0x206d6468) !== 0) {
-    if ((STATLIST_GetUnitBaseStat113c(m, pPlayer, 0x0c, 0) | 0) >= 8) {
-      QUESTS_AddNpcDialogTextNodes113c(m, pQuest, 2, m.u32((pQuestArg + 0x10) >>> 0), nNpcId);
-    }
-    return;
-  }
-  if (m.u8((pQuest + 0x09) >>> 0) === 0) {
-    return;
-  }
-  const bState = m.u8((pQuest + 0x0b) >>> 0);
-  if (bState >= 6) {
+  const bState = m.u8((pQuest + 0x0c) >>> 0);
+  if (bState === 0 || bState === 4) {
     return;
   }
   const nMsgIdx = m.u32((ACT1Q5_DIALOG_STATE_MAP_VA + bState * 4) >>> 0) | 0;
-  if (nMsgIdx === -1) {
+  if (nMsgIdx === -1 || (nMsgIdx >>> 0) >= 6) {
     return;
   }
-  if (nMsgIdx === 3) {
-    if (m.u8((pQuest + 0x08) >>> 0) === 1) {
-      QUESTS_AddNpcDialogTextNodes113c(m, pQuest, 3, m.u32((pQuestArg + 0x10) >>> 0), nNpcId);
-    }
-    return;
-  }
-  QUESTS_AddNpcDialogTextNodes113c(m, pQuest, nMsgIdx, m.u32((pQuestArg + 0x10) >>> 0), nNpcId);
+  QUESTS_AddNpcDialogTextNodes113c(m, pQuest, nMsgIdx, pTextHeader, nNpcId);
 }
 
 /**
@@ -1391,42 +1386,36 @@ export function ACT1Q2_Callback00_NpcActivate_6FC81F50_113c(
   pQuestArg: number,
 ): void {
   hitD2GameVa113c(0x6FC81F50);
-  ensureDialogStateTableSeeded113c(m, ACT1Q2_DIALOG_STATE_MAP_VA, DEFAULT_DIALOG_STATE_MAP_01234);
+  ensureDialogStateTableSeeded113c(m, ACT1Q2_DIALOG_STATE_MAP_VA, DEFAULT_DIALOG_STATE_MAP_Q2);
+  const pNpc = m.u32((pQuestArg + 0x08) >>> 0) >>> 0;
+  const nNpcId = pNpc !== 0 ? m.u32((pNpc + 0x04) >>> 0) | 0 : -1;
   const pPlayer = m.u32((pQuestArg + 0x0c) >>> 0) >>> 0;
   const pGame = m.u32(pQuestArg >>> 0) >>> 0;
   const pQuestFlags = getPlayerQuestFlags113c(m, pGame, pPlayer);
-  const dwQuestId = m.u32((pQuest + 0xe0) >>> 0) | 0;
-  const bit0 = DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, dwQuestId, 0);
-  const bit1 = DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, dwQuestId, 1);
-  const pNpc = m.u32((pQuestArg + 0x08) >>> 0) >>> 0;
-  const nNpcId = pNpc !== 0 ? m.u32((pNpc + 0x04) >>> 0) | 0 : -1;
-  if (bit1 === 1) {
-    QUESTS_AddNpcDialogTextNodes113c(m, pQuest, 2, m.u32((pQuestArg + 0x10) >>> 0), nNpcId);
+  const bit0 = DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, m.u32((pQuest + 0xe0) >>> 0) | 0, 0);
+  const bit1 = DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, m.u32((pQuest + 0xe0) >>> 0) | 0, 1);
+  const pTextHeader = m.u32((pQuestArg + 0x14) >>> 0) >>> 0;
+  if (bit1 !== 0) {
+    QUESTS_AddNpcDialogTextNodes113c(m, pQuest, 3, pTextHeader, nNpcId);
     return;
   }
   const dwPlayerGuid = pPlayer !== 0 ? m.u32((pPlayer + 0x0c) >>> 0) >>> 0 : 0xffffffff;
-  if (QUESTS_GuidListContains113c(m, (pQuest + 0x1c) >>> 0, dwPlayerGuid) !== 0) {
-    QUESTS_AddNpcDialogTextNodes113c(m, pQuest, 4, m.u32((pQuestArg + 0x10) >>> 0), nNpcId);
-    return;
+  const guidCount = m.u16((pQuest + 0x9c) >>> 0);
+  for (let i = 0; i < guidCount; i = (i + 1) | 0) {
+    if ((m.u32((pQuest + 0x1c + i * 4) >>> 0) >>> 0) === dwPlayerGuid) {
+      QUESTS_AddNpcDialogTextNodes113c(m, pQuest, 4, pTextHeader, nNpcId);
+      return;
+    }
   }
-  if (m.u8((pQuest + 0x09) >>> 0) === 0) {
-    return;
-  }
-  const bState = m.u8((pQuest + 0x0b) >>> 0);
-  if (bState >= 6) {
+  const bState = m.u8((pQuest + 0x0c) >>> 0);
+  if (bState === 0 || bit0 === 1 || bState >= 4) {
     return;
   }
   const nMsgIdx = m.u32((ACT1Q2_DIALOG_STATE_MAP_VA + bState * 4) >>> 0) | 0;
-  if (nMsgIdx === -1 || bit0 === 1) {
+  if (nMsgIdx === -1 || (nMsgIdx >>> 0) >= 6) {
     return;
   }
-  if (nMsgIdx === 3) {
-    if (m.u8((pQuest + 0x08) >>> 0) === 1) {
-      QUESTS_AddNpcDialogTextNodes113c(m, pQuest, 3, m.u32((pQuestArg + 0x10) >>> 0), nNpcId);
-    }
-    return;
-  }
-  QUESTS_AddNpcDialogTextNodes113c(m, pQuest, nMsgIdx, m.u32((pQuestArg + 0x10) >>> 0), nNpcId);
+  QUESTS_AddNpcDialogTextNodes113c(m, pQuest, nMsgIdx, pTextHeader, nNpcId);
 }
 
 /**
@@ -1554,43 +1543,44 @@ export function ACT1Q1_Callback00_NpcActivate_6FC82220_113c(
   const pPlayer = m.u32((pQuestArg + 0x0c) >>> 0) >>> 0;
   const pGame = m.u32((pQuest + 0x04) >>> 0) >>> 0;
   const pQuestFlags = getPlayerQuestFlags113c(m, pGame, pPlayer);
-  const dwQuestId = m.u32((pQuest + 0xe0) >>> 0) | 0;
-  const bit0 = DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, dwQuestId, 0);
-  const bit0d = DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, dwQuestId, 0x0d);
-  const bit1 = DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, dwQuestId, 1);
+  const bit0 = DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, m.u32((pQuest + 0xe0) >>> 0) | 0, 0);
+  const bit0d = DRLGWARP_TestRoomTileBit113c(
+    m,
+    pQuestFlags,
+    m.u32((pQuest + 0xe0) >>> 0) | 0,
+    0x0d,
+  );
   const pNpc = m.u32((pQuestArg + 0x08) >>> 0) >>> 0;
   const nNpcId = pNpc !== 0 ? m.u32((pNpc + 0x04) >>> 0) | 0 : -1;
+  const bit1 = DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, m.u32((pQuest + 0xe0) >>> 0) | 0, 1);
+  const pTextHeader = m.u32((pQuestArg + 0x14) >>> 0) >>> 0;
+  if (bit1 !== 0) {
+    QUESTS_AddNpcDialogTextNodes113c(m, pQuest, 3, pTextHeader, nNpcId);
+    return;
+  }
   const dwPlayerGuid = pPlayer !== 0 ? m.u32((pPlayer + 0x0c) >>> 0) >>> 0 : 0xffffffff;
-  if (bit1 === 1) {
-    QUESTS_AddNpcDialogTextNodes113c(m, pQuest, 2, m.u32((pQuestArg + 0x10) >>> 0), nNpcId);
+  const guidCount = m.u16((pQuest + 0x9c) >>> 0);
+  for (let i = 0; i < guidCount; i = (i + 1) | 0) {
+    if ((m.u32((pQuest + 0x1c + i * 4) >>> 0) >>> 0) === dwPlayerGuid) {
+      QUESTS_AddNpcDialogTextNodes113c(m, pQuest, 4, pTextHeader, nNpcId);
+      return;
+    }
+  }
+  if (bit0 === 1) {
     return;
   }
-  if (QUESTS_GuidListContains113c(m, (pQuest + 0x1c) >>> 0, dwPlayerGuid) !== 0) {
-    QUESTS_AddNpcDialogTextNodes113c(m, pQuest, 4, m.u32((pQuestArg + 0x10) >>> 0), nNpcId);
-    return;
-  }
-  if (bit0d === 1 && m.u8((pQuest + 0x08) >>> 0) !== 0) {
-    QUESTS_AddNpcDialogTextNodes113c(m, pQuest, 3, m.u32((pQuestArg + 0x10) >>> 0), nNpcId);
+  const bState = m.u8((pQuest + 0x0c) >>> 0);
+  if (bState >= 4 && bit0d === 0) {
     return;
   }
   if (m.u8((pQuest + 0x09) >>> 0) === 0) {
     return;
   }
-  const bState = m.u8((pQuest + 0x0b) >>> 0);
-  if (bState >= 6) {
-    return;
-  }
   const nMsgIdx = m.u32((ACT1Q1_DIALOG_STATE_MAP_VA + bState * 4) >>> 0) | 0;
-  if (nMsgIdx === -1 || bit0 === 1) {
+  if (nMsgIdx === -1 || (nMsgIdx >>> 0) >= 8) {
     return;
   }
-  if (nMsgIdx === 3) {
-    if (m.u8((pQuest + 0x08) >>> 0) === 1) {
-      QUESTS_AddNpcDialogTextNodes113c(m, pQuest, 3, m.u32((pQuestArg + 0x10) >>> 0), nNpcId);
-    }
-    return;
-  }
-  QUESTS_AddNpcDialogTextNodes113c(m, pQuest, nMsgIdx, m.u32((pQuestArg + 0x10) >>> 0), nNpcId);
+  QUESTS_AddNpcDialogTextNodes113c(m, pQuest, nMsgIdx, pTextHeader, nNpcId);
 }
 
 /**
@@ -1655,7 +1645,7 @@ export function ACT1Q0_Callback00_WarrivIntroActivate_6FC82410_113c(
   }
   const nPlayerClass = pPlayer !== 0 ? m.u32((pPlayer + 0x04) >>> 0) | 0 : -1;
   const nMsgIdx = nPlayerClass === 3 ? 1 : 0;
-  QUESTS_AddNpcDialogTextNodes113c(m, pQuest, nMsgIdx, m.u32((pQuestArg + 0x10) >>> 0), 0x9b);
+  QUESTS_AddNpcDialogTextNodes113c(m, pQuest, nMsgIdx, m.u32((pQuestArg + 0x14) >>> 0), 0x9b);
 }
 
 /**
@@ -1674,22 +1664,21 @@ export function ACT1_IntroCainActivate_6FC824D0_113c(
     return;
   }
   const pGame = m.u32(pQuestArg >>> 0) >>> 0;
-  const pQuest1 = findQuestNodeInGame113c(m, pGame, 1);
-  if (pQuest1 === 0) {
-    return;
-  }
+  const pQuestOwnerGame = pQuest !== 0 ? (m.u32((pQuest + 0x04) >>> 0) >>> 0) : pGame;
+  const pQuest1 = pQuestOwnerGame !== 0 ? findQuestNodeInGame113c(m, pQuestOwnerGame, 1) : 0;
   if (pGame === 0) {
     throw new D2CommonAssertError('ptGame', 0x820);
   }
   const pQuestControl = m.u32((pGame + 0x10f4) >>> 0) >>> 0;
-  const pGlobalQuestFlags = m.u32((pQuestControl + 0x08) >>> 0) >>> 0;
-  if (pGlobalQuestFlags === 0) {
+  if (pQuestControl === 0 || (m.u32((pQuestControl + 0x08) >>> 0) >>> 0) === 0) {
     throw new D2CommonAssertError('ptGame', 0x82c);
   }
-  const bGlobalDone = DRLGWARP_TestRoomTileBit113c(m, pGlobalQuestFlags, 1, 0x0d);
+  const pGlobalQuestFlags = m.u32((pQuestControl + 0x0c) >>> 0) >>> 0;
+  const bGlobalDone =
+    pGlobalQuestFlags !== 0 ? DRLGWARP_TestRoomTileBit113c(m, pGlobalQuestFlags, 1, 0x0d) : 0;
   let nMsgIdx = 0;
   const pPlayer = m.u32((pQuestArg + 0x0c) >>> 0) >>> 0;
-  if (bGlobalDone === 1 || m.u8((pQuest1 + 0x08) >>> 0) === 0) {
+  if (bGlobalDone === 0 && pQuest1 !== 0 && m.u8((pQuest1 + 0x09) >>> 0) !== 0) {
     const pQuestFlags = getPlayerQuestFlags113c(m, pGame, pPlayer);
     const bit0 = DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 1, 0);
     const bit0d = DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 1, 0x0d);
@@ -1702,7 +1691,7 @@ export function ACT1_IntroCainActivate_6FC824D0_113c(
   } else {
     nMsgIdx = (rollUnitSeed113c(m, (pPlayer + 0x20) >>> 0, 3) + 2) | 0;
   }
-  QUESTS_AddNpcDialogTextNodes113c(m, pQuest, nMsgIdx, m.u32((pQuestArg + 0x10) >>> 0), 0x10a);
+  QUESTS_AddNpcDialogTextNodes113c(m, pQuest, nMsgIdx, m.u32((pQuestArg + 0x14) >>> 0), 0x10a);
 }
 
 /**

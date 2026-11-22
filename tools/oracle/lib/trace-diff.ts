@@ -162,6 +162,21 @@ function normalizeS2cUninitPadBytes(hex: string | null): string | null {
   if (hex.length === 24 && hex.startsWith('21')) {
     return `${hex.slice(0, 22)}00`
   }
+  // D2Game.dll@0x6FCAD040..0x6FCAD10B (NET_SendPacket82_PortalOwnerInfo) writes bytes [5..N]
+  // of the 16-byte owner name buffer via Storm#501 (SStrCopy) without zeroing trailing bytes
+  // between the first NUL byte and offset 21 (`dwPortalGuid`).
+  if (hex.length === 58 && hex.startsWith('82')) {
+    let nulCharEnd = 42
+    for (let pos = 10; pos < 42; pos += 2) {
+      if (hex.slice(pos, pos + 2) === '00') {
+        nulCharEnd = pos + 2
+        break
+      }
+    }
+    if (nulCharEnd < 42) {
+      return `${hex.slice(0, nulCharEnd)}${'0'.repeat(42 - nulCharEnd)}${hex.slice(42)}`
+    }
+  }
   return hex
 }
 

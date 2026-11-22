@@ -543,13 +543,15 @@ export function QUESTS_FindAndDeletePlayerQuestItemByCode_6FC566A0_113c(
   ) => void,
 ): void {
   hitD2GameVa113c(0x6FC566A0)
-  const pItem = ITEMS_FindQuestItemByBaseCode_6FC2E660_113c(m, pPlayerUnit, pGame, dwItemCode) >>> 0
+  const player = pPlayerUnit >>> 0
+  if (player === 0) return
+  const pItem = ITEMS_FindQuestItemByBaseCode_6FC2E660_113c(m, player, pGame, dwItemCode) >>> 0
   if (pItem !== 0) {
-    const pInventory = m.u32((pPlayerUnit + 0x60) >>> 0)
+    const pInventory = m.u32((player + 0x60) >>> 0) >>> 0
     if (onDeleteQuestItem !== undefined) {
-      onDeleteQuestItem(m, pPlayerUnit, pItem, pGame, pInventory)
+      onDeleteQuestItem(m, player, pItem, pGame, pInventory)
     } else {
-      D2Game_6FC565E0_113c(m, pItem, pPlayerUnit, pGame, pInventory)
+      D2Game_6FC565E0_113c(m, pItem, player, pGame, pInventory)
     }
   }
 }
@@ -4823,7 +4825,7 @@ export function C2S_Packet49_WaypointInteract_6FCF0D30_113c(
     dwLastTick = m.u32((pPlayerData + 0x160) >>> 0);
   } else {
     const pPlayerData2 = UNITS_GetPlayerData113c(m, pPlayer >>> 0) >>> 0;
-    if ((pPlayer >>> 0) !== 0) {
+    if ((pPlayer >>> 0) !== 0 && pPlayerData2 !== 0) {
       let pNode = m.u32((pPlayerData2 + 0x38) >>> 0);
       while (pNode !== 0 && m.u32(pNode >>> 0) !== 0xffffffff) {
         pNode = m.u32((pNode + 0x10) >>> 0);
@@ -4835,7 +4837,7 @@ export function C2S_Packet49_WaypointInteract_6FCF0D30_113c(
   }
   const dwCurTick = m.u32(0x6fd18d10) >>> 0;
   if (((dwLastTick + 0x2710) >>> 0) > dwCurTick) {
-    SUNIT_SetUnitEventSound113c(m, pPlayer >>> 0, 0x13, 0);
+    SUNIT_SetUnitEventSound113c(m, pPlayer >>> 0, 0x13, pPlayer >>> 0);
     m.setU32((pPlayer + 0x64) >>> 0, 0xffffffff);
     m.setU32((pPlayer + 0x68) >>> 0, 6);
     m.setU8((pPlayer + 0x6c) >>> 0, 0);
