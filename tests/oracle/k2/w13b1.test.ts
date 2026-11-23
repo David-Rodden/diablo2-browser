@@ -497,8 +497,8 @@ describe('K2 Wave 13 Batch 1 (44 D2Game VAs 0x6FC3E3D0..0x6FD095E0)', () => {
     // [27/44] 0x6FCDE640 (unknown item GUID queues 0x2A result 7 and returns 1)
     expect(D2Game_6FCDE640_113c(m, pGame, pPlayer, pNpc, 9999, 0, 0)).toBe(1);
 
-    // [28/44] 0x6FCDEE30 (null NPC returns 0)
-    expect(D2Game_6FCDEE30_113c(m, pGame, 0x20706163, 0, pShop, 10, 2, 10)).toBe(0);
+    // [28/44] 0x6FCDEE30 (null NPC asserts at line 0xfe per 0x6fcdee4c)
+    expect(() => D2Game_6FCDEE30_113c(m, pGame, 0x20706163, 0, pShop, 2, 10, 10)).toThrow();
 
     // [29/44] 0x6FCDF990 (item present, non-interacting NPC queues 0x2A result 9 and returns 1)
     const pSellItem = 0x220000;
@@ -561,13 +561,13 @@ describe('K2 Wave 13 Batch 1 (44 D2Game VAs 0x6FC3E3D0..0x6FD095E0)', () => {
     m.setU32(pPacket + 5, 55);
     expect(D2Game_6FCF08B0_113c(m, pGame, pPlayer, pPacket, 0x0d)).toBe(3);
 
-    // [35/44] 0x6FCF0910 (bad len -> 3, nType >= 6 -> 2, valid -> 0)
+    // [35/44] 0x6FCF0910 (bad len -> 3, nType >= 6 -> 2, missing target propagates 0x6FCF01D0 -> 1)
     expect(D2Game_6FCF0910_113c(m, pGame, pPlayer, pPacket, 5)).toBe(3);
     m.setU32(pPacket + 1, 6);
     expect(D2Game_6FCF0910_113c(m, pGame, pPlayer, pPacket, 9)).toBe(2);
     m.setU32(pPacket + 1, 1);
     m.setU32(pPacket + 5, 999);
-    expect(D2Game_6FCF0910_113c(m, pGame, pPlayer, pPacket, 9)).toBe(0);
+    expect(D2Game_6FCF0910_113c(m, pGame, pPlayer, pPacket, 9)).toBe(1);
 
     // [36/44] 0x6FCF12E0 (bad len -> 3, bodyLoc 0 or >= 11 -> 2)
     expect(D2Game_6FCF12E0_113c(m, pGame, pPlayer, pPacket, 2)).toBe(3);

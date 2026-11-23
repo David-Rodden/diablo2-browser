@@ -82,7 +82,11 @@ describe('Single Player 1.13c starter gear & Act 1 quest parity', () => {
       expect(invScrolls.map((s) => s.code)).toEqual(['tsc', 'isc'])
     }
 
-    const sorAdapter = await lobby.enterGame({ charName: 'StartSor', difficulty: 0 })
+    const sorAdapter = await lobby.enterGame({
+      charName: 'StartSor',
+      difficulty: 0,
+      backend: 'legacy',
+    })
     const initialEvents: unknown[] = []
     sorAdapter.onEvent((ev) => initialEvents.push(ev))
     sorAdapter.connect()

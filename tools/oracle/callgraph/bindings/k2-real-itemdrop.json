@@ -78,7 +78,7 @@
     "kernFile": "src/d2kern-113c/game/k2-real-itemdrop-113c.ts",
     "tsSymbol": "ITEMS_ExpireGroundItemsInAct_6FC2FB70_113c",
     "status": "diff-verified",
-    "diffEvidence": "1:1 SparseMemory113c binary port verified in tests/oracle/k2/real-itemdrop-pipeline.test.ts; runtime-executed in dllExecuted∩tsExecuted (tests/oracle/k2/replay-k2-coverage.test.ts)"
+    "diffEvidence": "1:1 SparseMemory113c binary port verified in tests/oracle/k2/real-itemdrop-pipeline.test.ts; runtime-executed in dllExecuted\u2229tsExecuted (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "module": "D2Game",
@@ -96,7 +96,7 @@
     "kernFile": "src/d2kern-113c/game/k2-real-itemdrop-113c.ts",
     "tsSymbol": "ITEMS_InitItemUnit_6FC30160_113c",
     "status": "diff-verified",
-    "diffEvidence": "1:1 SparseMemory113c binary port verified in tests/oracle/k2/real-itemdrop-pipeline.test.ts; runtime-executed in dllExecuted∩tsExecuted (tests/oracle/k2/replay-k2-coverage.test.ts)"
+    "diffEvidence": "1:1 SparseMemory113c binary port verified in tests/oracle/k2/real-itemdrop-pipeline.test.ts; runtime-executed in dllExecuted\u2229tsExecuted (tests/oracle/k2/replay-k2-coverage.test.ts)"
   },
   {
     "module": "D2Game",
@@ -194,8 +194,8 @@
     "name": "OBJECTS_FindFreeDropCoordsAndSpawnItem_6FC51000",
     "kernFile": "src/d2kern-113c/game/k2-real-itemdrop-113c.ts",
     "tsSymbol": "OBJECTS_FindFreeDropCoordsAndSpawnItem_6FC51000_113c",
-    "status": "ported",
-    "diffEvidence": "1:1 SparseMemory113c binary port verified in tests/oracle/k2/real-itemdrop-pipeline.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Wave 17 1:1 PE32 disassembly verification against D2Game.dll@0x6FC51000 (2027B) in tests/oracle/k2/k2-disasm-verified-wave17.test.ts. Fixed unconditional lastSpawnedObj resets at seed/extra object spawn sites (0x6FC5140E, 0x6FC5165C)."
   },
   {
     "module": "D2Game",

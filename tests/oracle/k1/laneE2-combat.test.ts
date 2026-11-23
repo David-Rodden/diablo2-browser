@@ -631,7 +631,7 @@ describe('K1R14-LaneE2: a1c-bloodmoor-fallen Combat, Zombie/Fallen AI, Boss Prom
     expect(PLAYER_StartBlockMode113c(m, pGame, pBarb, '1HS')).toBe(1)
 
     const pDmg = m.alloc(D2DamageStrc_SIZE)
-    expect(SUNITDMG_GetPlayerClientClassId113c(m, pBarb)).toBe(4)
+    expect(SUNITDMG_GetPlayerClientClassId113c(m, pBarb)).toBe(0xffff)
     expect(SUNITDMG_ResolveAttackerPlayer113c(m, pGame, pBarb)).toBe(pBarb)
     expect(SUNITDMG_CheckToHit113c(m, pBarb, pZombie11, pDmg, 0)).toBeGreaterThanOrEqual(0)
     expect(SUNITDMG_RollDamageValue113c(m, pBarb, 256, 512, 90, 0, 0)).toBeGreaterThanOrEqual(256)

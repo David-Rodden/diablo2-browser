@@ -1402,8 +1402,7 @@ export function hydrateFallenSliceFromMemdump113c(
     }
   }
   // Rebind `pTimer->pPool` to a live `0x7088` chunk in `SparseMemory113c`
-  m.set(pTimer, D2TimerStrc.pPool, 0)
-  EVENT_AllocChunk113c(m, pTimer)
+  m.set(pTimer, D2TimerStrc.pPool, EVENT_AllocChunk113c(m, pGame))
   ensureD2CommonPathGlobals113c(m)
 
   // Parse `a1c-coll-f785.bin.gz`: header `(x0, y0, w, h)` + `uint16[w * h]` at byte 16

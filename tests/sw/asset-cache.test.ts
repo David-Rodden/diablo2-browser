@@ -557,7 +557,7 @@ describe('Client Asset Cache & Per-File Hash Invalidation (Service Worker + Cach
 
   it('includes cursor-pd2/ assets in public/asset-manifest.json and enforces the public/ top-level root anti-leak gate (#1314)', async () => {
     expect(CACHEABLE_PREFIXES).toContain('cursor-pd2/')
-    expect(INTENTIONALLY_UNCACHED_PUBLIC_DIRS).toEqual([])
+    expect(INTENTIONALLY_UNCACHED_PUBLIC_DIRS).toEqual(['skins/'])
     expect(INTENTIONALLY_UNCACHED_PUBLIC_FILES).toContain('asset-manifest.json')
     expect(INTENTIONALLY_UNCACHED_PUBLIC_FILES).toContain('musicbox.html')
 

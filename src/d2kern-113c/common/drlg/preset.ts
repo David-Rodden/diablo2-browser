@@ -14,7 +14,11 @@ import {
   D2RoomExStrc,
 } from '../../mem/layout.generated.ts'
 import { DATATBLS_GetLvlPrestTxtRecordFromLevelId113c } from '../../tables/lvl-tbls-113c.ts'
-import { D2CommonAssertError, SEED_RollRandomNumberInline113c } from '../inline-helpers.ts'
+import {
+  D2CommonAssertError,
+  SEED_RollRandomNumberInline113c,
+  withDrlgStackScratch113c,
+} from '../inline-helpers.ts'
 import { imul32, sdiv32 } from '../int-math.ts'
 import { fogGetLinkIndex113c } from '../inventory.ts'
 import { STATLIST_FindStatIndex113c } from '../statlist.ts'
@@ -50,7 +54,8 @@ function withPresetStackScratch113c(m: Memory113c): Memory113c {
     const u = p >>> 0
     return u >= PRESET_STACK_BASE && u < PRESET_STACK_BASE + PRESET_STACK_SIZE
   }
-  const self: Memory113c = {
+  const self: Memory113c & { inner: Memory113c } = {
+    inner: m,
     alloc: size => m.alloc(size),
     u8: p => (isStack(p) ? _presetStackU8[(p >>> 0) - PRESET_STACK_BASE]! : m.u8(p)),
     u16: p => (isStack(p) ? _presetStackDV.getUint16((p >>> 0) - PRESET_STACK_BASE, true) : m.u16(p)),
@@ -560,15 +565,16 @@ export function DRLGPRESET_LoadFileFromArchive113c(
       }
       m.fill(pBuf, allocSize, 0)
       if (dwSize > 0) {
+        const sm = withDrlgStackScratch113c(m, (0x4000 + dwSize + 16) >>> 0)
         const hSizeScratch = 0x7fb94100
-        m.setU32(hSizeScratch, dwSize)
-        m.setU32((hSizeScratch + 4) >>> 0, 0)
-        const verifiedSize = DRLGPRESET_GetFileSize113c(m, hSizeScratch, 0) >>> 0
+        sm.setU32(hSizeScratch, dwSize)
+        sm.setU32((hSizeScratch + 4) >>> 0, 0)
+        const verifiedSize = DRLGPRESET_GetFileSize113c(sm, hSizeScratch, 0) >>> 0
         const hDataScratch = 0x7fb98000
         for (let i = 0; i < verifiedSize; i++) {
-          m.setU8((hDataScratch + i) >>> 0, bytes[i]!)
+          sm.setU8((hDataScratch + i) >>> 0, bytes[i]!)
         }
-        DRLGPRESET_ReadFileData113c(m, hDataScratch, verifiedSize, pBuf)
+        DRLGPRESET_ReadFileData113c(sm, hDataScratch, verifiedSize, pBuf)
       }
       if (pdwSize !== 0) {
         m.setU32(pdwSize >>> 0, dwSize)

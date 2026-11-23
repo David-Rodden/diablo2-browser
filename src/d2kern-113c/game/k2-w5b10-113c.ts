@@ -125,10 +125,11 @@ function dispatchMonsterStartMode6FC95E10(
   const pTarget = m.u32((pModeArgs + 0x08) >>> 0) >>> 0
   const targetX = m.u32((pModeArgs + 0x0c) >>> 0) | 0
   const targetY = m.u32((pModeArgs + 0x10) >>> 0) | 0
+  const pathTypeArg = m.u8((pModeArgs + 0x15) >>> 0)
   if (hooks !== undefined && hooks.world !== undefined) {
     return MONSTER_StartMode113c(hooks.world, pUnit, mode, pTarget, targetX, targetY) ? 1 : 0
   }
-  return MONSTER_StartModeMem113c(m, pGame >>> 0, pUnit, mode, pTarget, targetX, targetY) | 0
+  return MONSTER_StartModeMem113c(m, pGame >>> 0, pUnit, mode, pTarget, targetX, targetY, pathTypeArg, bUpdateAnim | 0) | 0
 }
 
 function aiIdleWander6FD11B10(
@@ -141,7 +142,7 @@ function aiIdleWander6FD11B10(
   if (hooks !== undefined && hooks.world !== undefined) {
     return AI_IdleWander113c(hooks.world, pUnit >>> 0, range | 0) ? 1 : 0
   }
-  return AI_WalkWanderAroundSelf_6FD129B0_113c(m, range | 0, pGame >>> 0, pUnit >>> 0, hooks)
+  return AI_IdleWander113c(m, pGame >>> 0, pUnit >>> 0, range | 0) | 0
 }
 
 function aiApproachTarget6FD12540(
@@ -169,6 +170,21 @@ function aiApproachTarget6FD12540(
     )
       ? 1
       : 0
+  }
+  if (hooks === undefined || hooks.onMonsterStartMode === undefined) {
+    return (
+      AI_ApproachTarget113c(
+        m,
+        pGame >>> 0,
+        pUnit >>> 0,
+        pTarget >>> 0,
+        nMode | 0,
+        nX | 0,
+        nY | 0,
+        nStepNum | 0,
+        dwFlags | 0,
+      ) | 0
+    )
   }
 
   let mode = nMode | 0
@@ -772,9 +788,8 @@ export function AI_FindTargetOrUnstickOverlap_6FD13150_113c(
     if ((pOutInMeleeRange >>> 0) !== 0) {
       m.setU32(pOutInMeleeRange >>> 0, 0)
     }
-    if ((pOutDistance >>> 0) !== 0) {
-      const outDist = found.distance === 0x7fffffff ? 0 : found.distance >>> 0
-      m.setU32(pOutDistance >>> 0, outDist)
+    if (pOutDistance >>> 0 !== 0) {
+      m.setU32(pOutDistance >>> 0, found.distance >>> 0)
     }
   }
 

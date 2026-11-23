@@ -15,6 +15,7 @@ import {
   DUNGEON_GetLevelIdFromRoom113c,
   DUNGEON_ToggleHasPortalFlag113c,
 } from '../common/dungeon';
+import { D2CommonAssertError } from '../common/inline-helpers';
 import {
   INVENTORY_AllocCorpse113c,
   INVENTORY_AppendItemGuidNode113c,
@@ -59,12 +60,14 @@ import {
 } from '../common/skills';
 import {
   STATES_ToggleGfxStateFlag113c,
+  STATLIST_GetUnitGoldBankLimit113c,
   STATLIST_GetUnitStat113c,
   STATLIST_SetUnitStat113c,
 } from '../common/statlist';
 import {
   DATATBLS_GetObjectsTxtRecord113c,
   UNITS_GetRoom113c,
+  UNITS_SetUnitUpdateFlags113c,
   UNIT_Alloc113c,
 } from '../common/unit';
 import {
@@ -86,6 +89,7 @@ import {
   D2GAME_SUNIT_IterateAllLivingPlayers113c,
 } from './boot-init-gap-b-113c';
 import {
+  ACT1Q1_Callback03_LevelChanged113c,
   ACT1Q6_Callback03_LevelChanged113c,
 } from './a1c-post150-f150-f276-113c';
 import {
@@ -111,6 +115,7 @@ import {
 } from './k2-laneI-0x6fc3-w1-113c';
 import {
   QUESTS_AppendQuestTimer_6FC53AF0_113c,
+  QUESTS_CheckGlobalQuestState_6FC538D0_113c,
   QUESTS_SetGlobalQuestState_6FC53920_113c,
   QUESTS_TriggerItemDropped_6FC545A0_113c,
 } from './k2-laneJ-0x6fc4-w1-113c';
@@ -190,6 +195,9 @@ import {
   C2S_ValidateCursorItem_6FCECF70_113c,
 } from './k2-w5b6-113c';
 import {
+  SUNIT_FindFirstLivingPlayerOrMonsterMatching_6FCFFCC0_113c,
+} from './k2-w5b7-113c';
+import {
   ACT3Q2_SetGidbinnState0ECallback_6FD04280_113c,
   ACT3Q2_SetGidbinnTurnInPartyCallback_6FD041D0_113c,
   ACT3Q4_CompleteLamEsensTomePartyCallback_6FD064C0_113c,
@@ -204,6 +212,7 @@ import {
 } from './k2-w6b1-113c';
 import {
   ACT2Q6_UnitIterate_CompleteInTalRashaChamber_6FCE59A0_113c,
+  NET_BroadcastSystemChatMessage_6FCEBE70_113c,
 } from './k2-w6b3-113c';
 import {
   QUESTS_SetGameQuestFlag20AndSyncPlayers_6FC55E90_113c,
@@ -266,6 +275,7 @@ import {
   QUESTS_FindAndDeletePlayerQuestItemByCode_6FC566A0_113c,
   SKILLS_SpawnBoneWallSegment_6FC70E60_113c,
   SKILLS_SummonMonsterFromSkillOrMissile_6FCB5D50_113c,
+  dispatchQuestSeqFilterF0_113c,
 } from './k2-w14b1-113c';
 import {
   UNITS_ChangeAnimMode113c,
@@ -281,7 +291,7 @@ import {
   UNIT_GetPosY113c,
 } from './regpop-spawn-113c';
 import {
-  EVENT_DeleteEventByType113c,
+  EVENT_FreeNode113c,
   EVENT_SetEventFull113c,
 } from './timer-wheel';
 import { hitD2GameVa113c } from '../va-trace-113c';
@@ -419,6 +429,8 @@ export interface W15B1Hooks113c {
   ) => number;
   hireAct3FreeMercenary?: (m: D2Memory113c, pGame: number, pPlayer: number, nAct: number) => void;
   compellingOrbPartyCallback?: (m: D2Memory113c, pGame: number, pUnit: number, pArg: number) => void;
+  onQuestCallbackAC?: (m: D2Memory113c, pQuest: number, pArg: number, pfnCallback: number) => void;
+  onQuestCallbackF0?: (m: SparseMemory113c, pQuestData: number) => void;
 }
 
 /**
@@ -449,19 +461,20 @@ export function CLIENT_NotifyAndDisconnectClient_6FC4D090_113c(
   m.setU8(pPacket5A + 1, bReasonByte & 0xff);
   m.setU8(pPacket5A + 2, 0x04);
   m.setU32(pPacket5A + 3, 0);
+  m.setU8(pPacket5A + 7, 0);
 
   let foundEndName = false;
   for (let i = 0; i < 16; i++) {
     const ch = foundEndName ? 0 : m.u8(pClient + 0x0d + i);
     if (ch === 0) foundEndName = true;
-    m.setU8(pPacket5A + 7 + i, ch);
+    m.setU8(pPacket5A + 0x08 + i, ch);
   }
 
   let foundEndAcct = false;
   for (let i = 0; i < 16; i++) {
     const ch = foundEndAcct ? 0 : m.u8(pClient + 0x1d + i);
     if (ch === 0) foundEndAcct = true;
-    m.setU8(pPacket5A + 0x17 + i, ch);
+    m.setU8(pPacket5A + 0x18 + i, ch);
   }
   m.setU8(pPacket5A + 0x27, 0);
 
@@ -546,8 +559,12 @@ export function QUESTS_OnBossActChangeOrBossKill_6FC56890_113c(
           m.setU32(pArg + 0x0c, pPlayer);
           m.setU32(pArg + 0x14, 1);
           m.setU32(pArg + 0x18, 0x28);
-          if (pfnCallback === 0x6fc85040) {
+          if (pfnCallback === 0x6fc83dd0) {
+            ACT1Q1_Callback03_LevelChanged113c(m, pQuest6, pArg);
+          } else if (pfnCallback === 0x6fc85040) {
             ACT1Q6_Callback03_LevelChanged113c(m, pQuest6, pArg);
+          } else if (hooks && hooks.onQuestCallbackAC) {
+            hooks.onQuestCallbackAC(m, pQuest6, pArg, pfnCallback);
           }
         }
       }
@@ -601,8 +618,9 @@ export function QUESTS_OnBossActChangeOrBossKill_6FC56890_113c(
   }
 }
 
-const RADIAL_RING_12_DX_113C = [-2, 0, 2, 4, 4, 4, 2, 0, -2, -4, -4, -4];
-const RADIAL_RING_12_DY_113C = [-4, -4, -4, -2, 0, 2, 4, 4, 4, 2, 0, -2];
+// 1.13c D2Game.dll static tables at 0x6FD1C1AC (DX) and 0x6FD1C17C (DY).
+const RADIAL_RING_12_DX_113C = [-1, 1, 3, 4, 4, 3, -1, 1, -3, -4, -4, -3];
+const RADIAL_RING_12_DY_113C = [-4, -4, -3, -1, 1, 3, 4, 4, 3, -1, 1, -3];
 
 /**
  * Spawns up to 12 radial minion units in a ring around the caster's target coordinates,
@@ -660,7 +678,7 @@ export function SKILLS_SrvDo_SpawnRadialMinionRing12_6FC71E70_113c(
           const pMonData = m.u32(pSpawned + 0x14);
           const pAiGen = pMonData !== 0 ? m.u32(pMonData + 0x28) : 0;
           if (pAiGen !== 0) {
-            m.setU32(pAiGen + 0x08, (m.u32(pAiGen + 0x08) | 0x02) >>> 0);
+            m.setU8(pAiGen + 0x08, (m.u8(pAiGen + 0x08) | 0x02) & 0xff);
             const dwOwnerGuid = pUnit !== 0 ? m.u32(pUnit + 0x0c) : 0xffffffff;
             const dwOwnerType = pUnit !== 0 ? m.u32(pUnit) : 0x06;
             m.setU32(pAiGen + 0x2c, dwOwnerGuid);
@@ -780,11 +798,12 @@ export function ACT5Q3_Callback02_OnFrozenAnyaObjectActivate_6FC7CD50_113c(
     if (m.u8(pQuest + 0x0b) === 1) {
       m.setU8(pQuest + 0x14, 0);
       m.setU8(pQuest + 0x0b, 3);
-      D2GAME_SUNIT_IterateAllLivingPlayers113c(
+      SUNIT_FindFirstLivingPlayerOrMonsterMatching_6FCFFCC0_113c(
         m,
-        pGame,
+        m.u32(pQuest + 0x04),
         ACT5Q3_SendAlert21IfQuest25Active_6FC791D0_113c,
-        pQuest,
+        0,
+        0,
       );
     }
     return;
@@ -796,6 +815,10 @@ export function ACT5Q3_Callback02_OnFrozenAnyaObjectActivate_6FC7CD50_113c(
     DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, nQuestId, 0) !== 0 ||
     DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, nQuestId, 1) !== 0
   ) {
+    return;
+  }
+
+  if (ITEMS_FindQuestItemByBaseCode_6FC2E660_113c(m, pPlayer, pGame, 0x20656369) === 0) {
     return;
   }
 
@@ -811,43 +834,35 @@ export function ACT5Q3_Callback02_OnFrozenAnyaObjectActivate_6FC7CD50_113c(
   m.setU8(pQuest + 0x14, 0);
   m.setU8(pQuest + 0x0b, 5);
 
-  D2GAME_SUNIT_IterateAllLivingPlayers113c(
+  const pQuestGame = m.u32(pQuest + 0x04);
+  SUNIT_FindFirstLivingPlayerOrMonsterMatching_6FCFFCC0_113c(
     m,
-    pGame,
+    pQuestGame,
     ACT5Q3_SendAlert21IfQuest25Active_6FC791D0_113c,
-    pQuest,
+    0,
+    0,
   );
-  D2GAME_SUNIT_IterateAllLivingPlayers113c(
+  QUESTS_SetGameQuestFlag20AndSyncPlayers_6FC55E90_113c(m, pQuestGame, 0x10);
+  SUNIT_FindFirstLivingPlayerOrMonsterMatching_6FCFFCC0_113c(
     m,
     pGame,
     ACT5Q3_PropagateQuestStateToPartyCallback_6FC7B120_113c,
+    0,
     pPlayer,
   );
-  D2GAME_SUNIT_IterateAllLivingPlayers113c(
+  SUNIT_FindFirstLivingPlayerOrMonsterMatching_6FCFFCC0_113c(
     m,
     pGame,
     ACT5Q3_SyncPlayerQuest25State0EAlert21_6FC79120_113c,
-    pQuest,
+    0,
+    pPlayer,
   );
 
-  QUESTS_SetGameQuestFlag20AndSyncPlayers_6FC55E90_113c(m, pGame, 0x10);
-
-  if (m.u32(pState + 0x100) === 0) {
-    m.setU32(pState + 0x100, 1);
-    let nObjX = 0;
-    let nObjY = 0;
+  if (m.u8(pState + 0x100) === 0) {
+    m.setU8(pState + 0x100, 1);
     if (pObject !== 0) {
-      const eType = m.u32(pObject);
-      const pPath = m.u32(pObject + 0x2c);
-      if (eType === 0 || eType === 1 || eType === 3) {
-        if (pPath !== 0) {
-          nObjX = PATH_GetPosX113c(m, pPath);
-          nObjY = PATH_GetPosY113c(m, pPath);
-        }
-      } else if (pPath !== 0) {
-        nObjX = (m.u32(pPath + 0x0c) | 0);
-        nObjY = (m.u32(pPath + 0x10) | 0);
-      }
+      const nObjX = UNIT_GetPosX113c(m, pObject);
+      const nObjY = UNIT_GetPosY113c(m, pObject);
       m.setU32(pState + 0xf0, nObjX >>> 0);
       m.setU32(pState + 0xf4, nObjY >>> 0);
       QUESTS_AppendQuestTimer_6FC53AF0_113c(m, 1, pQuest, 0x6fc7c480);
@@ -939,34 +954,33 @@ export function ACT1Q4_Callback02_OnCairnStoneActivate_6FC864F0_113c(
   }
 
   if (ITEMS_FindQuestItemByBaseCode_6FC2E660_113c(m, pPlayer, pGame, 0x20646b62) === 0) {
-    const nClickCount = (m.u32(pState + 0x2c) | 0);
-    m.setU32(pState + 0x2c, (nClickCount + 1) >>> 0);
-    if ((nClickCount & 0x3f) === 0) {
+    const nClickCount = m.u16(pState + 0x2c);
+    if (
+      (nClickCount & 0x3f) === 0 &&
+      DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 4, 3) === 0 &&
+      DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 4, 4) === 0
+    ) {
       SUNIT_SetUnitEventSound113c(m, pPlayer, 0x27, pPlayer);
     }
+    m.setU16(pState + 0x2c, (nClickCount + 1) & 0xffff);
     return;
   }
 
-  const pStoneObj = m.u32(pQuestArg + 0x04);
-  if (pStoneObj === 0) return;
-  const wStoneClassId = m.u16(pQuestArg + 0x10);
-  const nStep = m.u16(pState + 0x0c);
-
-  if (wStoneClassId !== m.u16(pState + nStep * 2)) {
+  const bActive = m.u8(pQuest + 0x09);
+  if (bActive === 0) {
     return;
   }
-  if (m.u32(pStoneObj + 0x10) !== 0) {
+  const bStage = m.u8(pQuest + 0x0c);
+  if (bStage >= 6) {
     return;
   }
 
-  const dwStoneGuid = m.u32(pStoneObj + 0x0c);
-  m.setU32(pState + 0x10 + nStep * 4, dwStoneGuid);
-  const nNextStep = (nStep + 1) & 0xffff;
-  m.setU16(pState + 0x0c, nNextStep);
-
-  const dwStone3DGuid = m.u32(pState + 0x28);
   let pStone3DObj = 0;
-  if (pGame !== 0) {
+  if (m.u8(pState + 0x49) === 1) {
+    if (pGame === 0) {
+      throw new D2CommonAssertError('Act1Q4', 0x2d3);
+    }
+    const dwStone3DGuid = m.u32(pState + 0x28);
     const pBucketHead = m.u32(pGame + 0x1520 + ((dwStone3DGuid & 0x7f) << 2));
     let pCur = pBucketHead;
     while (pCur !== 0) {
@@ -976,11 +990,54 @@ export function ACT1Q4_Callback02_OnCairnStoneActivate_6FC864F0_113c(
       }
       pCur = m.u32(pCur + 0xe4);
     }
+    if (m.u8(pState + 0x4e) === 0 && pStone3DObj !== 0 && m.u32(pStone3DObj + 0x04) === 0x3d) {
+      if (bStage === 0 && bActive === 1) {
+        ACT1Q4_BroadcastDebugQuestNotice_6FC835B0_113c(m, pQuest);
+        QUESTS_Act2RadamentSetStateAndDebugPrint_6FC55EB0_113c(m, pQuest, 1);
+      }
+      if (ITEMS_FindQuestItemByBaseCode_6FC2E660_113c(m, pPlayer, pGame, 0x20646b62) === 0) {
+        return;
+      }
+    }
   }
 
-  if (nNextStep >= 1 && nNextStep <= 4) {
+  if (m.u8(pState + 0x4f) === 1) {
+    return;
+  }
+
+  if (m.u8(pQuest + 0x0c) !== 5) {
+    if (m.u8(pQuest + 0x0c) === 0 && m.u8(pQuest + 0x09) === 1) {
+      ACT1Q4_BroadcastDebugQuestNotice_6FC835B0_113c(m, pQuest);
+      QUESTS_Act2RadamentSetStateAndDebugPrint_6FC55EB0_113c(m, pQuest, 1);
+    }
+    if (ITEMS_FindQuestItemByBaseCode_6FC2E660_113c(m, pPlayer, pGame, 0x20646b62) === 0) {
+      return;
+    }
+    m.setU8(pQuest + 0x0c, 5);
+  }
+
+  const pStoneObj = m.u32(pQuestArg + 0x04);
+  const wStoneClassId = m.u16(pQuestArg + 0x10);
+  const nStep = m.u16(pState + 0x0c);
+
+  if (wStoneClassId !== m.u16(pState + nStep * 2)) {
+    return;
+  }
+
+  const dwStoneGuid = pStoneObj !== 0 ? m.u32(pStoneObj + 0x0c) : 0xffffffff;
+  m.setU32(pState + 0x10 + nStep * 4, dwStoneGuid);
+  const nNextStep = (nStep + 1) & 0xffff;
+  m.setU16(pState + 0x0c, nNextStep);
+
+  if (pStoneObj !== 0 && m.u32(pStoneObj + 0x10) !== 0) {
+    return;
+  }
+
+  if (nNextStep >= 0 && nNextStep <= 4) {
     UNITS_ChangeAnimMode113c(m, pStoneObj, 1);
-    UNITS_ChangeAnimMode113c(m, pStone3DObj, nNextStep + 1);
+    if (pStone3DObj !== 0) {
+      UNITS_ChangeAnimMode113c(m, pStone3DObj, nNextStep + 1);
+    }
     return;
   }
 
@@ -989,61 +1046,112 @@ export function ACT1Q4_Callback02_OnCairnStoneActivate_6FC864F0_113c(
   }
 
   UNITS_ChangeAnimMode113c(m, pStoneObj, 1);
-  UNITS_ChangeAnimMode113c(m, pStone3DObj, 6);
+  if (pStone3DObj !== 0) {
+    UNITS_ChangeAnimMode113c(m, pStone3DObj, 6);
+  }
   m.setU8(pState + 0x4f, 1);
 
   removePlayerQuestItemByCode113c(m, pPlayer, 0x20646b62, pGame, hooks);
   m.setU32(pState + 0x7c, (m.u32(pState + 0x7c) - 1) >>> 0);
 
-  const pRoom = UNITS_GetRoom113c(m, pStoneObj);
-  if (pRoom !== 0) {
-    let pUnitIter = m.u32(pRoom + 0x74);
-    while (pUnitIter !== 0) {
-      if (m.u32(pUnitIter) === 2 && m.u32(pUnitIter + 0x04) === 0x15) {
-        break;
+  const pCoordOut = D2GAME_SCRATCH_W15B1_113C;
+  m.setU32(pCoordOut, 0);
+  m.setU32(pCoordOut + 4, 0);
+
+  for (let i = 0; i < 5; i++) {
+    if (m.u16(pState + i * 2) === 0x15) {
+      if (pGame === 0) {
+        throw new D2CommonAssertError('Act1Q4', 0x2d3);
       }
-      pUnitIter = m.u32(pUnitIter + 0xe8);
-    }
-    if (pUnitIter !== 0) {
-      const pPath = m.u32(pUnitIter + 0x2c);
-      if (pPath !== 0) {
-        m.setU32(pState + 0x38, m.u32(pPath + 0x0c));
-        m.setU32(pState + 0x3c, m.u32(pPath + 0x10));
+      const dwGuid = m.u32(pState + 0x10 + i * 4);
+      let pCur = m.u32(pGame + 0x1520 + ((dwGuid & 0x7f) << 2));
+      while (pCur !== 0) {
+        if (m.u32(pCur + 0x0c) === dwGuid) {
+          if (m.u32(pCur + 0x04) === 0x15) {
+            PATH_GetTargetTypeAndPosition113c(m, pCur, pCoordOut);
+          }
+          break;
+        }
+        pCur = m.u32(pCur + 0xe4);
       }
-    } else {
-      const pStonePath = m.u32(pStoneObj + 0x2c);
-      const nFallbackX = pStonePath !== 0 ? (m.u32(pStonePath + 0x0c) | 0) + 3 : 3;
-      const nFallbackY = pStonePath !== 0 ? (m.u32(pStonePath + 0x10) | 0) + 3 : 3;
-      m.setU32(pState + 0x38, nFallbackX >>> 0);
-      m.setU32(pState + 0x3c, nFallbackY >>> 0);
     }
   }
 
-  SKILLS_CreateProjectileAtTargetWithin100_6FCC0000_113c(
-    m,
-    pPlayer,
-    pGame,
-    0,
-    1,
-    0x120,
-    (m.u32(pState + 0x38) | 0),
-    (m.u32(pState + 0x3c) | 0),
-  );
+  if (m.u32(pCoordOut) === 0 && pStoneObj !== 0) {
+    const pAdjRoomsOut = D2GAME_SCRATCH_W15B1_113C + 0x10;
+    const pAdjCountOut = D2GAME_SCRATCH_W15B1_113C + 0x14;
+    m.setU32(pAdjRoomsOut, 0);
+    m.setU32(pAdjCountOut, 0);
+    const pStoneRoom = UNITS_GetRoom113c(m, pStoneObj);
+    if (pStoneRoom !== 0) {
+      DUNGEON_GetAdjacentRoomsListFromRoom113c(m, pStoneRoom, pAdjRoomsOut, pAdjCountOut);
+      const nRooms = m.u32(pAdjCountOut) >>> 0;
+      const ppRooms = m.u32(pAdjRoomsOut);
+      for (let r = 0; r < nRooms; r++) {
+        const pCandRoom = m.u32(ppRooms + r * 4);
+        let pUnitIter = pCandRoom !== 0 ? m.u32(pCandRoom + 0x74) : 0;
+        let found = false;
+        while (pUnitIter !== 0) {
+          if (m.u32(pUnitIter) === 2 && m.u32(pUnitIter + 0x04) === 0x15) {
+            PATH_GetTargetTypeAndPosition113c(m, pUnitIter, pCoordOut);
+            found = true;
+            break;
+          }
+          pUnitIter = m.u32(pUnitIter + 0xe8);
+        }
+        if (found) break;
+      }
+    }
+  }
+
+  if (m.u32(pCoordOut) !== 0) {
+    const nPortalX = ((m.u32(pCoordOut) | 0) + 6) | 0;
+    const nPortalY = ((m.u32(pCoordOut + 4) | 0) - 3) | 0;
+    const pMissile = SKILLS_CreateProjectileAtTargetWithin100_6FCC0000_113c(
+      m,
+      pPlayer,
+      pGame,
+      0,
+      1,
+      0x120,
+      nPortalX,
+      nPortalY,
+    );
+    if (pMissile !== 0) {
+      const pMissileRoom = UNITS_GetRoom113c(m, pMissile);
+      DUNGEON_ToggleHasPortalFlag113c(m, pMissileRoom, 0);
+    }
+  }
 
   if (m.u8(pQuest + 0x0b) < 4) {
     m.setU8(pQuest + 0x14, 0);
     m.setU8(pQuest + 0x0b, 4);
-    D2GAME_SUNIT_IterateAllLivingPlayers113c(
+    SUNIT_FindFirstLivingPlayerOrMonsterMatching_6FCFFCC0_113c(
       m,
-      pGame,
+      m.u32(pQuest + 0x04),
       ACT1Q4_SendAlert04IfQuest04Active_6FC82A80_113c,
-      pQuest,
+      0,
+      pPlayer,
     );
+    void SUNITDMG_GetPlayerClientClassId113c(m, pPlayer);
+    const pPlayerGame = pPlayer !== 0 ? m.u32(pPlayer + 0x80) : 0;
+    const wPartyId =
+      pPlayer !== 0 && pPlayerGame !== 0 && m.u32(pPlayer) === 0 && m.u32(pGame + 0x1d2c) !== 0
+        ? D2GAME_PARTY_GetPartyIdForUnit113c(m, pPlayer, pPlayerGame) & 0xffff
+        : 0xffff;
+    if (wPartyId !== 0xffff) {
+      PARTY_ForEachSubPartyPlayerUnit_6FCBC160_113c(
+        m,
+        pGame,
+        wPartyId,
+        ACT1Q4_SetCainRescuedByPartyCallback_6FC816F0_113c,
+        0,
+      );
+    }
+    QUESTRECORD_SetQuestState113c(m, pQuestFlags, 4, 4);
   }
 
-  ACT1Q4_BroadcastDebugQuestNotice_6FC835B0_113c(m, pQuest);
-  QUESTRECORD_SetQuestState113c(m, pQuestFlags, 4, 4);
-  QUESTS_SetGameQuestFlag20AndSyncPlayers_6FC55E90_113c(m, pGame, 1);
+  QUESTS_SetGameQuestFlag20AndSyncPlayers_6FC55E90_113c(m, m.u32(pQuest + 0x04), 1);
 }
 
 /**
@@ -1299,6 +1407,9 @@ export function PLAYER_CreateCorpseOnDeath_6FC99210_113c(
   pPlayer: number,
   pGame: number,
   hooks?: W15B1Hooks113c,
+  nXArg?: number,
+  nYArg?: number,
+  pRoomArg?: number,
 ): number {
   hitD2GameVa113c(0x6FC99210);
   if (pPlayer === 0 || pGame === 0) return 0;
@@ -1318,94 +1429,76 @@ export function PLAYER_CreateCorpseOnDeath_6FC99210_113c(
     return 0;
   }
 
-  let nX = 0;
-  let nY = 0;
-  const eType = m.u32(pPlayer);
-  const pPath = m.u32(pPlayer + 0x2c);
-  if (eType === 0 || eType === 1 || eType === 3) {
-    if (pPath !== 0) {
-      nX = PATH_GetPosX113c(m, pPath);
-      nY = PATH_GetPosY113c(m, pPath);
+  let nCorpseX = 0;
+  let nCorpseY = 0;
+  let pOrigRoom = 0;
+  if (pRoomArg !== undefined) {
+    pOrigRoom = pRoomArg >>> 0;
+    nCorpseX = (nXArg !== undefined ? nXArg : 0) | 0;
+    nCorpseY = (nYArg !== undefined ? nYArg : 0) | 0;
+    if (pOrigRoom === 0) {
+      throw new D2CommonAssertError('PlrDeath', 0x2fc);
     }
-  } else if (pPath !== 0) {
-    nX = (m.u32(pPath + 0x0c) | 0);
-    nY = (m.u32(pPath + 0x10) | 0);
+  } else {
+    const eType = m.u32(pPlayer);
+    const pPath = m.u32(pPlayer + 0x2c);
+    if (eType === 0 || eType === 1 || eType === 3) {
+      if (pPath !== 0) {
+        nCorpseX = PATH_GetPosX113c(m, pPath);
+        nCorpseY = PATH_GetPosY113c(m, pPath);
+      }
+    } else if (pPath !== 0) {
+      nCorpseX = m.u32(pPath + 0x0c) | 0;
+      nCorpseY = m.u32(pPath + 0x10) | 0;
+    }
+    pOrigRoom = UNITS_GetRoom113c(m, pPlayer) >>> 0;
+    if (pOrigRoom === 0) {
+      throw new D2CommonAssertError('PlrDeath', 0x2fc);
+    }
   }
 
-  const pOrigRoom = UNITS_GetRoom113c(m, pPlayer);
-  let pTargetRoom = ROOM_FindRoomContainingSubtile113c(m, pOrigRoom, nX, nY);
-  let nCorpseX = nX;
-  let nCorpseY = nY;
-
+  const pTargetRoom = ROOM_FindRoomContainingSubtile113c(m, pOrigRoom, nCorpseX, nCorpseY) >>> 0;
   if (pTargetRoom === 0) {
-    const pppRoomsNear = D2GAME_SCRATCH_W15B1_113C;
-    const pnRoomsNear = D2GAME_SCRATCH_W15B1_113C + 4;
-    m.setU32(pppRoomsNear, 0);
-    m.setU32(pnRoomsNear, 0);
-    DUNGEON_GetAdjacentRoomsListFromRoom113c(m, pOrigRoom, pppRoomsNear, pnRoomsNear);
-    const nRooms = (m.u32(pnRoomsNear) | 0);
-    const ppList = m.u32(pppRoomsNear);
-    for (let i = 0; i < nRooms; i++) {
-      const pCand = m.u32(ppList + i * 4);
-      if (pCand !== 0 && DUNGEON_CheckRoomIsTownMemPort113c(m, pCand) === 0) {
-        pTargetRoom = pCand;
-        break;
-      }
-    }
-    if (pTargetRoom === 0) {
-      if (hooks && hooks.dropAllPlayerEquipmentAndGold) {
-        hooks.dropAllPlayerEquipmentAndGold(m, pPlayer, pGame);
-      } else {
-        PLRDEATH_DropPlayerEquippedItemsAndGoldToCorpseOrGround_6FC98FA0_113c(
-          m as SparseMemory113c,
-          pPlayer,
-          pGame,
-        );
-      }
-      return 0;
-    }
-    const pRoomCoords = m.u32(pTargetRoom + 0x0c);
-    if (pRoomCoords !== 0) {
-      const nSubX = (m.u32(pRoomCoords) | 0);
-      const nSubW = (m.u32(pRoomCoords + 0x08) | 0);
-      const nSubY = (m.u32(pRoomCoords + 0x04) | 0);
-      const nSubH = (m.u32(pRoomCoords + 0x0c) | 0);
-      nCorpseX = nSubX + Math.trunc(nSubW / 2);
-      nCorpseY = nSubY + Math.trunc(nSubH / 2);
-    }
+    throw new D2CommonAssertError('PlrDeath', 0x2fe);
   }
 
-  const pOutCoords = D2GAME_SCRATCH_W15B1_113C + 0x10;
-  m.setU32(pOutCoords, nCorpseX >>> 0);
-  m.setU32(pOutCoords + 4, nCorpseY >>> 0);
-  COLLISION_FindFreePositionBasic113c(m, pTargetRoom, pOutCoords, 2, 0x3e01, 0x1c09, 0, 0);
-  nCorpseX = (m.u32(pOutCoords) | 0);
-  nCorpseY = (m.u32(pOutCoords + 4) | 0);
+  const nClassId = m.u32(pPlayer + 0x04) >>> 0;
+  if (nClassId >= 7) {
+    throw new D2CommonAssertError('PlrDeath', 0x303);
+  }
 
   const pCorpseUnit = UNIT_Alloc113c(m, 0);
   if (pCorpseUnit === 0) {
-    if (hooks && hooks.dropAllPlayerEquipmentAndGold) {
-      hooks.dropAllPlayerEquipmentAndGold(m, pPlayer, pGame);
-    } else {
-      PLRDEATH_DropPlayerEquippedItemsAndGoldToCorpseOrGround_6FC98FA0_113c(
-        m as SparseMemory113c,
-        pPlayer,
-        pGame,
-      );
-    }
-    return 0;
+    throw new D2CommonAssertError('PlrDeath', 0x303);
   }
+
+  m.setU32(pCorpseUnit, 0);
+  m.setU32(pCorpseUnit + 0x04, nClassId);
+  m.setU32(pCorpseUnit + 0x08, m.u32(pGame + 0x1c));
+  m.setU32(pCorpseUnit + 0x80, pGame);
+
+  let flags2 = m.u32(pCorpseUnit + 0xc8);
+  if (m.u32(pGame + 0x70) !== 0) {
+    flags2 = (flags2 | 0x2000000) >>> 0;
+  } else {
+    flags2 = (flags2 & ~0x2000000) >>> 0;
+  }
+  flags2 = (flags2 | 0x4000000) >>> 0;
+  m.setU32(pCorpseUnit + 0xc8, flags2);
+
+  const nLevelId = DUNGEON_GetLevelIdFromRoom113c(m, pTargetRoom);
+  const nActNo = DRLG_GetActNoFromLevelId113c(m, nLevelId) & 0xff;
+  m.setU8(pCorpseUnit + 0x18, nActNo);
+  m.setU32(pCorpseUnit + 0x1c, m.u32(pGame + nActNo * 4 + 0xbc));
+  m.setU32(pCorpseUnit + 0x74, 0);
+  m.setU32(pCorpseUnit + 0xc4, (m.u32(pCorpseUnit + 0xc4) | 0x10) >>> 0);
+  m.setU32(pCorpseUnit + 0xd0, 0x0b);
 
   let dwCorpseGuid = (m.u32(pGame + 0x90) + 1) >>> 0;
   if (dwCorpseGuid === 0xffffffff) {
     dwCorpseGuid = 1;
   }
   m.setU32(pGame + 0x90, dwCorpseGuid);
-  m.setU32(pCorpseUnit + 0x04, m.u32(pPlayer + 0x04));
-  m.setU32(pCorpseUnit + 0x08, m.u32(pGame + 0x1c));
-  m.setU32(pCorpseUnit + 0x0c, dwCorpseGuid);
-  m.setU32(pCorpseUnit + 0xc4, 4);
-  SUNIT_InitUnitSeed113c(m, pCorpseUnit, pGame + 0xd0);
 
   if (hooks && hooks.initCorpsePlayerData) {
     hooks.initCorpsePlayerData(m, pGame, pCorpseUnit);
@@ -1418,155 +1511,148 @@ export function PLAYER_CreateCorpseOnDeath_6FC99210_113c(
     );
   }
 
-  SUNIT_PlaceServerUnitInRoom113c(m, pTargetRoom, nCorpseY, pCorpseUnit, nCorpseX, pGame, 0);
-  if (UNITS_GetRoom113c(m, pCorpseUnit) === 0) {
-    if (hooks && hooks.dropAllPlayerEquipmentAndGold) {
-      hooks.dropAllPlayerEquipmentAndGold(m, pPlayer, pGame);
-    } else {
-      PLRDEATH_DropPlayerEquippedItemsAndGoldToCorpseOrGround_6FC98FA0_113c(
-        m as SparseMemory113c,
-        pPlayer,
-        pGame,
-      );
-    }
-    return 0;
+  SUNIT_PlaceServerUnitInRoom113c(m, pTargetRoom, nCorpseY, pCorpseUnit, nCorpseX, pGame, 1);
+
+  const nCorpseMode = m.u32(pCorpseUnit + 0x10);
+  if (nCorpseMode === 0x11 || nCorpseMode === 0) {
+    PATH_RemoveUnitCollisionFootprint113c(m, pCorpseUnit, 1);
+    PATH_SetUnitCollisionPattern113c(m, pCorpseUnit, 5);
+    PATH_SetCollisionMask113c(m, m.u32(pCorpseUnit + 0x2c), 0x8000);
   }
 
-  PATH_RemoveUnitCollisionFootprint113c(m, pCorpseUnit, 1);
-  PATH_SetCollisionMask113c(m, m.u32(pCorpseUnit + 0x2c), 0x80);
-  PATH_SetUnitCollisionPattern113c(m, pCorpseUnit, 0);
-  UNITS_ChangeAnimMode113c(m, pCorpseUnit, 0x10);
-  m.setU32(pCorpseUnit + 0xc4, (m.u32(pCorpseUnit + 0xc4) | 0x20000) >>> 0);
-  STATES_ToggleGfxStateFlag113c(m, pCorpseUnit, 0x1a, 1);
-
-  const pCorpseInv = m.u32(pCorpseUnit + 0x60);
   const pClient = getPlayerClient113c(m, pPlayer);
+  m.setU32(pCorpseUnit + 0xc4, (m.u32(pCorpseUnit + 0xc4) & ~0x04) >>> 0);
+  SUNIT_SetPlayerClientPtr_6FD00040_113c(m, pCorpseUnit, pClient);
   const pSzName = CLIENTS_GetClientNamePtr_6FC69A20_113c(m, pClient);
   UNITS_SetPlayerName113c(m, pCorpseUnit, pSzName);
-  SUNIT_SetPlayerClientPtr_6FD00040_113c(m, pCorpseUnit, pClient);
+  SUNIT_InitUnitSeed113c(m, pCorpseUnit, pGame + 0xd0);
 
-  const nPenalty = pClient !== 0 ? (m.u32(pClient + 0x508) | 0) : 0;
-  const nBankGold = STATLIST_GetUnitStat113c(m, pPlayer, 0x0f, 0);
-  if (nPenalty > nBankGold) {
-    const nRemainder = nPenalty - nBankGold;
-    if (pClient !== 0) {
-      m.setU32(pClient + 0x508, nRemainder >>> 0);
-    }
-    STATLIST_SetUnitStat113c(m, pPlayer, 0x0f, 0, 0);
-  } else {
-    STATLIST_SetUnitStat113c(m, pPlayer, 0x0f, nBankGold - nPenalty, 0);
-    if (pClient !== 0) {
-      m.setU32(pClient + 0x508, 0);
-    }
-  }
+  UNITS_ChangeAnimMode113c(m, pCorpseUnit, 0x11);
+  STATES_ToggleGfxStateFlag113c(m, pCorpseUnit, 7, 1);
+  m.setU32(pCorpseUnit + 0xc8, (m.u32(pCorpseUnit + 0xc8) | 0x1000) >>> 0);
+  m.setU32(pCorpseUnit + 0xc4, (m.u32(pCorpseUnit + 0xc4) | 0x02) >>> 0);
 
   if (pClient !== 0) {
-    m.setU32(pClient + 0x508, Math.trunc((m.u32(pClient + 0x508) | 0) * 3 / 4) >>> 0);
-  }
-
-  const nMaxExp = STATLIST_GetUnitStat113c(m, pPlayer, 0x1e, 0);
-  const nCurExp = STATLIST_GetUnitStat113c(m, pPlayer, 0x0d, 0);
-  if (nCurExp > nMaxExp && pClient !== 0) {
-    const nDiffExp = nCurExp - nMaxExp;
-    const nHalfLost = Math.trunc((nDiffExp - (m.u32(pClient + 0x504) | 0)) / 2);
-    STATLIST_SetUnitStat113c(m, pCorpseUnit, 0x0d, nHalfLost, 0);
-  }
-
-  INVENTORY_AllocCorpse113c(m, pPlayerInv, m.u32(pCorpseUnit + 0x0c), SUNITDMG_GetPlayerClientClassId113c(m, pPlayer), 1);
-
-  let pLeftItem = INVENTORY_GetCompositWeaponMemPort113c(m, pPlayerInv);
-  if (pLeftItem !== 0 && m.u32(pLeftItem) === 4) {
-    const pLeftData = m.u32(pLeftItem + 0x14);
-    const bLoc = pLeftData !== 0 ? m.u8(pLeftData + 0x44) : 0;
-    if (bLoc === 4 || bLoc === 5 || bLoc === 0x0b || bLoc === 0x0c) {
-      INVENTORY_SetLeftItemGuid113c(m, pCorpseInv, m.u32(pLeftItem + 0x0c));
+    const nLostExp = m.u32(pClient + 0x508) | 0;
+    let nCorpseExp = 0;
+    if (nLostExp > 0x100000) {
+      if ((nLostExp & 0xfffffff0) >= 0x640) {
+        nCorpseExp = Math.trunc(nLostExp / 100) * 75;
+      } else {
+        nCorpseExp = Number((BigInt(nLostExp) * 75n) / 100n);
+      }
+    } else {
+      nCorpseExp = Math.trunc((nLostExp * 75) / 100);
     }
+    m.setU32(pClient + 0x508, 0);
+    STATLIST_SetUnitStat113c(m, pCorpseUnit, 0x0d, nCorpseExp | 0, 0);
   }
+
+  const dwActualCorpseGuid = m.u32(pCorpseUnit + 0x0c);
+  INVENTORY_AllocCorpse113c(m, pPlayerInv, dwActualCorpseGuid, 0, 1);
+
+  const dwPlayerGuid = m.u32(pPlayer + 0x0c);
+  const pCorpseInv = m.u32(pCorpseUnit + 0x60);
+  if (dwActualCorpseGuid === dwPlayerGuid) {
+    throw new D2CommonAssertError('PlrDeath', 0x319);
+  }
+  INVENTORY_SetLeftItemGuid113c(m, pCorpseInv, dwPlayerGuid);
 
   for (let nLoc = -1; nLoc < 13; nLoc++) {
     const pSrcItem =
       nLoc === -1
         ? INVENTORY_GetCursorItem113c(m, pPlayerInv)
         : INVENTORY_GetItemFromBodyLocMemPort113c(m, pPlayerInv, nLoc);
-    if (pSrcItem === 0 || m.u32(pSrcItem) !== 4) {
+    if (pSrcItem === 0) {
       continue;
     }
-    const pItemRec = DATATBLS_GetItemsTxtRecordMemPort113c(m, m.u32(pSrcItem + 0x04));
-    if (pItemRec !== 0 && m.u8(pItemRec + 0x127) !== 0 && m.u8(pItemRec + 0x128) === 0) {
-      QUESTS_TriggerItemDropped_6FC545A0_113c(m, pGame, pSrcItem, pPlayer);
+    if (nLoc === -1) {
+      PLAYER_ClearCursorItemAndNotify42_6FC97D90_113c(m, pPlayer, pSrcItem);
     } else {
-      const pCloned = ITEMS_DuplicateItemWithSocketFillers_6FC307E0_113c(m, pGame, pSrcItem, 1);
-      if (pCloned !== 0) {
-        ITEMS_SetItemFlag113c(m, pCloned, 0x400, 1);
-        let bEquippedOnCorpse = 0;
-        if (nLoc === -1) {
-          PLAYER_ClearCursorItemAndNotify42_6FC97D90_113c(m, pPlayer, pSrcItem);
-          const bLoD = m.u32(pGame + 0x70);
-          const nInvRecId = UNITS_GetInventoryRecordId113c(m, pCorpseUnit, 0, bLoD);
-          ITEMS_SetInvPage113c(m, pCloned, 0);
-          if (
-            INVENTORY_AutoPlaceItemInGrid113c(m, pCorpseInv, pCloned, nInvRecId, 0, 0, 0, 0) !== 0 &&
-            INVENTORY_PlaceItemInSocket113c(m, pCorpseInv, pCloned, 1) !== 0
-          ) {
-            INVENTORY_AppendItemGuidNode113c(m, pCorpseInv, pCloned);
-            bEquippedOnCorpse = 1;
-          }
-        } else {
-          D2Game_6FC98D00_113c(m as SparseMemory113c, pPlayer, pSrcItem, pGame, nLoc);
-          if (INVENTORY_PlaceItemInBodyLoc113c(m, pCorpseInv, pCloned, nLoc) !== 0) {
-            const nSocketType = nLoc === 0x0b || nLoc === 0x0c ? 4 : 3;
-            if (INVENTORY_PlaceItemInSocket113c(m, pCorpseInv, pCloned, nSocketType) !== 0) {
-              ITEMS_SetBodyLocation113c(m, pCloned, nLoc & 0xff);
-              INVENTORY_AppendItemGuidNode113c(m, pCorpseInv, pCloned);
-              bEquippedOnCorpse = 1;
-            }
-          }
+      if (m.u32(pSrcItem + 0x10) !== 1) {
+        throw new D2CommonAssertError('PlrDeath', 0x338);
+      }
+      D2Game_6FC98D00_113c(m as SparseMemory113c, pPlayer, pSrcItem, pGame, nLoc);
+    }
+    ITEMS_SetInvPage113c(m, pSrcItem, 0);
+    const pCloned = ITEMS_DuplicateItemWithSocketFillers_6FC307E0_113c(m, pGame, pSrcItem, 1);
+    let bEquippedOnCorpse = 0;
+    if (nLoc === -1) {
+      const bLoD = m.u32(pGame + 0x70);
+      const nInvRecId = UNITS_GetInventoryRecordId113c(m, pCorpseUnit, 0, bLoD);
+      if (
+        INVENTORY_AutoPlaceItemInGrid113c(m, pCorpseInv, pCloned, nInvRecId, 0, 0, 0, 0) !== 0 &&
+        INVENTORY_PlaceItemInSocket113c(m, pCorpseInv, pCloned, 1) !== 0
+      ) {
+        if (pCloned !== 0) {
+          m.setU32(pCloned + 0xc4, (m.u32(pCloned + 0xc4) & ~0x02) >>> 0);
         }
-        if (bEquippedOnCorpse === 0) {
-          const pCenter = D2GAME_SCRATCH_W15B1_113C + 0x20;
-          const pDropOut = D2GAME_SCRATCH_W15B1_113C + 0x30;
-          PATH_GetTargetTypeAndPosition113c(m, pPlayer, pCenter);
-          const pDropRoom = ITEMS_FindFreeGroundDropCoords_6FC2E930_113c(
-            m,
-            UNITS_GetRoom113c(m, pPlayer),
-            pCenter,
-            pDropOut,
-            1,
-          );
-          ITEMS_PlaceItemOnGroundInRoom_6FC2E990_113c(
-            m,
-            m.u32(pDropOut + 4) | 0,
-            pCloned,
-            pDropRoom,
-            pGame,
-            pPlayer,
-            m.u32(pDropOut) | 0,
-          );
+        UNITS_ChangeAnimMode113c(m, pCloned, 0);
+        if (pCloned !== 0) {
+          m.setU32(pCloned + 0xc4, (m.u32(pCloned + 0xc4) & ~0x2000000) >>> 0);
+        }
+        ITEMS_SetItemFlag113c(m, pCloned, 2, 1);
+        INVENTORY_AppendItemGuidNode113c(m, pCorpseInv, pCloned);
+        UNITS_SetUnitUpdateFlags113c(m, pCorpseUnit, 1);
+        QUESTS_TriggerItemDropped_6FC545A0_113c(m, pGame, pCloned, pCorpseUnit);
+        bEquippedOnCorpse = 1;
+      }
+    } else {
+      if (INVENTORY_PlaceItemInBodyLoc113c(m, pCorpseInv, pCloned, nLoc) !== 0) {
+        const nSocketType = nLoc === 0x0b || nLoc === 0x0c ? 4 : 3;
+        if (INVENTORY_PlaceItemInSocket113c(m, pCorpseInv, pCloned, nSocketType) !== 0) {
+          ITEMS_SetBodyLocation113c(m, pCloned, nLoc & 0xff);
+          if (pCloned !== 0) {
+            m.setU32(pCloned + 0xc4, (m.u32(pCloned + 0xc4) & ~0x02) >>> 0);
+          }
+          UNITS_ChangeAnimMode113c(m, pCloned, 1);
+          ITEMS_SetInvPage113c(m, pCloned, 0xff);
+          ITEMS_SetItemFlag113c(m, pCloned, 8, 1);
+          if (pCloned !== 0) {
+            m.setU32(pCloned + 0xc4, (m.u32(pCloned + 0xc4) & ~0x2000000) >>> 0);
+          }
+          INVENTORY_AppendItemGuidNode113c(m, pCorpseInv, pCloned);
+          UNITS_SetUnitUpdateFlags113c(m, pCorpseUnit, 1);
+          QUESTS_TriggerItemDropped_6FC545A0_113c(m, pGame, pCloned, pCorpseUnit);
+          bEquippedOnCorpse = 1;
         }
       }
     }
+    if (bEquippedOnCorpse === 0) {
+      const pCenter = D2GAME_SCRATCH_W15B1_113C + 0x20;
+      const pDropOut = D2GAME_SCRATCH_W15B1_113C + 0x30;
+      PATH_GetTargetTypeAndPosition113c(m, pPlayer, pCenter);
+      const pDropRoom = ITEMS_FindFreeGroundDropCoords_6FC2E930_113c(
+        m,
+        UNITS_GetRoom113c(m, pPlayer),
+        pCenter,
+        pDropOut,
+        1,
+      );
+      ITEMS_PlaceItemOnGroundInRoom_6FC2E990_113c(
+        m,
+        m.u32(pDropOut + 4) | 0,
+        pCloned,
+        pDropRoom,
+        pGame,
+        pPlayer,
+        m.u32(pDropOut) | 0,
+      );
+    }
   }
 
-  let nGoldToDrop = STATLIST_GetUnitStat113c(m, pPlayer, 0x0e, 0);
+  const nGoldToDrop = STATLIST_GetUnitStat113c(m, pPlayer, 0x0e, 0);
+  if (m.u32(pPlayer) === 0) {
+    STATLIST_GetUnitGoldBankLimit113c(m, pPlayer);
+  }
   STATLIST_SetUnitStat113c(m, pPlayer, 0x0e, 0, 0);
-  if (pClient !== 0) {
-    const nPen = (m.u32(pClient + 0x508) | 0);
-    if (nGoldToDrop <= nPen) {
-      nGoldToDrop = 0;
-    } else {
-      nGoldToDrop -= nPen;
-    }
-    m.setU32(pClient + 0x508, 0);
-  }
-  if (nGoldToDrop > 0) {
-    ITEMS_DropGoldPileWithOwnerAtUnit_6FC98C50_113c(m, pPlayer, nGoldToDrop, pCorpseUnit, pGame);
-  }
+  ITEMS_DropGoldPileWithOwnerAtUnit_6FC98C50_113c(m, pCorpseUnit, nGoldToDrop, pPlayer, pGame);
 
   const pPkt8E = D2GAME_SCRATCH_W15B1_113C + 0x40;
   m.setU8(pPkt8E, 0x8e);
   m.setU8(pPkt8E + 1, 0x01);
-  m.setU32(pPkt8E + 2, m.u32(pPlayer + 0x0c));
-  m.setU32(pPkt8E + 6, m.u32(pCorpseUnit + 0x0c));
+  m.setU32(pPkt8E + 2, dwPlayerGuid);
+  m.setU32(pPkt8E + 6, dwActualCorpseGuid);
   D2GAME_SUNIT_IterateAllLivingPlayers113c(m, pGame, S2C_Send10BytePacketToPlayerUnit_6FCAC530_113c, pPkt8E);
 
   return pCorpseUnit;
@@ -1682,8 +1768,8 @@ export function SKILLS_SrvDo_SummonPetWithAiInit_6FCB6310_113c(
 
   const nHcIdx = SKILLS_ResolveSummonMonsterId_6FCBEE50_113c(
     m,
-    pOutY,
-    pOutX,
+    0,
+    0,
     pSummonParams + 0x0c,
     pUnit,
     0,
@@ -1750,18 +1836,27 @@ export function SKILLS_SrvDo_SummonPetWithAiInit_6FCB6310_113c(
     );
   }
 
+  const nOwnerX = UNIT_GetPosX113c(m, pUnit);
+  const nOwnerY = UNIT_GetPosY113c(m, pUnit);
   AIGENERAL_CopyAiCommandParams113c(
     m,
     pPet,
-    ((m.u16(pSkillRec + 0x32) << 16) >> 16),
-    (m.u32(pOutX) | 0),
-    (m.u32(pOutY) | 0),
-    nSkillId,
-    nSkillLevel,
+    0,
+    nOwnerX,
+    nOwnerY,
+    m.u32(pSummonParams + 0x18) | 0,
+    m.u32(pSummonParams + 0x1c) | 0,
   );
 
+  let pEv = m.u32(pPet + 0xdc);
+  while (pEv !== 0) {
+    const pNext = m.u32(pEv + 0x24);
+    if (m.u8(pEv) === 2) {
+      EVENT_FreeNode113c(m, pGame, pEv);
+    }
+    pEv = pNext;
+  }
   if (pGame !== 0 && m.u32(pGame + 0xb8) !== 0) {
-    EVENT_DeleteEventByType113c(m, pGame, pPet, 2);
     const dwNextFrame = (m.u32(pGame + 0xa8) + 1) >>> 0;
     EVENT_SetEventFull113c(m, pGame, pPet, 2, dwNextFrame, 0, 0, 0);
   }
@@ -1786,6 +1881,10 @@ export function ACT4Q2_InitQuestData_6FCDAD40_113c(
   for (let i = 0; i < 15; i++) {
     m.setU32(pQuest + 0xa0 + i * 4, 0);
   }
+  m.setU32(pQuest + 0x18, 0);
+  m.setU8(pQuest + 0x0b, 0);
+  m.setU8(pQuest + 0x0c, 0);
+  m.setU32(pQuest + 0xe8, 0);
   m.setU32(pQuest + 0xa0, 0x6fcd8ce0);
   m.setU32(pQuest + 0xec, 0x6fcd8810);
   m.setU32(pQuest + 0xdc, 0x6fd26b38);
@@ -1804,14 +1903,10 @@ export function ACT4Q2_InitQuestData_6FCDAD40_113c(
   m.setU32(pQuest + 0xe0, 0x1b);
   m.setU8(pQuest + 0x0d, 4);
 
-  let pState = m.u32(pQuest + 0x18);
-  if (pState === 0) {
-    pState = allocHeapW15B1_113c(m, 0x20);
-    m.setU32(pQuest + 0x18, pState);
-  } else {
-    for (let i = 0; i < 8; i++) {
-      m.setU32(pState + i * 4, 0);
-    }
+  const pState = allocHeapW15B1_113c(m, 0x20);
+  m.setU32(pQuest + 0x18, pState);
+  for (let i = 0; i < 8; i++) {
+    m.setU32(pState + i * 4, 0);
   }
 }
 
@@ -1840,7 +1935,13 @@ export function ACT4Q2_CompleteQuestForPlayerOnActChange_6FCDAF20_113c(
   }
 
   const pRoom = UNITS_GetRoom113c(m, pPlayer);
+  if (pRoom === 0) {
+    return;
+  }
   const nLevelId = DUNGEON_GetLevelIdFromRoom113c(m, pRoom);
+  if (nLevelId === 0) {
+    return;
+  }
   if (DRLG_GetActNoFromLevelId113c(m, nLevelId) !== 3) {
     return;
   }
@@ -1928,7 +2029,7 @@ export function NPCS_BeginVendorOrGambleInteract_6FCDF730_113c(
         pGame,
         pPlayer,
         pNpc,
-        0,
+        pVendorState,
       );
     }
     m.setU8(pVendorState, 1);
@@ -2012,6 +2113,13 @@ export function ACT2Q2_OnNpcSpeechComplete_6FCE7DC0_113c(
  * @va 0x6FCE8050
  * @ordinalOrName D2Game_6FCE8050
  */
+function writeAsciiW15B1_113c(m: D2Memory113c, dst: number, text: string): void {
+  for (let i = 0; i < text.length; i++) {
+    m.setU8((dst + i) >>> 0, text.charCodeAt(i) & 0xff);
+  }
+  m.setU8((dst + text.length) >>> 0, 0);
+}
+
 export function ACT2Q6_OnNpcSpeechComplete_6FCE8050_113c(
   m: D2Memory113c,
   pQuest: number,
@@ -2022,146 +2130,219 @@ export function ACT2Q6_OnNpcSpeechComplete_6FCE8050_113c(
   if (pQuest === 0 || pQuestArg === 0) return;
   const pPlayer = m.u32(pQuestArg + 0x0c);
   const pGame = m.u32(pQuestArg);
-  const pQuestFlags = PLAYER_GetQuestRecordForDifficulty_6FC21020_113c(m, pPlayer, pGame);
+  const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer);
+  const bDiff = pGame !== 0 ? m.u8(pGame + 0x6d) : 0;
+  const pQuestFlags = pPlayerData !== 0 ? m.u32(pPlayerData + bDiff * 4 + 0x10) : 0;
   const pState = m.u32(pQuest + 0x18);
-  if (pState === 0) return;
 
-  const wNpcId = ((m.u16(pQuestArg + 0x14) << 16) >> 16);
-  const wMsgId = ((m.u16(pQuestArg + 0x18) << 16) >> 16);
+  const wNpcId = m.u16(pQuestArg + 0x14);
+  const wMsgId = m.u16(pQuestArg + 0x18);
 
   if (wNpcId === 0xfb) {
-    if (wMsgId === 0x12e) {
-      if (m.u8(pState + 0x07) === 0) {
-        const pNpc = m.u32(pQuestArg + 0x08);
+    if (
+      m.u8(pQuest + 0x09) !== 0 &&
+      wMsgId === 0x12e &&
+      pState !== 0 &&
+      m.u8(pState + 0x0f) === 0
+    ) {
+      m.setU8(pState + 0x3c, 1);
+      const nPlrY = UNIT_GetPosY113c(m, pPlayer) | 0;
+      const nPlrX = UNIT_GetPosX113c(m, pPlayer) | 0;
+      const pRoom = UNITS_GetRoom113c(m, pPlayer) >>> 0;
+      const pQuestGame = m.u32(pQuest + 0x04);
+      if (pRoom === 0) {
+        throw new D2CommonAssertError('0x6fd19ff9', 0xe42);
+      }
+      if (pPlayer !== 0 && DUNGEON_CheckRoomIsTownMemPort113c(m, pRoom) !== 0) {
+        SUNIT_SetUnitEventSound113c(m, pPlayer, 0x18, pPlayer);
+      } else {
+        const bTownAct = DRLG_GetActNoFromLevelId113c(m, 0x28) & 0xff;
+        const nSrcLevelId = DUNGEON_GetLevelIdFromRoom113c(m, pRoom) | 0;
+        const bSrcAct = DRLG_GetActNoFromLevelId113c(m, nSrcLevelId) & 0xff;
+        if (bTownAct !== bSrcAct) {
+          throw new D2CommonAssertError('0x6fd19ff9', 0xe5c);
+        }
         const pCoords = D2GAME_SCRATCH_W15B1_113C;
-        const pFreeCoords = D2GAME_SCRATCH_W15B1_113C + 8;
-        PATH_GetTargetTypeAndPosition113c(m, pNpc, pCoords);
-        const pNpcRoom = UNITS_GetRoom113c(m, pNpc);
-        m.setU32(pFreeCoords, m.u32(pCoords));
-        m.setU32(pFreeCoords + 4, m.u32(pCoords + 4));
-        COLLISION_FindFreePositionBasic113c(m, pNpcRoom, pFreeCoords, 3, 0x400, 0xbe1, 1, 0);
-        const nPortalX = (m.u32(pFreeCoords) | 0);
-        const nPortalY = (m.u32(pFreeCoords + 4) | 0);
-        const pDestRoom = ROOM_FindRoomContainingSubtile113c(m, pNpcRoom, nPortalX, nPortalY);
-        if (pDestRoom !== 0) {
-          const pPortal = SUNIT_AllocUnitData113c(m, 2, 0x3b, nPortalX, nPortalY, pGame, pDestRoom, 1, 1, 0);
-          if (pPortal !== 0) {
-            const pPortalData = m.u32(pPortal + 0x14);
-            if (pPortalData !== 0) {
-              m.setU8(pPortalData + 0x04, 0x28);
-            }
-            UNITS_ChangeAnimMode113c(m, pPortal, 1);
-            PORTAL_CreateLinkedDestinationPortal_6FCC22E0_113c(
+        m.setU32(pCoords, nPlrX >>> 0);
+        m.setU32(pCoords + 4, nPlrY >>> 0);
+        if (COLLISION_FindFreePositionBasic113c(m, pRoom, pCoords, pCoords, 3, 0x3e01, 0xc01, 0) !== 0) {
+          const nPortalX = m.u32(pCoords) | 0;
+          const nPortalY = m.u32(pCoords + 4) | 0;
+          const pDestRoom = ROOM_FindRoomContainingSubtile113c(m, pRoom, nPortalX, nPortalY) >>> 0;
+          if (pDestRoom !== 0) {
+            const pPortal = SUNIT_AllocUnitData113c(
               m,
-              pGame,
+              2,
+              0x3b,
+              nPortalX,
+              nPortalY,
+              pQuestGame,
+              pDestRoom,
+              1,
+              1,
+              0,
+            );
+            UNITS_ChangeAnimMode113c(m, pPortal, 1);
+            const pDestPortal = PORTAL_CreateLinkedDestinationPortal_6FCC22E0_113c(
+              m,
+              pQuestGame,
               pPortal,
               0x28,
-              DUNGEON_GetLevelIdFromRoom113c(m, pNpcRoom),
-            );
-            const nPortalFlags = UNITS_GetObjectPortalFlags113c(m, pPortal);
-            UNITS_SetObjectPortalFlags113c(m, pPortal, nPortalFlags | 3);
-            DUNGEON_ToggleHasPortalFlag113c(m, pDestRoom, 0);
-            m.setU8(pState + 0x07, 1);
+              nSrcLevelId,
+            ) >>> 0;
+            if (pDestPortal !== 0) {
+              const bPortalFlags = UNITS_GetObjectPortalFlags113c(m, pDestPortal);
+              UNITS_SetObjectPortalFlags113c(m, pDestPortal, (bPortalFlags | 3) & 0xff);
+              DUNGEON_ToggleHasPortalFlag113c(m, pDestRoom, 0);
+              DUNGEON_ToggleHasPortalFlag113c(m, UNITS_GetRoom113c(m, pDestPortal), 0);
+              QUESTS_Act2RadamentSetStateAndDebugPrint_6FC55EB0_113c(m, pQuest, 4);
+              const pNpc = m.u32(pQuestArg + 0x08);
+              SUNIT_FindFirstLivingPlayerOrMonsterMatching_6FCFFCC0_113c(
+                m,
+                pGame,
+                ACT2Q6_UnitIterate_CompleteInTalRashaChamber_6FCE59A0_113c,
+                0,
+                pNpc,
+              );
+              SUNIT_FindFirstLivingPlayerOrMonsterMatching_6FCFFCC0_113c(
+                m,
+                pGame,
+                ACT2Q6_PropagatePartyCompletionCallback_6FCE65A0_113c,
+                0,
+                pNpc,
+              );
+              SUNIT_FindFirstLivingPlayerOrMonsterMatching_6FCFFCC0_113c(
+                m,
+                pGame,
+                ACT2Q6_UnitIterateSetCompletionState_6FCE4BD0_113c,
+                0,
+                pNpc,
+              );
+              m.setU8(pState + 0x0f, 1);
+              m.setU8(pState + 0x09, 1);
+              m.setU32(pQuest + 0xa8, 0x6fce5a60);
+            }
           }
         }
       }
-      if (m.u8(pQuest + 0x0b) !== 4 && m.u8(pQuest + 0x0b) !== 5) {
-        m.setU8(pQuest + 0x14, 0);
-        m.setU8(pQuest + 0x0b, 4);
-        D2GAME_SUNIT_IterateAllLivingPlayers113c(
-          m,
-          pGame,
-          ACT2Q6_SendAlert0DIfQuest14Active_6FCE4D30_113c,
-          pQuest,
-        );
-      }
-      if (DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 0x0e, 0) === 0) {
-        D2GAME_SUNIT_IterateAllLivingPlayers113c(
-          m,
-          pGame,
-          ACT2Q6_UnitIterate_CompleteInTalRashaChamber_6FCE59A0_113c,
-          pQuest,
-        );
-        m.setU8(pState + 0x5c, 0);
-        D2GAME_SUNIT_IterateAllLivingPlayers113c(
-          m,
-          pGame,
-          ACT2Q6_PropagatePartyCompletionCallback_6FCE65A0_113c,
-          pQuest,
-        );
-        D2GAME_SUNIT_IterateAllLivingPlayers113c(
-          m,
-          pGame,
-          ACT2Q6_UnitIterateSetCompletionState_6FCE4BD0_113c,
-          pQuest,
-        );
-      }
+      m.setU8(pState + 0x3c, 0);
     }
-    return;
-  }
-
-  if (wNpcId === 0xc9) {
+    // Falls through to switch jump table at 0x6FCE827F (0x6FCE8578).
+  } else if (wNpcId === 0xc9) {
     if (wMsgId === 0x1ae) {
-      QUESTRECORD_SetQuestState113c(m, pQuestFlags, 0x0e, 1);
-      m.setU8(pQuest + 0x14, 1);
-      m.setU8(pQuest + 0x0b, 5);
-      D2GAME_SUNIT_IterateAllLivingPlayers113c(
+      QUESTS_TriggerNpcInteractAndSendPacket27_6FC55910_113c(
         m,
+        m.u32(pQuestArg + 0x08),
+        pPlayer,
         pGame,
-        ACT2Q6_SendAlert0DIfQuest14Active_6FCE4D30_113c,
-        pQuest,
       );
-      if (m.u8(pState + 0x01) === 1) {
-        m.setU8(pState + 0x01, 0);
-        const pDoor = m.u32(pState + 0x6c);
-        if (pDoor !== 0) {
-          PATH_SetUnitCollisionPattern113c(m, pDoor, 0);
-          PATH_RemoveUnitCollisionFootprint113c(m, pDoor, 1);
-        }
+      m.setU8(pQuest + 0x0c, 2);
+      if (m.u32(0x6fd31c20) !== 0) {
+        const pMsgBuf = D2GAME_SCRATCH_W15B1_113C;
+        writeAsciiW15B1_113c(m, pMsgBuf, 'changing state to 2\n');
+        NET_BroadcastSystemChatMessage_6FCEBE70_113c(m, pMsgBuf, m.u32(pQuest + 0x04), 4);
       }
-      const pNpc = m.u32(pQuestArg + 0x08);
-      QUESTS_TriggerNpcInteractAndSendPacket27_6FC55910_113c(m, pNpc, pPlayer, pGame);
+      const pQuest0A = findQuestByIdInGame113c(m, m.u32(pQuest + 0x04), 0x0a);
+      if (pState !== 0) {
+        m.setU8(pState + 0x08, 1);
+      }
+      m.setU32(pQuest + 0xa8, 0x6fce5a60);
+      if (pQuest0A !== 0) {
+        if (m.u32(pQuest + 0xf0) === 0) {
+          throw new D2CommonAssertError('0x6fd19ff9', 0x25a);
+        }
+        dispatchQuestSeqFilterF0_113c(
+          m as SparseMemory113c,
+          pQuest0A,
+          hooks !== undefined ? hooks.onQuestCallbackF0 : undefined,
+        );
+      }
       return;
     }
     if (wMsgId === 0x1ba) {
-      QUESTRECORD_SetQuestState113c(m, pQuestFlags, 0x0e, 5);
+      if (DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 0x0e, 3) === 0) {
+        return;
+      }
+      if (DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 0x0e, 0x0d) !== 0) {
+        QUESTS_Act2RadamentSetStateAndDebugPrint_6FC55EB0_113c(m, pQuest, 5);
+      }
+      if (pState !== 0) {
+        m.setU8(pState + 0x0a, 1);
+      }
+      m.setU32(pQuest + 0xa8, 0x6fce5a60);
+      QUESTRECORD_SetQuestState113c(m, pQuestFlags, 0x0e, 4);
+      QUESTRECORD_ClearQuestState113c(m, pQuestFlags, 0x0e, 3);
+      QUESTS_TriggerNpcInteractAndSendPacket27_6FC55910_113c(
+        m,
+        m.u32(pQuestArg + 0x08),
+        pPlayer,
+        pGame,
+      );
       return;
     }
-  } else if (wNpcId === 0xd2 && wMsgId === 0x1c2) {
-    if (hooks && hooks.deleteAllPlayerQuestItems) {
-      hooks.deleteAllPlayerQuestItems(m, pGame, pPlayer, 0x20747368);
-      hooks.deleteAllPlayerQuestItems(m, pGame, pPlayer, 0x20706976);
-      hooks.deleteAllPlayerQuestItems(m, pGame, pPlayer, 0x2066736d);
-    } else {
-      removePlayerQuestItemByCode113c(m, pPlayer, 0x20747368, pGame, hooks);
-      removePlayerQuestItemByCode113c(m, pPlayer, 0x20706976, pGame, hooks);
-      removePlayerQuestItemByCode113c(m, pPlayer, 0x2066736d, pGame, hooks);
+    return;
+  } else if (wNpcId === 0xd2) {
+    if (wMsgId !== 0x1c2) {
+      return;
     }
-
-    QUESTRECORD_ClearQuestStateBits2To11_113c(m, pQuestFlags, 0x0e);
-    QUESTRECORD_ClearQuestState113c(m, pQuestFlags, 0x0e, 1);
-    QUESTRECORD_SetQuestState113c(m, pQuestFlags, 0x0e, 0x0d);
+    if (DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 0x0e, 4) === 0) {
+      return;
+    }
+    if (DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 0x0a, 0) !== 0) {
+      if (hooks && hooks.deleteAllPlayerQuestItems) {
+        hooks.deleteAllPlayerQuestItems(m, pGame, pPlayer, 0x20747368);
+        hooks.deleteAllPlayerQuestItems(m, pGame, pPlayer, 0x20706976);
+        hooks.deleteAllPlayerQuestItems(m, pGame, pPlayer, 0x2066736d);
+      } else {
+        removePlayerQuestItemByCode113c(m, pPlayer, 0x20747368, pGame, hooks);
+        removePlayerQuestItemByCode113c(m, pPlayer, 0x20706976, pGame, hooks);
+        removePlayerQuestItemByCode113c(m, pPlayer, 0x2066736d, pGame, hooks);
+      }
+    }
+    if (DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 0x0e, 0x0d) !== 0) {
+      const pQuestGame = m.u32(pQuest + 0x04);
+      QUESTS_SetGlobalQuestState_6FC53920_113c(m, pQuestGame, 0x0e, 0x0d);
+      QUESTS_Act2RadamentSetStateAndDebugPrint_6FC55EB0_113c(m, pQuest, 5);
+      m.setU8(pQuest + 0x14, 0);
+      m.setU8(pQuest + 0x0b, 0x0d);
+      SUNIT_FindFirstLivingPlayerOrMonsterMatching_6FCFFCC0_113c(
+        m,
+        pQuestGame,
+        ACT2Q6_SendAlert0DIfQuest14Active_6FCE4D30_113c,
+        0,
+        0,
+      );
+    }
     QUESTRECORD_SetQuestState113c(m, pQuestFlags, 0x0e, 0);
-    m.setU8(pState, 1);
-    QUESTS_SetGameQuestFlag20AndSyncPlayers_6FC55E90_113c(m, pGame, 0x0e);
-    QUESTS_SetGlobalQuestState_6FC53920_113c(m, pGame, 0x0e, 0);
-    const pNpc = m.u32(pQuestArg + 0x08);
-    QUESTS_TriggerNpcInteractAndSendPacket27_6FC55910_113c(m, pNpc, pPlayer, pGame);
+    QUESTS_SendPlayerQuestLogPacket28_113c(m, pPlayer, m.u32(pQuest + 0x04));
+    QUESTRECORD_ClearQuestState113c(m, pQuestFlags, 0x0e, 4);
+    const dwPlayerGuid = pPlayer !== 0 ? m.u32(pPlayer + 0x0c) : 0xffffffff;
+    QUESTS_GuidListAdd113c(m, pQuest + 0x1c, dwPlayerGuid);
     return;
   }
 
-  if (wMsgId === 0x1bc) {
-    QUESTRECORD_SetQuestState113c(m, pQuestFlags, 0x0e, 6);
-  } else if (wMsgId === 0x1be) {
-    QUESTRECORD_SetQuestState113c(m, pQuestFlags, 0x0e, 7);
-  } else if (wMsgId === 0x1bf) {
-    QUESTRECORD_SetQuestState113c(m, pQuestFlags, 0x0e, 8);
-  } else if (wMsgId === 0x1c0) {
-    QUESTRECORD_SetQuestState113c(m, pQuestFlags, 0x0e, 9);
-  } else if (wMsgId === 0x1c1) {
-    QUESTRECORD_SetQuestState113c(m, pQuestFlags, 0x0e, 0x0a);
-  } else if (wMsgId === 0x1c4) {
-    QUESTRECORD_SetQuestState113c(m, pQuestFlags, 0x0e, 0x0b);
+  // Switch jump table at 0x6FCE8578 (wMsgId - 0x1BC, cases 0..8).
+  switch ((wMsgId - 0x1bc) >>> 0) {
+    case 0:
+      QUESTRECORD_SetQuestState113c(m, pQuestFlags, 0x0e, 9);
+      break;
+    case 1:
+      QUESTRECORD_SetQuestState113c(m, pQuestFlags, 0x0e, 6);
+      break;
+    case 2:
+      QUESTRECORD_SetQuestState113c(m, pQuestFlags, 0x0e, 7);
+      break;
+    case 3:
+      QUESTRECORD_SetQuestState113c(m, pQuestFlags, 0x0e, 0x0b);
+      break;
+    case 5:
+      QUESTRECORD_SetQuestState113c(m, pQuestFlags, 0x0e, 8);
+      break;
+    case 8:
+      QUESTRECORD_SetQuestState113c(m, pQuestFlags, 0x0e, 0x0a);
+      break;
+    default:
+      break;
   }
 }
 
@@ -2179,6 +2360,7 @@ export function ACT2Q2_OnHoradricStaffOrificeActivate_6FCE9CB0_113c(
   pGame: number,
   pPlayer: number,
   hooks?: W15B1Hooks113c,
+  pOrificeObjArg?: number,
 ): void {
   hitD2GameVa113c(0x6FCE9CB0);
   void A5Q4_OpenTemplePortalObject_6FCE94E0_113c;
@@ -2195,65 +2377,95 @@ export function ACT2Q2_OnHoradricStaffOrificeActivate_6FCE9CB0_113c(
   delAllFn(m, pGame, pPlayer, 0x20706976);
   delAllFn(m, pGame, pPlayer, 0x2066736d);
 
-  const wPartyId = D2GAME_PARTY_GetPartyIdForUnit113c(m, pPlayer, pGame);
-  if (wPartyId !== -1 && (wPartyId & 0xffff) !== 0xffff) {
-    const partyCb =
-      hooks && hooks.partyHoradricStaffCallback
-        ? hooks.partyHoradricStaffCallback
-        : (mem: D2Memory113c, g: number, u: number, arg: number) => {
-            ACT2Q2_CleanupHoradricStaffItemsOnEnterAct1_6FCE7D00_113c(
-              mem as SparseMemory113c,
-              g,
-              u,
-              arg,
-            );
-          };
-    PARTY_ForEachSubPartyPlayerUnit_6FCBC160_113c(m, pGame, wPartyId, partyCb, 0);
+  if (m.u32(pPlayer + 0x80) !== 0 && m.u32(pPlayer) === 0) {
+    const wPartyId = D2GAME_PARTY_GetPartyIdForUnit113c(m, pPlayer, m.u32(pPlayer + 0x80));
+    if (wPartyId !== -1 && (wPartyId & 0xffff) !== 0xffff) {
+      const partyCb =
+        hooks && hooks.partyHoradricStaffCallback
+          ? hooks.partyHoradricStaffCallback
+          : (mem: D2Memory113c, g: number, u: number, arg: number) => {
+              ACT2Q2_CleanupHoradricStaffItemsOnEnterAct1_6FCE7D00_113c(
+                mem as SparseMemory113c,
+                g,
+                u,
+                arg,
+              );
+            };
+      PARTY_ForEachSubPartyPlayerUnit_6FCBC160_113c(m, pGame, wPartyId, partyCb, 0);
+    }
   }
 
   const pQuestCtrl = m.u32(pGame + 0x10f4);
   if (pQuestCtrl !== 0) {
     m.setU8(pQuestCtrl + 0x20, 3);
-    D2GAME_SUNIT_IterateAllLivingPlayers113c(
+    SUNIT_FindFirstLivingPlayerOrMonsterMatching_6FCFFCC0_113c(
       m,
       pGame,
       QUESTS_SyncPlayerQuestLogAndPacket89_6FC559C0_113c,
-      pQuestCtrl,
+      0,
+      0,
     );
+  }
+
+  let nTimerDelay = 2;
+  const pIat = m.u32(D2GAME_IAT_SGPT_DATATABLES_VA_113C);
+  const pDataTables = pIat !== 0 ? m.u32(pIat) : 0;
+  if (pDataTables !== 0 && (m.u32(pDataTables + 0xb6c) | 0) > 0x152) {
+    const pMissilesTxt = m.u32(pDataTables + 0xb64);
+    if (pMissilesTxt !== 0) {
+      const nRange = ((m.u16((pMissilesTxt + 0x22a88 + 0x96) >>> 0) << 16) >> 16);
+      nTimerDelay = Math.trunc((nRange - 0x4b) / 20);
+    }
   }
 
   const pQuest0D = findQuestByIdInGame113c(m, pGame, 0x0d);
   if (pQuest0D !== 0) {
     const pState0D = m.u32(pQuest0D + 0x18);
-    if (pState0D !== 0 && m.u8(pState0D + 0x0d) === 0) {
+    if (pState0D !== 0) {
       m.setU8(pState0D + 0x0d, 1);
       m.setU8(pState0D + 0x0e, 1);
       if (m.u8(pState0D + 0x03) === 0) {
-        QUESTS_AppendQuestTimer_6FC53AF0_113c(m, 2, pQuest0D, 0x6fce94e0);
+        QUESTS_AppendQuestTimer_6FC53AF0_113c(m, nTimerDelay, pQuest0D, 0x6fce94e0);
         m.setU8(pState0D + 0x03, 1);
       }
 
-      const dwOrificeGuid = m.u32(pState0D + 0x18);
-      let pOrificeObj = 0;
-      const pBucketHead = m.u32(pGame + 0x1520 + ((dwOrificeGuid & 0x7f) << 2));
-      let pCur = pBucketHead;
-      while (pCur !== 0) {
-        if (m.u32(pCur + 0x0c) === dwOrificeGuid) {
-          pOrificeObj = pCur;
-          break;
+      let pOrificeObj = pOrificeObjArg !== undefined ? pOrificeObjArg >>> 0 : 0;
+      if (pOrificeObjArg === undefined) {
+        const dwOrificeGuid = m.u32(pState0D + 0x18);
+        const pBucketHead = m.u32(pGame + 0x1520 + ((dwOrificeGuid & 0x7f) << 2));
+        let pCur = pBucketHead;
+        while (pCur !== 0) {
+          if (m.u32(pCur + 0x0c) === dwOrificeGuid) {
+            pOrificeObj = pCur;
+            break;
+          }
+          pCur = m.u32(pCur + 0xe4);
         }
-        pCur = m.u32(pCur + 0xe4);
       }
 
       if (pOrificeObj !== 0) {
         UNITS_ChangeAnimMode113c(m, pOrificeObj, 1);
         const pRoom = UNITS_GetRoom113c(m, pOrificeObj);
-        DUNGEON_ToggleHasPortalFlag113c(m, pRoom, 0);
-        const pCoords = D2GAME_SCRATCH_W15B1_113C;
-        PATH_GetTargetTypeAndPosition113c(m, pOrificeObj, pCoords);
-        const nAdjX = (m.u32(pCoords) | 0) + 3;
-        const nAdjY = (m.u32(pCoords + 4) | 0) - 13;
+        if (pRoom === 0) {
+          throw new D2CommonAssertError('Act2Q2', 0x686);
+        }
+        const eType = m.u32(pOrificeObj);
+        const pObjPath = m.u32(pOrificeObj + 0x2c);
+        let nPosX = 0;
+        let nPosY = 0;
+        if (eType === 2 || (eType > 3 && eType <= 5)) {
+          if (pObjPath !== 0) {
+            nPosY = m.u32(pObjPath + 0x10) | 0;
+            nPosX = m.u32(pObjPath + 0x0c) | 0;
+          }
+        } else if (pObjPath !== 0) {
+          nPosY = PATH_GetPosY113c(m, pObjPath);
+          nPosX = PATH_GetPosX113c(m, pObjPath);
+        }
+        const nAdjX = (nPosX - 0x0d) | 0;
+        const nAdjY = (nPosY + 3) | 0;
         const pAdjRoom = ROOM_FindRoomContainingSubtile113c(m, pRoom, nAdjX, nAdjY);
+        DUNGEON_ToggleHasPortalFlag113c(m, pRoom, 0);
         if (pAdjRoom !== 0) {
           DUNGEON_ToggleHasPortalFlag113c(m, pAdjRoom, 0);
         }
@@ -2286,8 +2498,9 @@ export function C2S_Packet_NpcBuyItem_6FCEF220_113c(
   const dwRawTab = m.u32(pPacket + 0x09);
   const wCost = m.u16(pPacket + 0x0d);
   const dwCost = m.u32(pPacket + 0x0d);
+  const dwFillFlag = (dwRawTab & 0x80000000) >>> 0;
   if (hooks && hooks.npcBuyItemImpl) {
-    hooks.npcBuyItemImpl(m, pPlayer, pGame, dwNpcGuid, dwItemGuid, dwRawTab, wCost, 1);
+    hooks.npcBuyItemImpl(m, pPlayer, pGame, dwNpcGuid, dwItemGuid, dwRawTab, wCost, dwFillFlag);
     return 0;
   }
   return NPCTRADE_InteractBuyItem_6FCDF200_113c(
@@ -2299,6 +2512,7 @@ export function C2S_Packet_NpcBuyItem_6FCEF220_113c(
     (dwRawTab & 0x7fffffff) >>> 16,
     dwRawTab & 0x7fffffff,
     dwCost,
+    dwFillFlag,
   );
 }
 
@@ -2533,48 +2747,76 @@ export function ACT3Q5_OnNpcSpeechComplete_6FD089A0_113c(
   if (pQuest === 0 || pQuestArg === 0) return;
   const pPlayer = m.u32(pQuestArg + 0x0c);
   const pGame = m.u32(pQuestArg);
-  const pQuestFlags = PLAYER_GetQuestRecordForDifficulty_6FC21020_113c(m, pPlayer, pGame);
-
-  const wMsgId = ((m.u16(pQuestArg + 0x18) << 16) >> 16);
-  const wNpcId = ((m.u16(pQuestArg + 0x14) << 16) >> 16);
-
-  if (wMsgId === 0x252) {
-    if (wNpcId === 0xff) {
-      QUESTRECORD_SetQuestState113c(m, pQuestFlags, 0x15, 2);
-      if (m.u8(pQuest + 0x0b) < 2) {
-        m.setU8(pQuest + 0x0b, 2);
-      }
-      const pNpc = m.u32(pQuestArg + 0x08);
-      QUESTS_TriggerNpcInteractAndSendPacket27_6FC55910_113c(m, pNpc, pPlayer, pGame);
-    }
+  const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer);
+  const bDiff = pGame !== 0 ? m.u8(pGame + 0x6d) : 0;
+  const pQuestFlags = pPlayerData !== 0 ? m.u32(pPlayerData + bDiff * 4 + 0x10) : 0;
+  if (DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 0x15, 0) === 1) {
     return;
   }
 
-  if (wMsgId !== 0x272 || wNpcId !== 0xf5) {
-    return;
-  }
+  const wNpcId = m.u16(pQuestArg + 0x14);
+  const wMsgId = m.u16(pQuestArg + 0x18);
 
-  if (DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 0x15, 1) === 1) {
-    if (DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 0x12, 0) !== 0) {
-      removePlayerQuestItemByCode113c(m, pPlayer, 0x20796571, pGame, hooks);
-      removePlayerQuestItemByCode113c(m, pPlayer, 0x20726871, pGame, hooks);
-      removePlayerQuestItemByCode113c(m, pPlayer, 0x20726271, pGame, hooks);
-      removePlayerQuestItemByCode113c(m, pPlayer, 0x20316671, pGame, hooks);
-      removePlayerQuestItemByCode113c(m, pPlayer, 0x20326671, pGame, hooks);
+  if (wNpcId === 0xff) {
+    if (wMsgId !== 0x252) {
+      return;
     }
+    const bNextState =
+      QUESTS_CheckGlobalQuestState_6FC538D0_113c(m, pGame, 0x11, 0x0d) === 1 ? 2 : 3;
+    QUESTS_Act2RadamentSetStateAndDebugPrint_6FC55EB0_113c(m, pQuest, bNextState);
     const pState = m.u32(pQuest + 0x18);
-    QUESTRECORD_ClearQuestStateBits2To11_113c(m, pQuestFlags, 0x15);
-    QUESTRECORD_ClearQuestState113c(m, pQuestFlags, 0x15, 1);
-    QUESTRECORD_SetQuestState113c(m, pQuestFlags, 0x15, 0);
-    QUESTRECORD_SetQuestState113c(m, pQuestFlags, 0x15, 0x0d);
     if (pState !== 0) {
-      m.setU8(pState + 0x23, 1);
+      m.setU8(pState + 0x04, 1);
     }
-    QUESTS_SetGameQuestFlag20AndSyncPlayers_6FC55E90_113c(m, pGame, 0x0b);
-    QUESTS_SetGlobalQuestState_6FC53920_113c(m, pGame, 0x15, 0);
-    const pNpc = m.u32(pQuestArg + 0x08);
-    QUESTS_TriggerNpcInteractAndSendPacket27_6FC55910_113c(m, pNpc, pPlayer, pGame);
+    QUESTS_TriggerNpcInteractAndSendPacket27_6FC55910_113c(
+      m,
+      m.u32(pQuestArg + 0x08),
+      pPlayer,
+      pGame,
+    );
+    return;
   }
+
+  if (wNpcId !== 0xf5 || wMsgId !== 0x272) {
+    return;
+  }
+  if (DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 0x15, 4) === 0) {
+    return;
+  }
+  if (DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 0x12, 0) !== 0) {
+    removePlayerQuestItemByCode113c(m, pPlayer, 0x20796571, pGame, hooks);
+    removePlayerQuestItemByCode113c(m, pPlayer, 0x20726871, pGame, hooks);
+    removePlayerQuestItemByCode113c(m, pPlayer, 0x20726271, pGame, hooks);
+    removePlayerQuestItemByCode113c(m, pPlayer, 0x20316671, pGame, hooks);
+    removePlayerQuestItemByCode113c(m, pPlayer, 0x20326671, pGame, hooks);
+  }
+  if (
+    DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 0x15, 0x0d) !== 0 &&
+    m.u8(pQuest + 0x0c) !== 7
+  ) {
+    QUESTS_SetGlobalQuestState_6FC53920_113c(m, pGame, 0x15, 0x0d);
+    m.setU8(pQuest + 0x14, 0);
+    m.setU8(pQuest + 0x0b, 0x0d);
+    QUESTS_Act2RadamentSetStateAndDebugPrint_6FC55EB0_113c(m, pQuest, 7);
+  }
+  if (m.u32(pQuest + 0xf0) === 0) {
+    throw new D2CommonAssertError('0x6fd19ff9', 0x1d1);
+  }
+  dispatchQuestSeqFilterF0_113c(
+    m as SparseMemory113c,
+    pQuest,
+    hooks !== undefined ? hooks.onQuestCallbackF0 : undefined,
+  );
+  QUESTRECORD_SetQuestState113c(m, pQuestFlags, 0x15, 0);
+  QUESTRECORD_ClearQuestState113c(m, pQuestFlags, 0x15, 4);
+  const dwPlayerGuid = pPlayer !== 0 ? m.u32(pPlayer + 0x0c) : 0xffffffff;
+  QUESTS_GuidListAdd113c(m, pQuest + 0x1c, dwPlayerGuid);
+  QUESTS_TriggerNpcInteractAndSendPacket27_6FC55910_113c(
+    m,
+    m.u32(pQuestArg + 0x08),
+    pPlayer,
+    pGame,
+  );
 }
 
 /**
@@ -2596,75 +2838,142 @@ export function ACT3Q1_OnNpcSpeechComplete_6FD08B60_113c(
   if (pQuest === 0 || pQuestArg === 0) return;
   const pPlayer = m.u32(pQuestArg + 0x0c);
   const pGame = m.u32(pQuestArg);
-  const pQuestFlags = PLAYER_GetQuestRecordForDifficulty_6FC21020_113c(m, pPlayer, pGame);
-  const pState = m.u32(pQuest + 0x18);
-  if (pState === 0) return;
+  const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer);
+  const bDiff = pGame !== 0 ? m.u8(pGame + 0x6d) : 0;
+  const pQuestFlags = pPlayerData !== 0 ? m.u32(pPlayerData + bDiff * 4 + 0x10) : 0;
+  if (DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 0x14, 0) === 1) {
+    return;
+  }
 
-  const wNpcId = ((m.u16(pQuestArg + 0x14) << 16) >> 16);
-  const wMsgId = ((m.u16(pQuestArg + 0x18) << 16) >> 16);
+  const pState = m.u32(pQuest + 0x18);
+  const wNpcId = m.u16(pQuestArg + 0x14);
+  const wMsgId = m.u16(pQuestArg + 0x18);
 
   if (wNpcId === 0xf5) {
     if (wMsgId === 0x20f) {
-      QUESTRECORD_ClearQuestStateBits2To11_113c(m, pQuestFlags, 0x14);
-      QUESTRECORD_SetQuestState113c(m, pQuestFlags, 0x14, 3);
+      QUESTRECORD_SetQuestState113c(m, pQuestFlags, 0x14, 2);
+      if (m.u8(pQuest + 0x0c) === 1) {
+        QUESTS_Act2RadamentSetStateAndDebugPrint_6FC55EB0_113c(m, pQuest, 2);
+        if (pState !== 0) {
+          m.setU8(pState + 0x09, 1);
+        }
+        m.setU32(pQuest + 0xa8, 0x6fd06bd0);
+      }
+      QUESTS_TriggerNpcInteractAndSendPacket27_6FC55910_113c(
+        m,
+        m.u32(pQuestArg + 0x08),
+        pPlayer,
+        pGame,
+      );
+      if (pState !== 0) {
+        m.setU32(pState + 0x18, 2);
+      }
+      ACT3Q4_PropagateTomeQuestStateToSubParty_6FD06B90_113c(m, pGame, pPlayer);
       return;
     }
     if (wMsgId === 0x213) {
-      QUESTRECORD_ClearQuestStateBits2To11_113c(m, pQuestFlags, 0x14);
       QUESTRECORD_SetQuestState113c(m, pQuestFlags, 0x14, 4);
+      if (pState !== 0) {
+        m.setU8(pState + 0x0a, 1);
+      }
+      QUESTS_TriggerNpcInteractAndSendPacket27_6FC55910_113c(
+        m,
+        m.u32(pQuestArg + 0x08),
+        pPlayer,
+        pGame,
+      );
+      if (pState !== 0) {
+        m.setU32(pState + 0x18, 4);
+      }
+      ACT3Q4_PropagateTomeQuestStateToSubParty_6FD06B90_113c(m, pGame, pPlayer);
     }
     return;
   }
 
   if (wNpcId === 0xfe) {
     if (wMsgId === 0x216) {
-      if (ITEMS_FindQuestItemByBaseCode_6FC2E660_113c(m, pPlayer, pGame, 0x20343367) !== 0) {
-        removePlayerQuestItemByCode113c(m, pPlayer, 0x20343367, pGame, hooks);
-        m.setU32(pState + 0x18, (m.u32(pState + 0x18) - 1) >>> 0);
-        QUESTRECORD_SetQuestState113c(m, pQuestFlags, 0x14, 1);
-        QUESTRECORD_ClearQuestStateBits2To11_113c(m, pQuestFlags, 0x14);
-        QUESTRECORD_SetQuestState113c(m, pQuestFlags, 0x14, 5);
-        m.setU8(pQuest + 0x0b, 5);
-        const pNpc = m.u32(pQuestArg + 0x08);
-        QUESTS_TriggerNpcInteractAndSendPacket27_6FC55910_113c(m, pNpc, pPlayer, pGame);
+      if (ITEMS_FindQuestItemByBaseCode_6FC2E660_113c(m, pPlayer, pGame, 0x20343367) === 0) {
+        return;
       }
+      if (
+        DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 0x14, 1) !== 0 ||
+        DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 0x14, 0) !== 0
+      ) {
+        return;
+      }
+      removePlayerQuestItemByCode113c(m, pPlayer, 0x20343367, pGame, hooks);
+      if (pState !== 0) {
+        m.setU32(pState + 0x10, (m.u32(pState + 0x10) - 1) >>> 0);
+      }
+      if (m.u8(pQuest + 0x09) !== 0 && m.u8(pQuest + 0x0c) !== 4) {
+        QUESTS_Act2RadamentSetStateAndDebugPrint_6FC55EB0_113c(m, pQuest, 4);
+      }
+      QUESTRECORD_SetQuestState113c(m, pQuestFlags, 0x14, 1);
+      if (pState !== 0) {
+        m.setU8(pState + 0x08, 1);
+        m.setU32(pState + 0x18, 1);
+      }
+      m.setU32(pQuest + 0xa8, 0x6fd06bd0);
+      ACT3Q4_PropagateTomeQuestStateToSubParty_6FD06B90_113c(m, pGame, pPlayer);
       return;
     }
-    if (wMsgId === 0x21a && DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 0x14, 1) === 1) {
-      QUESTRECORD_ClearQuestStateBits2To11_113c(m, pQuestFlags, 0x14);
-      QUESTRECORD_SetQuestState113c(m, pQuestFlags, 0x14, 6);
-      QUESTRECORD_ClearQuestState113c(m, pQuestFlags, 0x14, 1);
-      m.setU8(pState + 0x04, 1);
-      const pPotion =
-        hooks && hooks.createQuestRewardItem
-          ? hooks.createQuestRewardItem(m, pGame, pPlayer, 0x207a7978, 0, 2, 1)
-          : D2Game_6FC56470_113c(m as SparseMemory113c, 0, 0x207a7978, pPlayer, pGame, 2, 1);
-      if (pPotion !== 0) {
-        m.setU32(pState + 0x1c, (m.u32(pState + 0x1c) + 1) >>> 0);
-        m.setU8(pState + 0x06, 1);
-        QUESTS_SetGameQuestFlag20AndSyncPlayers_6FC55E90_113c(m, pGame, 8);
+    if (wMsgId === 0x21a) {
+      if (DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 0x14, 0) !== 0) {
+        return;
       }
-      const pNpc = m.u32(pQuestArg + 0x08);
-      QUESTS_TriggerNpcInteractAndSendPacket27_6FC55910_113c(m, pNpc, pPlayer, pGame);
+      if (DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 0x14, 1) !== 0) {
+        QUESTRECORD_ClearQuestState113c(m, pQuestFlags, 0x14, 1);
+        QUESTRECORD_SetQuestState113c(m, pQuestFlags, 0x14, 0);
+        QUESTRECORD_SetQuestState113c(m, pQuestFlags, 0x14, 0x0d);
+        QUESTRECORD_ClearQuestStateBits2To11_113c(m, pQuestFlags, m.u32(pQuest + 0xe0) | 0);
+        QUESTRECORD_SetQuestState113c(m, pQuestFlags, 0x14, 5);
+        if (m.u8(pQuest + 0x09) !== 0) {
+          QUESTS_Act2RadamentSetStateAndDebugPrint_6FC55EB0_113c(m, pQuest, 5);
+        }
+        if (hooks && hooks.createQuestRewardItem) {
+          hooks.createQuestRewardItem(m, pGame, pPlayer, 0x207a7978, 0, 2, 1);
+        } else {
+          D2Game_6FC56470_113c(m as SparseMemory113c, 0, 0x207a7978, pPlayer, pGame, 2, 1);
+        }
+        QUESTS_SendPlayerQuestLogPacket28_113c(m, pPlayer, pGame);
+        const dwPlayerGuid = pPlayer !== 0 ? m.u32(pPlayer + 0x0c) : 0xffffffff;
+        QUESTS_GuidListAdd113c(m, pQuest + 0x1c, dwPlayerGuid);
+      }
+      if (DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 0x14, 0x0d) !== 0) {
+        QUESTS_SetGlobalQuestState_6FC53920_113c(m, pGame, 0x14, 0x0d);
+        if (m.u32(pQuest + 0xf0) === 0) {
+          throw new D2CommonAssertError('0x6fd19ff9', 0x221);
+        }
+        dispatchQuestSeqFilterF0_113c(
+          m as SparseMemory113c,
+          pQuest,
+          hooks !== undefined ? hooks.onQuestCallbackF0 : undefined,
+        );
+      }
     }
     return;
   }
 
   if (wNpcId === 0x108 && wMsgId === 0x211) {
-    if (ITEMS_FindQuestItemByBaseCode_6FC2E660_113c(m, pPlayer, pGame, 0x2034336a) !== 0) {
-      removePlayerQuestItemByCode113c(m, pPlayer, 0x2034336a, pGame, hooks);
-      m.setU32(pState + 0x14, (m.u32(pState + 0x14) - 1) >>> 0);
-      m.setU8(pState + 0x02, 1);
-      const pBird =
-        hooks && hooks.createQuestRewardItem
-          ? hooks.createQuestRewardItem(m, pGame, pPlayer, 0x20343367, 0, 2, 1)
-          : D2Game_6FC56470_113c(m as SparseMemory113c, 0, 0x20343367, pPlayer, pGame, 2, 1);
-      if (pBird !== 0) {
-        m.setU8(pState + 0x03, 1);
-        m.setU32(pState + 0x18, (m.u32(pState + 0x18) + 1) >>> 0);
-        QUESTRECORD_ClearQuestStateBits2To11_113c(m, pQuestFlags, 0x14);
-        QUESTRECORD_SetQuestState113c(m, pQuestFlags, 0x14, 4);
+    if (ITEMS_FindQuestItemByBaseCode_6FC2E660_113c(m, pPlayer, pGame, 0x2034336a) === 0) {
+      return;
+    }
+    m.setU32(pQuest + 0xa8, 0x6fd06bd0);
+    removePlayerQuestItemByCode113c(m, pPlayer, 0x2034336a, pGame, hooks);
+    if (pState !== 0) {
+      m.setU32(pState + 0x10, (m.u32(pState + 0x10) - 1) >>> 0);
+    }
+    const pBird =
+      (hooks && hooks.createQuestRewardItem
+        ? hooks.createQuestRewardItem(m, pGame, pPlayer, 0x20343367, 0, 2, 1)
+        : D2Game_6FC56470_113c(m as SparseMemory113c, 0, 0x20343367, pPlayer, pGame, 2, 1)) >>> 0;
+    if (pBird !== 0) {
+      if (pState !== 0) {
+        m.setU32(pState + 0x10, (m.u32(pState + 0x10) + 1) >>> 0);
+        m.setU8(pState + 0x0b, 1);
       }
+      QUESTS_Act2RadamentSetStateAndDebugPrint_6FC55EB0_113c(m, pQuest, 3);
+      m.setU32(pQuest + 0xa8, 0x6fd06bd0);
     }
   }
 }
@@ -2687,76 +2996,108 @@ export function ACT3Q4_OnNpcSpeechComplete_6FD08FE0_113c(
   if (pQuest === 0 || pQuestArg === 0) return;
   const pPlayer = m.u32(pQuestArg + 0x0c);
   const pGame = m.u32(pQuestArg);
-  const pQuestFlags = PLAYER_GetQuestRecordForDifficulty_6FC21020_113c(m, pPlayer, pGame);
+  const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer);
+  const bDiff = pGame !== 0 ? m.u8(pGame + 0x6d) : 0;
+  const pQuestFlags = pPlayerData !== 0 ? m.u32(pPlayerData + bDiff * 4 + 0x10) : 0;
+  if (DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 0x11, 0) === 1) {
+    return;
+  }
+
   const pState = m.u32(pQuest + 0x18);
-  if (pState === 0) return;
-
-  if (((m.u16(pQuestArg + 0x14) << 16) >> 16) !== 0xfe) {
+  if (m.u16(pQuestArg + 0x14) !== 0xfe) {
     return;
   }
 
-  const wMsgId = ((m.u16(pQuestArg + 0x18) << 16) >> 16);
+  const wMsgId = m.u16(pQuestArg + 0x18);
   if (wMsgId === 0x225) {
-    QUESTRECORD_SetQuestState113c(m, pQuestFlags, 0x11, 2);
-    if (m.u8(pQuest + 0x0b) <= 2) {
-      m.setU8(pQuest + 0x14, 1);
-      m.setU8(pQuest + 0x0b, 2);
-      D2GAME_SUNIT_IterateAllLivingPlayers113c(
-        m,
-        pGame,
-        ACT3Q4_SendLamEsensTomeQuestAlertCallback_6FD06550_113c,
-        pQuest,
-      );
-    }
-    const pNpc = m.u32(pQuestArg + 0x08);
-    QUESTS_TriggerNpcInteractAndSendPacket27_6FC55910_113c(m, pNpc, pPlayer, pGame);
+    QUESTS_Act2RadamentSetStateAndDebugPrint_6FC55EB0_113c(m, pQuest, 2);
+    m.setU8(pQuest + 0x14, 0);
+    m.setU8(pQuest + 0x0b, 1);
+    const pQuestGame = m.u32(pQuest + 0x04);
+    SUNIT_FindFirstLivingPlayerOrMonsterMatching_6FCFFCC0_113c(
+      m,
+      pQuestGame,
+      ACT3Q4_SendLamEsensTomeQuestAlertCallback_6FD06550_113c,
+      0,
+      0,
+    );
+    SUNIT_FindFirstLivingPlayerOrMonsterMatching_6FCFFCC0_113c(
+      m,
+      pQuestGame,
+      ACT3Q6_SyncGidbinnState02Callback113c,
+      0,
+      0,
+    );
+    QUESTS_TriggerNpcInteractAndSendPacket27_6FC55910_113c(
+      m,
+      m.u32(pQuestArg + 0x08),
+      pPlayer,
+      pGame,
+    );
     return;
   }
 
-  if (wMsgId === 0x234 && ITEMS_FindQuestItemByBaseCode_6FC2E660_113c(m, pPlayer, pGame, 0x20626262) !== 0) {
+  if (wMsgId !== 0x234) {
+    return;
+  }
+  const pNpc = m.u32(pQuestArg + 0x08);
+  QUESTS_TriggerNpcInteractAndSendPacket27_6FC55910_113c(m, pNpc, pPlayer, pGame);
+  if (DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 0x11, 0) !== 0) {
+    return;
+  }
+  if (ITEMS_FindQuestItemByBaseCode_6FC2E660_113c(m, pPlayer, pGame, 0x20626262) !== 0) {
     removePlayerQuestItemByCode113c(m, pPlayer, 0x20626262, pGame, hooks);
-    m.setU32(pState + 0x10, (m.u32(pState + 0x10) - 1) >>> 0);
-    m.setU8(pState + 0x02, 1);
-
-    if (m.u8(pQuest + 0x0b) <= 4) {
-      m.setU8(pQuest + 0x14, 0);
-      m.setU8(pQuest + 0x0b, 4);
-      D2GAME_SUNIT_IterateAllLivingPlayers113c(
-        m,
-        pGame,
-        ACT3Q4_SendLamEsensTomeQuestAlertCallback_6FD06550_113c,
-        pQuest,
-      );
+    if (pState !== 0) {
+      m.setU8(pState + 0x0c, 1);
+      const dwGuid = pPlayer !== 0 ? m.u32(pPlayer + 0x0c) : 0xffffffff;
+      m.setU32(pState + 0x10, dwGuid);
     }
-
-    QUESTRECORD_ClearQuestStateBits2To11_113c(m, pQuestFlags, 0x11);
-    QUESTRECORD_SetQuestState113c(m, pQuestFlags, 0x11, 0);
-    QUESTRECORD_SetQuestState113c(m, pQuestFlags, 0x11, 0x0d);
-    QUESTRECORD_ClearQuestState113c(m, pQuestFlags, 0x11, 1);
-    ACT3Q4_GrantPlayerStatPointsReward_6FD06470_113c(m, pQuestFlags, pPlayer);
-
-    const wPartyId = D2GAME_PARTY_GetPartyIdForUnit113c(m, pPlayer, pGame);
-    if (wPartyId !== -1 && (wPartyId & 0xffff) !== 0xffff) {
-      PARTY_ForEachSubPartyPlayerUnit_6FCBC160_113c(
-        m,
-        pGame,
-        wPartyId,
-        ACT3Q4_CompleteLamEsensTomePartyCallback_6FD064C0_113c,
-        0,
-      );
-    }
-
-    D2GAME_SUNIT_IterateAllLivingPlayers113c(
+    m.setU32(pQuest + 0xa8, 0x6fd051c0);
+  }
+  if (pState !== 0 && m.u8(pState) === 1) {
+    SUNIT_FindFirstLivingPlayerOrMonsterMatching_6FCFFCC0_113c(
       m,
       pGame,
-      ACT1Q4_SetCainRescuedByPartyCallback_6FC816F0_113c,
-      pQuest,
+      ACT3Q4_CompleteLamEsensTomePartyCallback_6FD064C0_113c,
+      0,
+      pNpc,
     );
-    QUESTS_SetGameQuestFlag20AndSyncPlayers_6FC55E90_113c(m, pGame, 0x11);
-    QUESTS_SetGlobalQuestState_6FC53920_113c(m, pGame, 0x11, 0);
-    const pNpc = m.u32(pQuestArg + 0x08);
-    QUESTS_TriggerNpcInteractAndSendPacket27_6FC55910_113c(m, pNpc, pPlayer, pGame);
-    ACT3Q4_PropagateTomeQuestStateToSubParty_6FD06B90_113c(m, pGame, pPlayer);
+    m.setU8(pState, 0);
+    SUNIT_FindFirstLivingPlayerOrMonsterMatching_6FCFFCC0_113c(
+      m,
+      pGame,
+      ACT3Q4_GrantPlayerStatPointsReward_6FD06470_113c,
+      0,
+      pNpc,
+    );
+    SUNIT_FindFirstLivingPlayerOrMonsterMatching_6FCFFCC0_113c(
+      m,
+      pGame,
+      ACT3Q6_SetGidbinnState0ECallback113c,
+      0,
+      pNpc,
+    );
+  }
+  m.setU8(pQuest + 0x14, 0);
+  m.setU8(pQuest + 0x0b, 0x0d);
+  const dwPlayerGuid = pPlayer !== 0 ? m.u32(pPlayer + 0x0c) : 0xffffffff;
+  QUESTS_GuidListAdd113c(m, pQuest + 0x1c, dwPlayerGuid);
+  if (
+    DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 0x11, 0x0d) !== 0 &&
+    m.u8(pQuest + 0x09) !== 0
+  ) {
+    QUESTS_SetGlobalQuestState_6FC53920_113c(m, pGame, 0x11, 0x0d);
+    if (m.u8(pQuest + 0x0c) !== 5) {
+      QUESTS_Act2RadamentSetStateAndDebugPrint_6FC55EB0_113c(m, pQuest, 5);
+      if (m.u32(pQuest + 0xf0) === 0) {
+        throw new D2CommonAssertError('0x6fd19ff9', 0x1ca);
+      }
+      dispatchQuestSeqFilterF0_113c(
+        m as SparseMemory113c,
+        pQuest,
+        hooks !== undefined ? hooks.onQuestCallbackF0 : undefined,
+      );
+    }
   }
 }
 
@@ -2779,56 +3120,80 @@ export function ACT3Q2_OnNpcSpeechComplete_6FD09600_113c(
   if (pQuest === 0 || pQuestArg === 0) return;
   const pPlayer = m.u32(pQuestArg + 0x0c);
   const pGame = m.u32(pQuestArg);
-  const pQuestFlags = PLAYER_GetQuestRecordForDifficulty_6FC21020_113c(m, pPlayer, pGame);
-  const pState = m.u32(pQuest + 0x18);
-  if (pState === 0) return;
+  const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer);
+  const bDiff = pGame !== 0 ? m.u8(pGame + 0x6d) : 0;
+  const pQuestFlags = pPlayerData !== 0 ? m.u32(pPlayerData + bDiff * 4 + 0x10) : 0;
+  if (DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 0x13, 0) === 1) {
+    return;
+  }
 
-  const wNpcId = ((m.u16(pQuestArg + 0x14) << 16) >> 16);
-  const wMsgId = ((m.u16(pQuestArg + 0x18) << 16) >> 16);
+  const pState = m.u32(pQuest + 0x18);
+  const wNpcId = m.u16(pQuestArg + 0x14);
+  const wMsgId = m.u16(pQuestArg + 0x18);
 
   if (wNpcId === 0xff) {
     if (wMsgId === 0x24b) {
-      if (ITEMS_FindQuestItemByBaseCode_6FC2E660_113c(m, pPlayer, pGame, 0x20333367) !== 0) {
-        QUESTRECORD_ClearQuestStateBits2To11_113c(m, pQuestFlags, 0x13);
-        QUESTRECORD_SetQuestState113c(m, pQuestFlags, 0x13, 4);
+      if (
+        ITEMS_FindQuestItemByBaseCode_6FC2E660_113c(m, pPlayer, pGame, 0x20333367) !== 0 &&
+        DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 0x13, 5) !== 0 &&
+        DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 0x13, 8) === 0
+      ) {
+        if (pState !== 0) {
+          m.setU8(pState + 0x07, 1);
+        }
         removePlayerQuestItemByCode113c(m, pPlayer, 0x20333367, pGame, hooks);
-        m.setU32(pState + 0x24, (m.u32(pState + 0x24) - 1) >>> 0);
-        m.setU8(pState + 0x02, 1);
-
-        const wPartyId = D2GAME_PARTY_GetPartyIdForUnit113c(m, pPlayer, pGame);
-        if (wPartyId !== -1 && (wPartyId & 0xffff) !== 0xffff) {
+        if (pState !== 0) {
+          m.setU32(pState + 0x1c, (m.u32(pState + 0x1c) - 1) >>> 0);
+        }
+        QUESTRECORD_SetQuestState113c(m, pQuestFlags, 0x13, 6);
+        const wPartyId = SUNITDMG_GetPlayerClientClassId113c(m, pPlayer) & 0xffff;
+        if (wPartyId !== 0xffff) {
           PARTY_ForEachSubPartyPlayerUnit_6FCBC160_113c(
             m,
-            pGame,
+            m.u32(pQuest + 0x04),
             wPartyId,
             ACT3Q2_SetGidbinnTurnInPartyCallback_6FD041D0_113c,
             0,
           );
         }
-        D2GAME_SUNIT_IterateAllLivingPlayers113c(
+        SUNIT_FindFirstLivingPlayerOrMonsterMatching_6FCFFCC0_113c(
           m,
-          pGame,
-          ACT3Q6_SyncGidbinnState02Callback113c,
-          pQuest,
+          m.u32(pQuest + 0x04),
+          ACT3Q2_SetGidbinnState0ECallback_6FD04280_113c,
+          0,
+          0,
         );
-        const pNpc = m.u32(pQuestArg + 0x08);
-        QUESTS_TriggerNpcInteractAndSendPacket27_6FC55910_113c(m, pNpc, pPlayer, pGame);
+      }
+      if (m.u8(pQuest + 0x09) !== 0) {
+        QUESTS_SetGlobalQuestState_6FC53920_113c(m, pGame, 0x13, 0x0d);
+      }
+      m.setU8(pQuest + 0x14, 0);
+      m.setU8(pQuest + 0x0b, 0x0d);
+      if (m.u8(pQuest + 0x09) !== 0 && m.u8(pQuest + 0x0c) !== 5) {
+        QUESTS_Act2RadamentSetStateAndDebugPrint_6FC55EB0_113c(m, pQuest, 5);
+        if (m.u32(pQuest + 0xf0) === 0) {
+          throw new D2CommonAssertError('0x6fd19ff9', 0x26e);
+        }
+        dispatchQuestSeqFilterF0_113c(
+          m as SparseMemory113c,
+          pQuest,
+          hooks !== undefined ? hooks.onQuestCallbackF0 : undefined,
+        );
       }
       return;
     }
 
-    if (wMsgId === 0x251 && DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 0x13, 1) === 1) {
-      QUESTRECORD_ClearQuestState113c(m, pQuestFlags, 0x13, 1);
-      QUESTRECORD_ClearQuestStateBits2To11_113c(m, pQuestFlags, 0x13);
-      QUESTRECORD_SetQuestState113c(m, pQuestFlags, 0x13, 0);
-      QUESTRECORD_SetQuestState113c(m, pQuestFlags, 0x13, 0x0d);
-      m.setU8(pState + 0x04, 1);
-
-      const bDiff = m.u8(pGame + 0x6d);
+    if (
+      wMsgId === 0x251 &&
+      DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 0x13, 6) !== 0 &&
+      DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 0x13, 8) === 0
+    ) {
+      QUESTRECORD_SetQuestState113c(m, pQuestFlags, 0x13, 8);
+      const bRingDiff = m.u8(pGame + 0x6d);
       let nRingIlvl = 0x15;
-      if (bDiff === 1) {
+      if (bRingDiff === 1) {
         nRingIlvl = 0x23;
-      } else if (bDiff === 2) {
+      } else if (bRingDiff === 2) {
         nRingIlvl = 0x4b;
       }
       if (hooks && hooks.createQuestRewardItem) {
@@ -2836,60 +3201,40 @@ export function ACT3Q2_OnNpcSpeechComplete_6FD09600_113c(
       } else {
         D2Game_6FC56470_113c(m as SparseMemory113c, nRingIlvl, 0x206e6972, pPlayer, pGame, 6, 1);
       }
-
-      QUESTS_SetGameQuestFlag20AndSyncPlayers_6FC55E90_113c(m, pGame, 9);
-      QUESTS_SetGlobalQuestState_6FC53920_113c(m, pGame, 0x13, 0);
-
-      if (m.u8(pQuest + 0x0b) !== 5) {
-        if (m.u8(pQuest + 0x0b) <= 4) {
-          m.setU8(pQuest + 0x0b, 5);
-        }
-        m.setU8(pQuest + 0x14, 0);
-        D2GAME_SUNIT_IterateAllLivingPlayers113c(
-          m,
-          pGame,
-          ACT3Q6_SetGidbinnState0ECallback113c,
-          pQuest,
-        );
+      if (DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 0x13, 7) !== 0) {
+        QUESTRECORD_SetQuestState113c(m, pQuestFlags, 0x13, 0x0d);
+        QUESTRECORD_SetQuestState113c(m, pQuestFlags, 0x13, 0);
+        const dwPlayerGuid = pPlayer !== 0 ? m.u32(pPlayer + 0x0c) : 0xffffffff;
+        QUESTS_GuidListAdd113c(m, pQuest + 0x1c, dwPlayerGuid);
       }
-      D2GAME_SUNIT_IterateAllLivingPlayers113c(
-        m,
-        pGame,
-        ACT3Q2_SetGidbinnState0ECallback_6FD04280_113c,
-        pQuest,
-      );
-      const pNpc = m.u32(pQuestArg + 0x08);
-      QUESTS_TriggerNpcInteractAndSendPacket27_6FC55910_113c(m, pNpc, pPlayer, pGame);
     }
     return;
   }
 
   if (wNpcId === 0xfd) {
     if (wMsgId === 0x23b) {
-      QUESTRECORD_SetQuestState113c(m, pQuestFlags, 0x13, 2);
-      if (m.u8(pQuest + 0x0b) < 2) {
-        m.setU8(pQuest + 0x14, 1);
-        m.setU8(pQuest + 0x0b, 2);
-        D2GAME_SUNIT_IterateAllLivingPlayers113c(
-          m,
-          pGame,
-          ACT3Q6_SetGidbinnState0ECallback113c,
-          pQuest,
-        );
+      QUESTS_Act2RadamentSetStateAndDebugPrint_6FC55EB0_113c(m, pQuest, 2);
+      if (pState !== 0) {
+        m.setU8(pState + 0x01, 1);
       }
-      const pNpc = m.u32(pQuestArg + 0x08);
-      QUESTS_TriggerNpcInteractAndSendPacket27_6FC55910_113c(m, pNpc, pPlayer, pGame);
     }
     return;
   }
 
   if (wNpcId === 0xfc && wMsgId === 0x24d) {
-    if (DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 0x13, 0x0c) === 0) {
-      QUESTRECORD_SetQuestState113c(m, pQuestFlags, 0x13, 0x0c);
+    if (DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 0x13, 7) === 0) {
+      QUESTRECORD_SetQuestState113c(m, pQuestFlags, 0x13, 7);
+      const pQuestGame = m.u32(pQuest + 0x04);
       if (hooks && hooks.hireAct3FreeMercenary) {
-        hooks.hireAct3FreeMercenary(m, pGame, pPlayer, 2);
+        hooks.hireAct3FreeMercenary(m, pQuestGame, pPlayer, 0xfc);
       } else {
-        D2Game_6FCE1030_113c(m as SparseMemory113c, pGame, pPlayer, 0xfc);
+        D2Game_6FCE1030_113c(m as SparseMemory113c, pQuestGame, pPlayer, 0xfc);
+      }
+      if (DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 0x13, 8) !== 0) {
+        QUESTRECORD_SetQuestState113c(m, pQuestFlags, 0x13, 0x0d);
+        QUESTRECORD_SetQuestState113c(m, pQuestFlags, 0x13, 0);
+        const dwPlayerGuid = pPlayer !== 0 ? m.u32(pPlayer + 0x0c) : 0xffffffff;
+        QUESTS_GuidListAdd113c(m, pQuest + 0x1c, dwPlayerGuid);
       }
     }
   }
@@ -2898,7 +3243,7 @@ export function ACT3Q2_OnNpcSpeechComplete_6FD09600_113c(
 /**
  * Operates the Compelling Orb object (`0x6FD0A140`), checking that the player wields Khalim's Will (`'qf2 '`),
  * incrementing the orb hit counter to 2, destroying `'qf2 '`, firing the hellgate opener projectile,
- * and propagating quest `0x12` completion to the party.
+ * invoking `pQuest->pfSeqFilter` (`+0xF0`), and propagating quest `0x12` completion to the party.
  *
  * @dll D2Game.dll
  * @va 0x6FD0A140
@@ -2911,10 +3256,8 @@ export function ACT3Q5_OnCompellingOrbOperate_6FD0A140_113c(
 ): number {
   hitD2GameVa113c(0x6FD0A140);
   if (pOpArg === 0) return 0;
-  const pGame = m.u32(pOpArg);
-  const pQuest = findQuestByIdInGame113c(m, pGame, 0x13);
   const pObject = m.u32(pOpArg + 0x04);
-  if (pQuest === 0 || pObject === 0 || m.u32(pObject + 0x10) !== 0) {
+  if (pObject !== 0 && m.u32(pObject + 0x10) !== 0) {
     return 0;
   }
 
@@ -2922,10 +3265,17 @@ export function ACT3Q5_OnCompellingOrbOperate_6FD0A140_113c(
   const pInv = pPlayer !== 0 ? m.u32(pPlayer + 0x60) : 0;
   const pWeapon = INVENTORY_GetCompositWeaponMemPort113c(m, pInv);
   if (pWeapon === 0 || ITEMS_GetBaseCode113c(m, pWeapon) !== 0x20326671) {
-    SUNIT_SetUnitEventSound113c(m, pPlayer, 0x13, pPlayer);
+    if (pPlayer !== 0) {
+      SUNIT_SetUnitEventSound113c(m, pPlayer, 0x13, pPlayer);
+    }
     return 0;
   }
 
+  const pGame = m.u32(pOpArg);
+  const pQuest = findQuestByIdInGame113c(m, pGame, 0x13);
+  if (pQuest === 0) {
+    return 0;
+  }
   const pState = m.u32(pQuest + 0x18);
   if (pState === 0) {
     return 0;
@@ -2938,7 +3288,7 @@ export function ACT3Q5_OnCompellingOrbOperate_6FD0A140_113c(
   }
 
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer);
-  const bDiff = m.u8(pGame + 0x6d);
+  const bDiff = pGame !== 0 ? m.u8(pGame + 0x6d) : 0;
   const pQuestFlags = pPlayerData !== 0 ? m.u32(pPlayerData + bDiff * 4 + 0x10) : 0;
   QUESTRECORD_SetQuestState113c(m, pQuestFlags, 0x12, 0);
   QUESTRECORD_SetQuestState113c(m, pQuestFlags, 0x12, 0x0d);
@@ -2947,9 +3297,23 @@ export function ACT3Q5_OnCompellingOrbOperate_6FD0A140_113c(
     hooks && hooks.deleteAllPlayerQuestItems
       ? hooks.deleteAllPlayerQuestItems
       : deleteMatchingQuestItemByBaseCode113c;
-  const nRemoved = delAllFn(m, pGame, pPlayer, 0x20326671);
-  m.setU32(pState + 0x28, (m.u32(pState + 0x28) - nRemoved) >>> 0);
+  delAllFn(m, pGame, pPlayer, 0x20326671);
 
+  if (DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 0x15, 4) !== 0) {
+    const pQuestRec = PLAYER_GetQuestRecordForDifficulty_6FC21020_113c(m, pPlayer, pGame);
+    if (DRLGWARP_TestRoomTileBit113c(m, pQuestRec, 0x15, 0) === 0) {
+      QUESTRECORD_SetQuestState113c(
+        m,
+        PLAYER_GetQuestRecordForDifficulty_6FC21020_113c(m, pPlayer, pGame),
+        0x15,
+        0,
+      );
+    }
+  }
+
+  if (pGame === 0) {
+    throw new D2CommonAssertError('0x6fd19ff9', 0x2d3);
+  }
   const dwMonsterGuid = m.u32(pState + 0x2c);
   const pBucketHead = m.u32(pGame + 0x1320 + ((dwMonsterGuid & 0x7f) << 2));
   let pMonster = pBucketHead;
@@ -2965,8 +3329,9 @@ export function ACT3Q5_OnCompellingOrbOperate_6FD0A140_113c(
     ACT3Q6_FireHellgateOpenerProjectile_6FD0AB60_113c(m, pMonster, pGame);
   }
 
-  const pObjRec = DATATBLS_GetObjectsTxtRecord113c(m, m.u32(pObject + 0x04));
   UNITS_ChangeAnimMode113c(m, pObject, 1);
+  const nObjClassId = pObject !== 0 ? m.u32(pObject + 0x04) : 0xffffffff;
+  const pObjRec = DATATBLS_GetObjectsTxtRecord113c(m, nObjClassId);
   const nFrameCnt = pObjRec !== 0 ? (m.u32(pObjRec + 0xdc) >>> 8) : 0;
   const dwExpireFrame = (nFrameCnt + m.u32(pGame + 0xa8)) >>> 0;
   if (m.u32(pGame + 0xb8) !== 0) {
@@ -2974,10 +3339,19 @@ export function ACT3Q5_OnCompellingOrbOperate_6FD0A140_113c(
   }
   m.setU8(pState + 0x0c, 1);
 
-  QUESTS_SetGameQuestFlag20AndSyncPlayers_6FC55E90_113c(m, pGame, 0x0a);
+  QUESTS_SetGameQuestFlag20AndSyncPlayers_6FC55E90_113c(m, m.u32(pQuest + 0x04), 0x0a);
 
-  const wPartyId = D2GAME_PARTY_GetPartyIdForUnit113c(m, pPlayer, pGame);
-  if (wPartyId !== -1 && (wPartyId & 0xffff) !== 0xffff) {
+  if (m.u32(pQuest + 0xf0) === 0) {
+    throw new D2CommonAssertError('0x6fd19ff9', 0x353);
+  }
+  dispatchQuestSeqFilterF0_113c(
+    m as SparseMemory113c,
+    pQuest,
+    hooks !== undefined ? hooks.onQuestCallbackF0 : undefined,
+  );
+
+  const wPartyId = SUNITDMG_GetPlayerClientClassId113c(m, pPlayer) & 0xffff;
+  if (wPartyId !== 0xffff) {
     const partyCb =
       hooks && hooks.compellingOrbPartyCallback
         ? hooks.compellingOrbPartyCallback

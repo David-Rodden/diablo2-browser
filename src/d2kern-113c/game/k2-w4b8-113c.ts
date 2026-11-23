@@ -1185,13 +1185,9 @@ export function AIBAAL_ChooseActionWeighted_6FCD7380_113c(
       (savedSp + 4) >>> 0,
       (savedSp + 8) >>> 0,
       (savedSp + 12) >>> 0,
+      pUnit,
     )
-    if ((pUnit >>> 0) !== 0 && (m.u32(pUnit) | 0) === 1) {
-      const pMonData = m.u32((pUnit + 0x14) >>> 0) >>> 0
-      if (pMonData !== 0 && m.u32(pMonData) !== 0) {
-        nEffectiveDiff = m.u32(savedSp) | 0
-      }
-    }
+    nEffectiveDiff = m.u32(savedSp) | 0
   } finally {
     k2W4B8StackPtr = savedSp
   }
@@ -1488,9 +1484,9 @@ export function AIBAAL_ReinitAiThinkAndRestoreCmd10_6FCD78A0_113c(
     STATES_ToggleGfxStateFlag113c(m, pUnit, 0x0c, 0)
   }
 
-  m.u32(pAiParam)
-  m.u32(pAiParamPtr >>> 0)
-  AI_InitMonsterAiThinkFn113c(m, pUnit)
+  const nAiIdxArg = m.u32(pAiParam) | 0
+  const pAiGenArg = m.u32(pAiParamPtr >>> 0) >>> 0
+  AI_InitMonsterAiThinkFn113c(m, pUnit, pGame, pAiGenArg, nAiIdxArg)
 
   let hasCmd10After = false
   if ((pUnit >>> 0) !== 0 && (m.u32(pUnit) | 0) === 1) {
@@ -3005,7 +3001,7 @@ export function ACT4Q3_SpawnDiabloInSanctuary_6FCDA850_113c(
 
 /**
  * Allocates and places the Last Portal object (`classId = 0x236` / `566`) near
- * `pNpcParams->pUnit` (`+0x08`, `y + 5`) and marks `pQuestCustomData` (`+0x44 = 0`, `+0x45 = 1`).
+ * `pNpcParams->pUnit` (`+0x08`, `x + 5`) and marks `pQuestCustomData` (`+0x44 = 0`, `+0x45 = 1`).
  *
  * @va D2Game:0x6FCDAFF0
  */
@@ -3026,8 +3022,8 @@ export function ACT4Q3_SpawnLastPortalObject_6FCDAFF0_113c(
 
     const pRefUnit = m.u32((pNpcParams + 0x08) >>> 0) >>> 0
     PATH_GetTargetTypeAndPosition113c(m, pRefUnit, pCoordX)
-    const adjY = (m.u32(pCoordY) + 5) | 0
-    m.setU32(pCoordY, adjY >>> 0)
+    const adjX = (m.u32(pCoordX) + 5) | 0
+    m.setU32(pCoordX, adjX >>> 0)
 
     const pRoom0 = UNITS_GetRoom113c(m, m.u32((pNpcParams + 0x08) >>> 0)) >>> 0
     m.setU32(ppRoomOut, pRoom0)

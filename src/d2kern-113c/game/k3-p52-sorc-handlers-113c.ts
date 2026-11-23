@@ -24,8 +24,9 @@ import {
 } from '../common/unit.ts'
 import { UNITS_SetTargetUnitForDynamicUnit113c } from '../common/waypoint.ts'
 import { D2UnitStrc } from '../mem/layout.generated.ts'
-import type { Memory113c } from '../mem/sparse-memory.ts'
+import type { Memory113c, SparseMemory113c } from '../mem/sparse-memory.ts'
 import {
+  registerSkillsSrvStDispatcher113c,
   SKILLS_DoUsedSkillAction113c,
   SKILLS_StartUsedSkill113c,
 } from './a1c-post150-f786-f1040-113c.ts'
@@ -33,6 +34,10 @@ import { SUNITDMG_FreeAttackerCombatList113c } from './ai-fallen-113c.ts'
 import {
   C2S_Packet0C_RightSkillOnLocation113c,
   C2S_Packet0D_RightSkillOnUnit113c,
+  C2S_Packet0E_ShiftRightSkillOnUnit113c,
+  C2S_Packet0F_RepeatRightSkillOnLocation113c,
+  C2S_Packet10_RepeatRightSkillOnUnit113c,
+  C2S_Packet11_RepeatShiftRightSkillOnUnit113c,
   type C2SPacketCallees113c,
 } from './c2s-packet-113c.ts'
 import { MONSTER_SetLastHitModeField54_113c } from './k2-gap-itemdef-113c.ts'
@@ -44,8 +49,16 @@ import {
   SKILLS_SrvDo_NovaRing113c,
 } from './k2-gap-melee-dot-113c.ts'
 import { MONUMOD_DispatchOnKillEvent5_113c } from './k2-items-tc-w1-113c.ts'
-import { MISSILES_SrvHit_RollKnockbackResult_6FC59670_113c } from './k2-laneK-0x6fc5-w1-113c.ts'
-import { SKILLS_SrvSt15_CheckRevivableCorpseOutsideTown_6FC6EF20_113c } from './k2-laneL-0x6fc6-w1-113c.ts'
+import {
+  MISSILES_SrvHit_RollKnockbackResult_6FC59670_113c,
+  SKILLS_SrvSt13_ResetSkillParams_6FC62230_113c,
+} from './k2-laneK-0x6fc5-w1-113c.ts'
+import {
+  SKILLS_SrvSt05_CheckValidSkillTarget_6FC6C1C0_113c,
+  SKILLS_SrvSt15_CheckRevivableCorpseOutsideTown_6FC6EF20_113c,
+  SKILLS_SrvSt17_CheckSelectableCorpseOutsideTown_6FC6EEE0_113c,
+  SKILLS_SrvSt19_CheckTargetOutsideTown_6FC6EE40_113c,
+} from './k2-laneL-0x6fc6-w1-113c.ts'
 import {
   PLAYER_StartModeDispatch113c,
   SUNITDMG_CheckMonTypeFlag113c,
@@ -55,6 +68,12 @@ import {
   type SUnitDmgHooks113c,
 } from './k2-real-s2c-combat-113c.ts'
 import {
+  SKILLS_SrvSt22_ValidateNonTownPlayerOrMonsterTarget_6FCB2060_113c,
+  SKILLS_SrvSt23_ValidateMeleeTarget_6FCB2030_113c,
+  SKILLS_SrvSt25_ValidateDistinctTarget_6FCB1B40_113c,
+  SKILLS_SrvSt36_HasEquippedShield_6FCB8390_113c,
+} from './k2-w2b4-113c.ts'
+import {
   MISSILES_ConvertPhysToElemDamageByCalc_6FC59CE0_113c,
   MISSILES_SrvDmg12B_Nova64RingOnExpire_6FC5C850_113c,
 } from './k2-w3b3-113c.ts'
@@ -63,20 +82,45 @@ import {
   MISSILE_SrvDo_RadialRingSubMissile_6FC60CA0_113c,
   MISSILE_SrvDo_SpiralPath_6FC60BD0_113c,
   MISSILE_SrvDo_TrailVerifiedOwnerSubMissile_6FC61850_113c,
+  SKILLS_SrvDo_ApplyAlliedTargetAuraStats_6FC62570_113c,
+  SKILLS_SrvDo_ApplySelfAuraAndItemEvents_6FC62730_113c,
+  SKILLS_SrvDo_CorpseExplosion_6FC6F4D0_113c,
+  SKILLS_SrvDo_DruidShapeShift_6FC65CE0_113c,
 } from './k2-w3b4-113c.ts'
 import { SKILLS_SrvDo_ApplyRadiusAuraStatList_6FC6C2A0_113c } from './k2-w4b2-113c.ts'
 import { SKILLS_ApplySkillDelayState121OnPlayer_6FCBFF70_113c } from './k2-w4b6-113c.ts'
-import { MISSILES_SrvHit_ChainBounceProjectile_6FC5D020_113c } from './k2-w5b1-113c.ts'
+import {
+  MISSILES_SrvHit_ChainBounceProjectile_6FC5D020_113c,
+  SKILLS_CanCastAtNonTownTargetCoords_6FC62AD0_113c,
+  SKILLS_SrvDo017_FeralRageOrMaulHit_6FC473C0_113c,
+  SKILLS_SrvDo031_ChargedBoltProjectiles_6FC63B60_113c,
+} from './k2-w5b1-113c.ts'
 import { STATES_RemoveMorphStateAndClampVitals_6FCB8450_113c } from './k2-w5b2-113c.ts'
 import { SKILLS_ConsumeThrowOrQuiverQuantityForPlayer_6FCC1790_113c } from './k2-w5b3-113c.ts'
 import { SUNITDMG_OnFreezeStateExpiredCallback_6FCFB4C0_113c } from './k2-w5b7-113c.ts'
 import {
   MISSILE_SrvHit_RadialETypeDamageByCalc1_6FC5B990_113c,
   SKILLS_SrvDo_FireWallPerpendicularControllers_6FC637D0_113c,
+  SKILLS_SrvDo_SpawnChargedAreaControllerWithPacketA3_6FC652C0_113c,
+  SKILLS_SrvDo_SpawnProjectileAtTargetIfCanSpawnObj_6FC62D90_113c,
+  SKILLS_SrvDo_ToggleOrApplyTimedSkillState_6FC66210_113c,
 } from './k2-w6b1-113c.ts'
 import { SKILLS_CreateDirectionalProjectileWithToHitAndAmmo_6FCC28F0_113c } from './k2-w6b2-113c.ts'
-import { SKILLS_SrvDo043_SpawnSrvMissileWithRange_6FC63720_113c } from './k2-w7b1-113c.ts'
+import {
+  SKILLS_SrvDo042_SpawnSrvMissileWithDeltaAndRange_6FC63610_113c,
+  SKILLS_SrvDo043_SpawnSrvMissileWithRange_6FC63720_113c,
+  SKILLS_SrvDo046_EnchantOrRevivePetWithAuraState_6FC63FA0_113c,
+  SKILLS_SrvDo047_SpawnSkillMissileAtTargetPos_6FC64390_113c,
+  SKILLS_SrvDo070_NecromancerWeakenOrDecrepify_6FC71A90_113c,
+} from './k2-w7b1-113c.ts'
+import { SKILLS_SrvDo_CloakOfShadows_6FCB4B10_113c } from './k2-w7b2-113c.ts'
 import { SKILLS_SrvDo120_LaunchSkillOrWeaponMissile_6FCD49F0_113c } from './k2-w7b3-113c.ts'
+import { SKILLS_SrvDo_RadialAuraDamage_6FCB57F0_113c } from './k2-w9b1-113c.ts'
+import { SKILLS_SrvDo_Telekinesis_6FC631C0_113c } from './k2-w10b1-113c.ts'
+import {
+  SKILLS_SrvDo029_Teleport_6FC63450_113c,
+  SKILLS_SrvDo067_ApplyBuffStateAndItemEvents_6FC628F0_113c,
+} from './k2-w11b1-113c.ts'
 import {
   MISSILE_DefaultSrvHitFlagsK3_113c,
   MISSMODE_SrvDmg07_WarcryShockWaveK3_113c,
@@ -202,6 +246,58 @@ export function PLAYER_ScheduleModeAnimEventsK3_113c(
   m.setU32((u + 0x44) >>> 0, (m.u32((g + 0xa8) >>> 0) << 8) >>> 0)
 }
 
+export function dispatchSkillSrvStK3_113c(
+  mem: Memory113c,
+  stIdx: number,
+  pg: number,
+  pu: number,
+  skId: number,
+  skLvl: number,
+): number {
+  if (stIdx === 5) {
+    return SKILLS_SrvSt05_CheckValidSkillTarget_6FC6C1C0_113c(mem, pg, pu, skId, skLvl)
+  }
+  if (stIdx === 13) {
+    return SKILLS_SrvSt13_ResetSkillParams_6FC62230_113c(mem, pg, pu, skId, skLvl)
+  }
+  if (stIdx === 14) {
+    return SKILLS_CanCastAtNonTownTargetCoords_6FC62AD0_113c(mem as SparseMemory113c, pg, pu, skId, skLvl)
+  }
+  if (stIdx === 15) {
+    return SKILLS_SrvSt15_CheckRevivableCorpseOutsideTown_6FC6EF20_113c(mem, pg, pu, skId, skLvl)
+  }
+  if (stIdx === 17) {
+    return SKILLS_SrvSt17_CheckSelectableCorpseOutsideTown_6FC6EEE0_113c(mem, pg, pu, skId, skLvl)
+  }
+  if (stIdx === 19) {
+    return SKILLS_SrvSt19_CheckTargetOutsideTown_6FC6EE40_113c(mem, pg, pu, skId, skLvl)
+  }
+  if (stIdx === 22) {
+    return SKILLS_SrvSt22_ValidateNonTownPlayerOrMonsterTarget_6FCB2060_113c(mem, pg, pu, skId, skLvl)
+  }
+  if (stIdx === 23) {
+    return SKILLS_SrvSt23_ValidateMeleeTarget_6FCB2030_113c(mem, pg, pu, skId, skLvl)
+  }
+  if (stIdx === 25) {
+    return SKILLS_SrvSt25_ValidateDistinctTarget_6FCB1B40_113c(mem, pg, pu, skId, skLvl)
+  }
+  if (stIdx === 32) {
+    return SKILLS_SrvDo017_FeralRageOrMaulHit_6FC473C0_113c(mem, pg, pu, skId, skLvl)
+  }
+  if (stIdx === 36) {
+    return SKILLS_SrvSt36_HasEquippedShield_6FCB8390_113c(mem, pu, pg, skId, skLvl)
+  }
+  return 1
+}
+
+let k3SkillsSrvStRegistered = false
+
+export function ensureK3SkillsSrvStRegistered113c(): void {
+  if (k3SkillsSrvStRegistered) return
+  k3SkillsSrvStRegistered = true
+  registerSkillsSrvStDispatcher113c(dispatchSkillSrvStK3_113c)
+}
+
 /**
  * `@va D2Game:0x6FC987C0`: starts unit-targeted cast / sequence mode (`10` or `18`),
  * binds `pTargetUnit` via `D2Common.#11129`, initializes anim / sequence data (`0x6FCFFF10`),
@@ -224,11 +320,7 @@ export function PLAYER_StartCastSkillOnUnitK3_113c(
   PLAYER_ScheduleModeAnimEventsK3_113c(m, game, plr)
   m.setU32((plr + 0xc4) >>> 0, (m.u32((plr + 0xc4) >>> 0) & 0xffffffbf) >>> 0)
   SUNIT_ValidatePathTargetUnit113c(m, plr, game)
-  SKILLS_StartUsedSkill113c(m, plr, game, (mem, stIdx, pg, pu, skId, skLvl) =>
-    stIdx === 15
-      ? SKILLS_SrvSt15_CheckRevivableCorpseOutsideTown_6FC6EF20_113c(mem, pg, pu, skId, skLvl)
-      : 1,
-  )
+  SKILLS_StartUsedSkill113c(m, plr, game, dispatchSkillSrvStK3_113c)
 }
 
 /**
@@ -288,8 +380,31 @@ export function PLAYER_HandleC2SRightSkillK3_113c(
       return rc === 0 ? 1 : 0
     }
 
+    if (op === 0x0f && packetBytes.length >= 5) {
+      const x = view.getUint16(1, true)
+      const y = view.getUint16(3, true)
+      if (x === 0 || y === 0) return 0
+      const rc = C2S_Packet0F_RepeatRightSkillOnLocation113c(m, pGame, pPlayer, pPkt, 5, callees)
+      return rc === 0 ? 1 : 0
+    }
+
     if (op === 0x0d && packetBytes.length >= 9) {
       const rc = C2S_Packet0D_RightSkillOnUnit113c(m, pGame, pPlayer, pPkt, 9, callees)
+      return rc === 0 ? 1 : 0
+    }
+
+    if (op === 0x0e && packetBytes.length >= 9) {
+      const rc = C2S_Packet0E_ShiftRightSkillOnUnit113c(m, pGame, pPlayer, pPkt, 9, callees)
+      return rc === 0 ? 1 : 0
+    }
+
+    if (op === 0x10 && packetBytes.length >= 9) {
+      const rc = C2S_Packet10_RepeatRightSkillOnUnit113c(m, pGame, pPlayer, pPkt, 9, callees)
+      return rc === 0 ? 1 : 0
+    }
+
+    if (op === 0x11 && packetBytes.length >= 9) {
+      const rc = C2S_Packet11_RepeatShiftRightSkillOnUnit113c(m, pGame, pPlayer, pPkt, 9, callees)
       return rc === 0 ? 1 : 0
     }
   } finally {
@@ -320,7 +435,7 @@ export function SKILLS_DoUsedSkillActionK3_113c(
 
   const pRoom = UNITS_GetRoom113c(m, pUnit)
   if (pRoom === 0) return 0
-  if ((m.u8((pSkillsTxt + 0x06) >>> 0) & 0x20) === 0) {
+  if ((m.u8((pSkillsTxt + 0x05) >>> 0) & 0x01) === 0) {
     if (DUNGEON_CheckRoomIsTownMemPort113c(m, pRoom) !== 0) return 0
   }
 
@@ -332,7 +447,7 @@ export function SKILLS_DoUsedSkillActionK3_113c(
     m.setU32((pUnit + 0xc4) >>> 0, (m.u32((pUnit + 0xc4) >>> 0) | 0x40) >>> 0)
     const pMis =
       SKILLS_CreateDirectionalProjectileWithToHitAndAmmo_6FCC28F0_113c(
-        m,
+        m as SparseMemory113c,
         pGame >>> 0,
         wSrvMissile,
         pUnit >>> 0,
@@ -349,22 +464,70 @@ export function SKILLS_DoUsedSkillActionK3_113c(
     }
   }
 
+  const sm = m as SparseMemory113c
   const rc = SKILLS_DoUsedSkillAction113c(m, pUnit, pGame, (doIdx, skId, effLvl) => {
     if (doIdx === 6) {
-      return SKILLS_SrvDo_ApplyRadiusAuraStatList_6FC6C2A0_113c(m, pGame, pUnit, skId, effLvl)
+      return SKILLS_SrvDo_ApplyRadiusAuraStatList_6FC6C2A0_113c(sm, pGame, pUnit, skId, effLvl)
+    }
+    if (doIdx === 17) {
+      const r = SKILLS_SrvDo031_ChargedBoltProjectiles_6FC63B60_113c(sm, pGame, pUnit, skId, effLvl)
+      if (r !== 0) MONUMOD_DispatchOnKillEvent5_113c(m, pUnit, pUnit, pGame)
+      return r
+    }
+    if (doIdx === 18) {
+      const r = SKILLS_SrvDo067_ApplyBuffStateAndItemEvents_6FC628F0_113c(sm, pGame, pUnit, skId, effLvl)
+      if (r !== 0) MONUMOD_DispatchOnKillEvent5_113c(m, pUnit, pUnit, pGame)
+      return r
+    }
+    if (doIdx === 19) {
+      const r = SKILLS_SrvDo047_SpawnSkillMissileAtTargetPos_6FC64390_113c(sm, pGame, pUnit, skId, effLvl)
+      if (r !== 0) MONUMOD_DispatchOnKillEvent5_113c(m, pUnit, pUnit, pGame)
+      return r
+    }
+    if (doIdx === 21) {
+      return SKILLS_SrvDo_Telekinesis_6FC631C0_113c(sm, pGame, pUnit, skId, effLvl)
     }
     if (doIdx === 22) {
       return SKILLS_SrvDo_NovaRing113c(m, pGame, pUnit, skId, effLvl, hooks)
     }
-    if (doIdx === 24) {
-      const r = SKILLS_SrvDo_FireWallPerpendicularControllers_6FC637D0_113c(m, pGame, pUnit, skId, effLvl)
+    if (doIdx === 23) {
+      const r = SKILLS_SrvDo_ApplySelfAuraAndItemEvents_6FC62730_113c(sm, pGame, pUnit, skId, effLvl)
       if (r !== 0) MONUMOD_DispatchOnKillEvent5_113c(m, pUnit, pUnit, pGame)
       return r
     }
-    if (doIdx === 26) {
-      const r = SKILLS_SrvDo043_SpawnSrvMissileWithRange_6FC63720_113c(m, pGame, pUnit, skId, effLvl)
+    if (doIdx === 24) {
+      const r = SKILLS_SrvDo_FireWallPerpendicularControllers_6FC637D0_113c(sm, pGame, pUnit, skId, effLvl)
       if (r !== 0) MONUMOD_DispatchOnKillEvent5_113c(m, pUnit, pUnit, pGame)
       return r
+    }
+    if (doIdx === 25) {
+      return SKILLS_SrvDo_ApplyAlliedTargetAuraStats_6FC62570_113c(sm, pGame, pUnit, skId, effLvl)
+    }
+    if (doIdx === 26) {
+      const r = SKILLS_SrvDo043_SpawnSrvMissileWithRange_6FC63720_113c(sm, pGame, pUnit, skId, effLvl)
+      if (r !== 0) MONUMOD_DispatchOnKillEvent5_113c(m, pUnit, pUnit, pGame)
+      return r
+    }
+    if (doIdx === 27) {
+      return SKILLS_SrvDo029_Teleport_6FC63450_113c(sm, pGame, pUnit, skId, effLvl)
+    }
+    if (doIdx === 28) {
+      return SKILLS_SrvDo_SpawnProjectileAtTargetIfCanSpawnObj_6FC62D90_113c(sm, pGame, pUnit, skId, effLvl)
+    }
+    if (doIdx === 29) {
+      return SKILLS_SrvDo046_EnchantOrRevivePetWithAuraState_6FC63FA0_113c(sm, pGame, pUnit, skId, effLvl)
+    }
+    if (doIdx === 47) {
+      return SKILLS_SrvDo_CloakOfShadows_6FCB4B10_113c(sm, pGame, pUnit, skId, effLvl)
+    }
+    if (doIdx === 51) {
+      return SKILLS_SrvDo_RadialAuraDamage_6FCB57F0_113c(sm, pGame, pUnit, skId, effLvl)
+    }
+    if (doIdx === 55) {
+      return SKILLS_SrvDo_CorpseExplosion_6FC6F4D0_113c(sm, pGame, pUnit, skId, effLvl)
+    }
+    if (doIdx === 61) {
+      return SKILLS_SrvDo070_NecromancerWeakenOrDecrepify_6FC71A90_113c(sm, pGame, pUnit, skId, effLvl)
     }
     if (doIdx === 68) {
       const r = SKILLS_SrvDo068_BasicShoutK3_113c(m, pGame, pUnit, skId, effLvl, hooks)
@@ -372,11 +535,37 @@ export function SKILLS_DoUsedSkillActionK3_113c(
       return r
     }
     if (doIdx === 110) {
-      const r = SKILLS_SrvDo120_LaunchSkillOrWeaponMissile_6FCD49F0_113c(m, pGame, pUnit, skId, effLvl)
+      const r = SKILLS_SrvDo120_LaunchSkillOrWeaponMissile_6FCD49F0_113c(sm, pGame, pUnit, skId, effLvl)
       if (r !== 0) MONUMOD_DispatchOnKillEvent5_113c(m, pUnit, pUnit, pGame)
       return r
     }
-    if (doIdx === 16 || doIdx === 30 || doIdx === 31 || doIdx === 56) {
+    if (doIdx === 116) {
+      return SKILLS_SrvDo_ToggleOrApplyTimedSkillState_6FC66210_113c(sm, pGame, pUnit, skId, effLvl)
+    }
+    if (doIdx === 123) {
+      return SKILLS_SrvDo_SpawnChargedAreaControllerWithPacketA3_6FC652C0_113c(sm, pGame, pUnit, skId, effLvl)
+    }
+    if (doIdx === 124) {
+      return SKILLS_SrvDo_DruidShapeShift_6FC65CE0_113c(sm, pGame, pUnit, skId, effLvl)
+    }
+    if (doIdx === 151) {
+      return SKILLS_SrvDo042_SpawnSrvMissileWithDeltaAndRange_6FC63610_113c(sm, pGame, pUnit, skId, effLvl)
+    }
+    if (
+      doIdx === 15 ||
+      doIdx === 16 ||
+      doIdx === 30 ||
+      doIdx === 31 ||
+      doIdx === 44 ||
+      doIdx === 49 ||
+      doIdx === 56 ||
+      doIdx === 57 ||
+      doIdx === 60 ||
+      doIdx === 114 ||
+      doIdx === 115 ||
+      doIdx === 119 ||
+      doIdx === 144
+    ) {
       return dispatchSummonOrCurseDoFuncK3_113c(m, pGame, pUnit, doIdx, skId, effLvl)
     }
     return 1
@@ -445,7 +634,7 @@ export function PLAYER_IsNonMeleeSequenceSkillK3_113c(m: Memory113c, pPlayer: nu
   const pSkillsTxt = SKILLS_GetRecordPtrFast113c(m, skillId)
   if (pSkillsTxt === 0) return false
   const wSrvDo = sx16(m.u16((pSkillsTxt + 0x2e) >>> 0))
-  return wSrvDo !== 1
+  return wSrvDo !== 1 && wSrvDo !== 2
 }
 
 /**

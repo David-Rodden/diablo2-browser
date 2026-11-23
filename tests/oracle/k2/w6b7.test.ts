@@ -266,7 +266,8 @@ describe('K2 Wave 6 Batch 7 (w6b7: 0x6FCEDBB0..0x6FD142D0)', () => {
     PARTY_SyncJoinedPartyRelationsCallback_6FD10B90_113c(m, pGame, player.pPlayer, pJoinCtx)
     expect(m.u8((player.pQueue + 0x0b) >>> 0)).toBe(0x07)
     expect(m.u16((player.pQueue + 0x07) >>> 0)).toBe(402)
-    expect(m.u8((player.pQueue + 0x0a) >>> 0)).toBe(2)
+    // D2Game.dll@0x6FD10720 (0x6fd10776..0x6fd107d7) writes bColor at packet offset +0x02 (`pQueue + 0x06`), not +0x06 (`pQueue + 0x0a`).
+    expect(m.u8((player.pQueue + 0x06) >>> 0)).toBe(2)
     expect(m.u8((player.pQueue + 0x2c) >>> 0)).toBe(0x8b)
     expect(m.u32(joining.pQueue)).toBeGreaterThan(0)
   })

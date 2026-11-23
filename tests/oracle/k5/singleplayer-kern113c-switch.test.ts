@@ -75,7 +75,7 @@ describe('[K5] Single-Player d2kern-113c Runtime Switch & Live Multi-Resolution 
     })
     expect(cfgDefault).toEqual({ singlePlayerEnabled: true })
 
-    // 2. Explicit d2kern-113c backend in site-config.json
+    // 2. Explicit d2kern-113c & legacy rollback backends in site-config.json
     const cfgKern = await loadSiteConfig({
       fetchFn: async () =>
         new Response(
@@ -88,17 +88,29 @@ describe('[K5] Single-Player d2kern-113c Runtime Switch & Live Multi-Resolution 
       singlePlayerBackend: 'd2kern-113c',
     })
 
+    const cfgLegacyRollback = await loadSiteConfig({
+      fetchFn: async () =>
+        new Response(
+          JSON.stringify({ singlePlayerEnabled: true, singlePlayerBackend: 'legacy' }),
+          { status: 200 },
+        ),
+    })
+    expect(cfgLegacyRollback).toEqual({
+      singlePlayerEnabled: true,
+      singlePlayerBackend: 'legacy',
+    })
+
     // 3. Env override fallback when fetch fails
     const cfgEnv = await loadSiteConfig({
       buildEnvSinglePlayer: 'true',
-      buildEnvSinglePlayerBackend: 'd2kern-113c',
+      buildEnvSinglePlayerBackend: 'legacy',
       fetchFn: async () => {
         throw new Error('offline')
       },
     })
     expect(cfgEnv).toEqual({
       singlePlayerEnabled: true,
-      singlePlayerBackend: 'd2kern-113c',
+      singlePlayerBackend: 'legacy',
     })
 
     // 4. Dev server HTTP middleware serves singlePlayerBackend cleanly
@@ -138,9 +150,9 @@ describe('[K5] Single-Player d2kern-113c Runtime Switch & Live Multi-Resolution 
     }
   })
 
-  it('switches LocalLobbyProvider and createLocalLoopbackSession between legacy and d2kern-113c backends', async () => {
+  it('defaults LocalLobbyProvider and createLocalLoopbackSession to d2kern-113c while preserving explicit legacy opt-in', async () => {
     const lobby = new LocalLobbyProvider({ defaultMapSeed: 0x2468ace0 })
-    expect(lobby.getBackend()).toBe('legacy')
+    expect(lobby.getBackend()).toBe('d2kern-113c')
 
     await lobby.createCharacter({
       name: 'SwitchSor',
@@ -150,41 +162,64 @@ describe('[K5] Single-Player d2kern-113c Runtime Switch & Live Multi-Resolution 
       ladder: false,
     })
 
-    // 1. Default legacy mode returns LocalLoopbackAdapter
-    const legacyAdapter = await lobby.enterGame({ charName: 'SwitchSor' })
+    // 1. Default mode returns LocalKernelD2gsAdapter113c over compressed ByteStream + D2gsAdapter
+    const defaultKern = await lobby.enterGame({ charName: 'SwitchSor' })
+    expect(defaultKern).toBeInstanceOf(LocalKernelD2gsAdapter113c)
+    expect(defaultKern.kind).toBe('d2kern-113c')
+    expect(defaultKern.state).toBe('ingame')
+    expect(defaultKern.stats.bytesIn).toBeGreaterThan(20)
+    expect(defaultKern.stats.bytesOut).toBeGreaterThan(30)
+    expect(defaultKern.stats.protocolErrors).toBe(0)
+    defaultKern.leave()
+
+    // 2. Per-call override `{ backend: 'legacy' }` cleanly falls back to LocalLoopbackAdapter
+    const perCallLegacy = await lobby.enterGame({
+      charName: 'SwitchSor',
+      backend: 'legacy',
+    })
+    expect(perCallLegacy).toBeInstanceOf(LocalLoopbackAdapter)
+    expect(perCallLegacy.kind).toBe('ts')
+    perCallLegacy.leave()
+
+    // 3. Provider-level setBackend('legacy') and setBackend('d2kern-113c') switch cleanly
+    lobby.setBackend('legacy')
+    expect(lobby.getBackend()).toBe('legacy')
+    const legacyAdapter = await lobby.enterSinglePlayerGame('SwitchSor')
     expect(legacyAdapter).toBeInstanceOf(LocalLoopbackAdapter)
     legacyAdapter.leave()
 
-    // 2. Per-call override returns LocalKernelD2gsAdapter113c over compressed ByteStream + D2gsAdapter
-    const perCallKern = await lobby.enterGame({
-      charName: 'SwitchSor',
-      backend: 'd2kern-113c',
-    })
-    expect(perCallKern).toBeInstanceOf(LocalKernelD2gsAdapter113c)
-    expect(perCallKern.kind).toBe('d2kern-113c')
-    expect(perCallKern.state).toBe('ingame')
-    expect(perCallKern.stats.bytesIn).toBeGreaterThan(20)
-    expect(perCallKern.stats.bytesOut).toBeGreaterThan(30)
-    expect(perCallKern.stats.protocolErrors).toBe(0)
-    perCallKern.leave()
-
-    // 3. Provider-level setBackend('d2kern-113c') switches default Single-Player runtime
     lobby.setBackend('d2kern-113c')
     expect(lobby.getBackend()).toBe('d2kern-113c')
     const switchedAdapter = await lobby.enterSinglePlayerGame('SwitchSor')
     expect(switchedAdapter).toBeInstanceOf(LocalKernelD2gsAdapter113c)
     switchedAdapter.leave()
 
-    // 4. Factory helpers createLocalLoopbackSession({ backend: 'd2kern-113c' }) & createLocalKernelSession113c
-    const factorySession = createLocalLoopbackSession({
-      backend: 'd2kern-113c',
+    // 4. Constructor `{ backend: 'legacy' }` initializes directly in legacy mode
+    const legacyLobby = new LocalLobbyProvider({ defaultMapSeed: 0x11223344, backend: 'legacy' })
+    expect(legacyLobby.getBackend()).toBe('legacy')
+    await legacyLobby.createCharacter({ name: 'LegacyAma', classId: 0 })
+    const ctorLegacy = await legacyLobby.enterGame({ charName: 'LegacyAma' })
+    expect(ctorLegacy).toBeInstanceOf(LocalLoopbackAdapter)
+    ctorLegacy.leave()
+
+    // 5. Factory helpers default to LocalKernelD2gsAdapter113c and honor explicit `{ backend: 'legacy' }`
+    const defaultFactory = createLocalLoopbackSession({
       charName: 'SwitchPal',
       charClass: 3,
       mapSeed: 0x13579bdf,
     })
-    expect(factorySession.adapter).toBeInstanceOf(LocalKernelD2gsAdapter113c)
-    expect(factorySession.gameAdapter.playerId).toBeGreaterThan(0)
-    factorySession.adapter.leave()
+    expect(defaultFactory.adapter).toBeInstanceOf(LocalKernelD2gsAdapter113c)
+    expect(defaultFactory.gameAdapter.playerId).toBeGreaterThan(0)
+    defaultFactory.adapter.leave()
+
+    const legacyFactory = createLocalLoopbackSession({
+      backend: 'legacy',
+      charName: 'LegacyPal',
+      charClass: 3,
+      mapSeed: 0x13579bdf,
+    })
+    expect(legacyFactory.adapter).toBeInstanceOf(LocalLoopbackAdapter)
+    legacyFactory.adapter.leave()
 
     const directKern = createLocalKernelSession113c({
       charName: 'DirectAma',
@@ -195,11 +230,11 @@ describe('[K5] Single-Player d2kern-113c Runtime Switch & Live Multi-Resolution 
     directKern.adapter.leave()
   })
 
-  it('drives full OnlineSession Single-Player lifecycle over LocalKernelD2gsAdapter113c (DRLG town, walk/run, 800x600 & 1280x720 snapshots, stat spend & .d2s auto-save)', async () => {
+  it('drives full OnlineSession Single-Player lifecycle over default LocalKernelD2gsAdapter113c (DRLG town, walk/run, 800x600 & 1280x720 snapshots, stat spend & .d2s auto-save)', async () => {
     const lobby = new LocalLobbyProvider({
       defaultMapSeed: 0x5150113c,
-      backend: 'd2kern-113c',
     })
+    expect(lobby.getBackend()).toBe('d2kern-113c')
     await lobby.createCharacter({
       name: 'KernRunner',
       classId: 1,
@@ -212,13 +247,14 @@ describe('[K5] Single-Player d2kern-113c Runtime Switch & Live Multi-Resolution 
     const chars = await lobby.listCharacters()
     expect(chars.length).toBe(1)
 
-    const adapter = await lobby.enterKernelGame({
+    const adapter = await lobby.enterGame({
       charName: 'KernRunner',
       areaLevelSource,
       playersX: 4,
     })
     expect(adapter).toBeInstanceOf(LocalKernelD2gsAdapter113c)
-    expect(adapter.getPlayersX()).toBe(4)
+    const kernAdapter = adapter as LocalKernelD2gsAdapter113c
+    expect(kernAdapter.getPlayersX()).toBe(4)
 
     const session = new OnlineSession()
     const lostEvents: unknown[] = []
@@ -254,8 +290,8 @@ describe('[K5] Single-Player d2kern-113c Runtime Switch & Live Multi-Resolution 
     const objectClasses = objectUnits.map((o) => o.classId)
     expect(objectClasses).toEqual(expect.arrayContaining([267, 119]))
 
-    const startServerX = UNITS_GetX113c(adapter.bridge.m, adapter.handle.getPlayerPtr())
-    const startServerY = UNITS_GetY113c(adapter.bridge.m, adapter.handle.getPlayerPtr())
+    const startServerX = UNITS_GetX113c(kernAdapter.bridge.m, kernAdapter.handle.getPlayerPtr())
+    const startServerY = UNITS_GetY113c(kernAdapter.bridge.m, kernAdapter.handle.getPlayerPtr())
     const startClientX = session.world.self.x
     const startClientY = session.world.self.y
 
@@ -278,8 +314,8 @@ describe('[K5] Single-Player d2kern-113c Runtime Switch & Live Multi-Resolution 
     expect(snap800.levelId).toBe(1)
 
     // Run further across Rogue Encampment at 1280x720
-    const midServerX = UNITS_GetX113c(adapter.bridge.m, adapter.handle.getPlayerPtr())
-    const midServerY = UNITS_GetY113c(adapter.bridge.m, adapter.handle.getPlayerPtr())
+    const midServerX = UNITS_GetX113c(kernAdapter.bridge.m, kernAdapter.handle.getPlayerPtr())
+    const midServerY = UNITS_GetY113c(kernAdapter.bridge.m, kernAdapter.handle.getPlayerPtr())
     expect(Math.hypot(midServerX - startServerX, midServerY - startServerY)).toBeGreaterThan(2)
 
     session.sendCommand(
@@ -293,8 +329,8 @@ describe('[K5] Single-Player d2kern-113c Runtime Switch & Live Multi-Resolution 
     for (let i = 0; i < 16; i++) {
       stepSession40()
     }
-    const endServerX = UNITS_GetX113c(adapter.bridge.m, adapter.handle.getPlayerPtr())
-    const endServerY = UNITS_GetY113c(adapter.bridge.m, adapter.handle.getPlayerPtr())
+    const endServerX = UNITS_GetX113c(kernAdapter.bridge.m, kernAdapter.handle.getPlayerPtr())
+    const endServerY = UNITS_GetY113c(kernAdapter.bridge.m, kernAdapter.handle.getPlayerPtr())
     session.sceneSource.setViewportProfile(VIEWPORT_1280x720)
     const snap1280 = session.sceneSource.buildFrameSnapshot()
     expect(snap1280.viewportProfile.width).toBe(1280)
@@ -303,26 +339,26 @@ describe('[K5] Single-Player d2kern-113c Runtime Switch & Live Multi-Resolution 
     expect(Math.hypot(endServerX - startClientX, endServerY - startClientY)).toBeGreaterThan(5)
 
     // Verify PauseGame freezes kernel frame progression while keeping adapter healthy
-    const frameBeforePause = adapter.bridge.frame
-    adapter.send({ type: 'PauseGame', paused: true })
-    expect(adapter.isPaused()).toBe(true)
-    expect(adapter.tick(120)).toBe(0)
-    expect(adapter.bridge.frame).toBe(frameBeforePause)
-    adapter.send({ type: 'PauseGame', paused: false })
-    expect(adapter.isPaused()).toBe(false)
+    const frameBeforePause = kernAdapter.bridge.frame
+    kernAdapter.send({ type: 'PauseGame', paused: true })
+    expect(kernAdapter.isPaused()).toBe(true)
+    expect(kernAdapter.tick(120)).toBe(0)
+    expect(kernAdapter.bridge.frame).toBe(frameBeforePause)
+    kernAdapter.send({ type: 'PauseGame', paused: false })
+    expect(kernAdapter.isPaused()).toBe(false)
 
     // Grant 5 stat points in SparseMemory113c (`STAT_STATPTS = 4`) and spend 1 on Strength (`0x3A`)
-    const pPlayer = adapter.handle.getPlayerPtr()
-    STATLIST_SetUnitStat113c(adapter.bridge.m, pPlayer, 4, 5, 0)
-    adapter.send({ type: 'AddStatPoint', statId: 0 })
+    const pPlayer = kernAdapter.handle.getPlayerPtr()
+    STATLIST_SetUnitStat113c(kernAdapter.bridge.m, pPlayer, 4, 5, 0)
+    kernAdapter.send({ type: 'AddStatPoint', statId: 0 })
     stepSession40()
 
-    expect(adapter.stats.protocolErrors).toBe(0)
+    expect(kernAdapter.stats.protocolErrors).toBe(0)
 
     // Save & exit (`leaveGame`) -> exports updated .d2s back into LocalLobbyProvider
     await session.leaveGame()
     expect(lostEvents).toEqual([])
-    expect(adapter.state).toBe('closed')
+    expect(kernAdapter.state).toBe('closed')
 
     const savedBytes = lobby.getCharacterD2s('KernRunner')
     expect(savedBytes).toBeDefined()
@@ -331,11 +367,12 @@ describe('[K5] Single-Player d2kern-113c Runtime Switch & Live Multi-Resolution 
     expect(reparsed.attributes.strength).toBe(11)
     expect(reparsed.attributes.statPts).toBe(4)
 
-    // Re-entering a second d2kern-113c game restores persisted Strength = 11
-    const secondAdapter = await lobby.enterKernelGame({
+    // Re-entering a second default d2kern-113c game restores persisted Strength = 11
+    const secondAdapter = await lobby.enterGame({
       charName: 'KernRunner',
       areaLevelSource,
     })
+    expect(secondAdapter).toBeInstanceOf(LocalKernelD2gsAdapter113c)
     session.attachGameServer(secondAdapter, {
       localCharacter: {
         characters: await lobby.listCharacters(),
@@ -350,12 +387,11 @@ describe('[K5] Single-Player d2kern-113c Runtime Switch & Live Multi-Resolution 
   })
 
   it(
-    'verifies live play.html Single-Player on d2kern-113c backend across 800x600, 1068x600, and 1280x720 in headless Chrome',
+    'verifies live play.html Single-Player boots and plays on DEFAULT d2kern-113c backend (no forced override) across 800x600, 1068x600, and 1280x720 in headless Chrome',
     async () => {
       const outDir = join(tmpdir(), 'd2w-k5-sp-kern-vitest')
       const res = await runK5BrowserMultiresE2e({
         outDir,
-        singlePlayerBackend: 'd2kern-113c',
         forceLocalWorktreeServer: true,
       })
 

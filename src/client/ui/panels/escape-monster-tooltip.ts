@@ -219,6 +219,8 @@ export interface MonsterTargetHudInfo {
   readonly unitId?: number | undefined
   readonly name: string
   readonly nameKey?: string | undefined
+  /** Optional skin-overridden localized display name (bypasses .tbl string lookup). */
+  readonly customDisplayName?: { readonly zh: string; readonly en: string } | undefined
   readonly hcIdx?: number | undefined
   readonly nameSeed?: number | undefined
   readonly hp: number
@@ -320,10 +322,11 @@ export function resolveMonsterTitleAndColor(
   readonly titleColor: D2ColorCode
 } {
   const rawKey = target.nameKey || target.name
-  const baseName =
-    lookupMonsterTblString(rawKey, locale) ??
-    monsterDisplayName(rawKey, locale === 'en' ? 'ENG' : 'CHI') ??
-    target.name
+  const baseName = target.customDisplayName
+    ? (locale === 'zh' ? target.customDisplayName.zh : target.customDisplayName.en)
+    : (lookupMonsterTblString(rawKey, locale) ??
+      monsterDisplayName(rawKey, locale === 'en' ? 'ENG' : 'CHI') ??
+      target.name)
 
   const isGoldRank =
     target.rank === 'unique' ||

@@ -537,7 +537,7 @@ export function PLAYER_ValidatePacket0CLocationCastK3_113c(
   const pRoom = UNITS_GetRoom113c(m, pPlayer) >>> 0
   if (pRoom !== 0 && DUNGEON_CheckRoomIsTownMemPort113c(m, pRoom) !== 0) {
     const skillId = SKILLS_GetSkillIdFromSkill113c(m, pSkill, 0, 0xba) | 0
-    if (skillId > 0 && (m.u8((pSkillsTxt + 0x06) >>> 0) & 0x20) === 0) {
+    if (skillId > 0 && (m.u8((pSkillsTxt + 0x05) >>> 0) & 0x01) === 0) {
       return null
     }
   }

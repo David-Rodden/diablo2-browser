@@ -87,7 +87,7 @@ import {
   UNITS_SetCollisionMaskAtCoords113c,
 } from '../common/unit.ts'
 import { UNITS_SetTargetUnitForDynamicUnit113c } from '../common/waypoint.ts'
-import type { Memory113c } from '../mem/sparse-memory.ts'
+import type { Memory113c, SparseMemory113c } from '../mem/sparse-memory.ts'
 import { SEED_InitLowSeed113c, SEED_InitSeed113c, seedRoll } from '../prng.ts'
 import { MONSTERS_IsDemonOrUndead113c } from '../tables/datatbls-113c.ts'
 import { SUNIT_CanPlayerTargetUnitWithSkill113c } from './a1c-post150-f786-f1040-113c.ts'
@@ -132,6 +132,30 @@ import {
   SUNIT_CanTargetOwnPetWithSkill113c,
   SUNIT_GetOwnerUnit113c,
 } from './k2-sunit-spawn-w1-113c.ts'
+import {
+  ACT1Q6_InitQuestData_6FC88060_113c,
+  ACT2Q3_InitQuestData_6FCE7480_113c,
+  ACT5Q4_InitQuestData_6FC7D5C0_113c,
+} from './k2-w10b1-113c.ts'
+import { ACT5Q5_InitQuestData_6FC7FB50_113c } from './k2-w11b1-113c.ts'
+import {
+  ACT1Q2_InitQuestData_6FC89130_113c,
+  ACT1Q4_InitQuestData_6FC887D0_113c,
+  ACT1Q5_InitQuestData_6FC87210_113c,
+  ACT4Q2_InitQuestData_6FCDAD40_113c,
+  ACT5Q2_InitQuestData_6FC7CC70_113c,
+  ACT5Q3_InitQuestData_6FC7FC20_113c,
+} from './k2-w15b1-113c.ts'
+import {
+  ACT2Q2_InitQuestTableRecord_6FCE7ED0_113c,
+  ACT2Q6_InitQuestTableRecord_6FCE9F60_113c,
+  ACT3Q1_InitQuestTableRecord_6FD092D0_113c,
+  ACT3Q2_InitQuestTableRecord_6FD09DC0_113c,
+  ACT3Q4_InitQuestTableRecord_6FD093C0_113c,
+  ACT3Q5_InitQuestTableRecord_6FD09200_113c,
+  ACT4Q3_InitQuestTableRecord_6FCDC5F0_113c,
+  ACT5Q6_InitQuestTableRecord_6FC80080_113c,
+} from './k2-w16b1-113c.ts'
 import { ACT1Q4_RecordInifussTreeObjectGuid_6FC81860_113c } from './k2-w2b2-113c.ts'
 import { NET_SendPacketBuffer6B_6FCAACD0_113c } from './k2-w2b3-113c.ts'
 import {
@@ -139,6 +163,40 @@ import {
   SKILLS_DispatchSrvDoFunc_6FCBE420_113c,
 } from './k2-w2b4-113c.ts'
 import { ACT2Q2_CanSpawnViperAmuletChest_6FCE1A60_113c } from './k2-w2b6-113c.ts'
+import { ACT5Q0_InitQuest2ADescriptor_6FC7A7C0_113c } from './k2-w4b2-113c.ts'
+import {
+  ACT1_InitAkaraIntroQuestDescriptor_6FC83CC0_113c,
+  ACT1_InitCainIntroQuestDescriptor_6FC82FA0_113c,
+  ACT1Q0_InitQuestDescriptor_6FC82D90_113c,
+} from './k2-w4b3-113c.ts'
+import {
+  ACT4Prologue_InitQuestDescriptor_6FCD9D80_113c,
+  ACT4Q2_InitHadrielQuestDescriptor_6FCD97D0_113c,
+} from './k2-w5b3-113c.ts'
+import {
+  ACT2Intro_InitQuestData_6FCE5730_113c,
+  ACT2Q0_InitQuestData_6FCE5690_113c,
+  ACT2Q7_InitQuestData_6FCE5790_113c,
+  ACT2Q8_InitQuestData_6FCE4880_113c,
+} from './k2-w6b2-113c.ts'
+import { ACT3Q0_InitQuestData_6FD05920_113c } from './k2-w6b3-113c.ts'
+import {
+  ACT3_InitKurastNpcIntroQuestTable_6FD06700_113c,
+  ACT3Q0_InitHratliIntroQuestTable_6FD06660_113c,
+} from './k2-w6b6-113c.ts'
+import { ACT2Q5_InitQuestData_6FCE7080_113c } from './k2-w8b3-113c.ts'
+import {
+  ACT1Q1_InitQuestData_6FC85990_113c,
+  ACT1Q5_InitQuestData_6FC89200_113c,
+  ACT4Q1_InitQuestData_6FCDAE40_113c,
+  ACT5Q1_InitQuestData_6FC7BEA0_113c,
+} from './k2-w9b1-113c.ts'
+import {
+  ACT2Q1_InitQuestData_6FCE7B40_113c,
+  ACT2Q4_InitQuestData_6FCE9400_113c,
+  ACT3Q3_InitQuestData_6FD07CE0_113c,
+  ACT3Q6_InitQuestData_6FD0A080_113c,
+} from './k2-w9b2-113c.ts'
 import { SUNIT_IsDeadOrDying113c, UNITS_ChangeAnimMode113c } from './monster-events.ts'
 import {
   D2GAME_IAT_SGPT_DATATABLES_VA_113C,
@@ -245,8 +303,16 @@ function div100SignedMagic113c(val: number): number {
   return ((edx >> 5) + (edx >>> 31)) | 0
 }
 
+function readSeededU32OrZero113c(m: Memory113c, addr: number): number {
+  try {
+    return m.u32(addr >>> 0)
+  } catch {
+    return 0
+  }
+}
+
 function ensureActNpcIntroArraysSeeded113c(m: Memory113c): void {
-  if (m.u32(D2GAME_ACT1_NPC_INTRO_IDS_VA_113C) === 0) {
+  if (readSeededU32OrZero113c(m, D2GAME_ACT1_NPC_INTRO_IDS_VA_113C) === 0) {
     for (let i = 0; i < DEFAULT_ACT1_NPC_INTRO_IDS_113C.length; i = (i + 1) | 0) {
       const id = DEFAULT_ACT1_NPC_INTRO_IDS_113C[i]
       if (id !== undefined) {
@@ -254,7 +320,7 @@ function ensureActNpcIntroArraysSeeded113c(m: Memory113c): void {
       }
     }
   }
-  if (m.u32(D2GAME_ACT2_NPC_INTRO_IDS_VA_113C) === 0) {
+  if (readSeededU32OrZero113c(m, D2GAME_ACT2_NPC_INTRO_IDS_VA_113C) === 0) {
     for (let i = 0; i < DEFAULT_ACT2_NPC_INTRO_IDS_113C.length; i = (i + 1) | 0) {
       const id = DEFAULT_ACT2_NPC_INTRO_IDS_113C[i]
       if (id !== undefined) {
@@ -262,7 +328,7 @@ function ensureActNpcIntroArraysSeeded113c(m: Memory113c): void {
       }
     }
   }
-  if (m.u32(D2GAME_ACT3_NPC_INTRO_IDS_VA_113C) === 0) {
+  if (readSeededU32OrZero113c(m, D2GAME_ACT3_NPC_INTRO_IDS_VA_113C) === 0) {
     for (let i = 0; i < DEFAULT_ACT3_NPC_INTRO_IDS_113C.length; i = (i + 1) | 0) {
       const id = DEFAULT_ACT3_NPC_INTRO_IDS_113C[i]
       if (id !== undefined) {
@@ -270,7 +336,7 @@ function ensureActNpcIntroArraysSeeded113c(m: Memory113c): void {
       }
     }
   }
-  if (m.u32(D2GAME_ACT5_NPC_INTRO_IDS_VA_113C) === 0) {
+  if (readSeededU32OrZero113c(m, D2GAME_ACT5_NPC_INTRO_IDS_VA_113C) === 0) {
     for (let i = 0; i < DEFAULT_ACT5_NPC_INTRO_IDS_113C.length; i = (i + 1) | 0) {
       const id = DEFAULT_ACT5_NPC_INTRO_IDS_113C[i]
       if (id !== undefined) {
@@ -326,51 +392,53 @@ export function OBJECTS_InitFn05_InitPortalDestLevel_6FC533D0_113c(
   const pGame = m.u32(initPtr) >>> 0
   const pAct = m.u32((pGame + 0xc0) >>> 0) >>> 0
   const nBossTombLevel = DRLGLOGIC_GetBossTombLevel113c(m, pAct) | 0
-  const pObj = m.u32((initPtr + 0x04) >>> 0) >>> 0
-  const pObjData = m.u32((pObj + 0x14) >>> 0) >>> 0
+  const getObjData = (): number => {
+    const pObj = m.u32((initPtr + 0x04) >>> 0) >>> 0
+    return m.u32((pObj + 0x14) >>> 0) >>> 0
+  }
 
   switch (nLevelId) {
     case 1:
-      m.setU8((pObjData + 0x04) >>> 0, 0x27)
+      m.setU8((getObjData() + 0x04) >>> 0, 0x27)
       return
     case 39:
-      m.setU8((pObjData + 0x04) >>> 0, 0x01)
+      m.setU8((getObjData() + 0x04) >>> 0, 0x01)
       return
     case 38:
-      m.setU8((pObjData + 0x04) >>> 0, 0x04)
+      m.setU8((getObjData() + 0x04) >>> 0, 0x04)
       return
     case 4:
-      m.setU8((pObjData + 0x04) >>> 0, 0x26)
+      m.setU8((getObjData() + 0x04) >>> 0, 0x26)
       return
     case 74:
-      m.setU8((pObjData + 0x04) >>> 0, 0x2e)
+      m.setU8((getObjData() + 0x04) >>> 0, 0x2e)
       return
     case 46:
-      m.setU8((pObjData + 0x04) >>> 0, 0x4a)
+      m.setU8((getObjData() + 0x04) >>> 0, 0x4a)
       return
     case 73:
-      m.setU8((pObjData + 0x04) >>> 0, nBossTombLevel & 0xff)
+      m.setU8((getObjData() + 0x04) >>> 0, nBossTombLevel & 0xff)
       return
     case 121:
-      m.setU8((pObjData + 0x04) >>> 0, 0x6d)
+      m.setU8((getObjData() + 0x04) >>> 0, 0x6d)
       return
     case 109:
-      m.setU8((pObjData + 0x04) >>> 0, 0x79)
+      m.setU8((getObjData() + 0x04) >>> 0, 0x79)
       return
     case 125:
-      m.setU8((pObjData + 0x04) >>> 0, 0x6f)
+      m.setU8((getObjData() + 0x04) >>> 0, 0x6f)
       return
     case 126:
-      m.setU8((pObjData + 0x04) >>> 0, 0x70)
+      m.setU8((getObjData() + 0x04) >>> 0, 0x70)
       return
     case 127:
-      m.setU8((pObjData + 0x04) >>> 0, 0x75)
+      m.setU8((getObjData() + 0x04) >>> 0, 0x75)
       return
     case 111:
     case 112:
     case 117: {
       const targetLevel = nLevelId === 111 ? 0x7d : nLevelId === 112 ? 0x7e : 0x7f
-      if (m.u8((pObjData + 0x04) >>> 0) === targetLevel) {
+      if (m.u8((getObjData() + 0x04) >>> 0) === targetLevel) {
         return
       }
       const pObj2 = m.u32((initPtr + 0x04) >>> 0) >>> 0
@@ -393,7 +461,7 @@ export function OBJECTS_InitFn05_InitPortalDestLevel_6FC533D0_113c(
     }
     default:
       if (nLevelId === nBossTombLevel) {
-        m.setU8((pObjData + 0x04) >>> 0, 0x49)
+        m.setU8((getObjData() + 0x04) >>> 0, 0x49)
       }
       return
   }
@@ -544,6 +612,138 @@ export function QUESTS_FindFreeSubtileInRoomRings_6FC54130_113c(
   }
 }
 
+function dispatchDefaultQuestInit113c(
+  m: D2KernMemory113c,
+  pfnInit: number,
+  pQuest: number,
+): void {
+  const sm = m as SparseMemory113c
+  switch (pfnInit >>> 0) {
+    case 0x6fc7a7c0:
+      ACT5Q0_InitQuest2ADescriptor_6FC7A7C0_113c(m, pQuest)
+      return
+    case 0x6fc7bea0:
+      ACT5Q1_InitQuestData_6FC7BEA0_113c(sm, pQuest)
+      return
+    case 0x6fc7cc70:
+      ACT5Q2_InitQuestData_6FC7CC70_113c(m, pQuest)
+      return
+    case 0x6fc7d5c0:
+      ACT5Q4_InitQuestData_6FC7D5C0_113c(sm, pQuest)
+      return
+    case 0x6fc7fb50:
+      ACT5Q5_InitQuestData_6FC7FB50_113c(sm, pQuest)
+      return
+    case 0x6fc7fc20:
+      ACT5Q3_InitQuestData_6FC7FC20_113c(m, pQuest)
+      return
+    case 0x6fc80080:
+      ACT5Q6_InitQuestTableRecord_6FC80080_113c(sm, pQuest)
+      return
+    case 0x6fc82d90:
+      ACT1Q0_InitQuestDescriptor_6FC82D90_113c(m, pQuest)
+      return
+    case 0x6fc82fa0:
+      ACT1_InitCainIntroQuestDescriptor_6FC82FA0_113c(m, pQuest)
+      return
+    case 0x6fc83cc0:
+      ACT1_InitAkaraIntroQuestDescriptor_6FC83CC0_113c(m, pQuest)
+      return
+    case 0x6fc85990:
+      ACT1Q1_InitQuestData_6FC85990_113c(sm, pQuest)
+      return
+    case 0x6fc87210:
+      ACT1Q5_InitQuestData_6FC87210_113c(m, pQuest)
+      return
+    case 0x6fc88060:
+      ACT1Q6_InitQuestData_6FC88060_113c(sm, pQuest)
+      return
+    case 0x6fc887d0:
+      ACT1Q4_InitQuestData_6FC887D0_113c(m, pQuest)
+      return
+    case 0x6fc89130:
+      ACT1Q2_InitQuestData_6FC89130_113c(m, pQuest)
+      return
+    case 0x6fc89200:
+      ACT1Q5_InitQuestData_6FC89200_113c(sm, pQuest)
+      return
+    case 0x6fcd97d0:
+      ACT4Q2_InitHadrielQuestDescriptor_6FCD97D0_113c(m, pQuest)
+      return
+    case 0x6fcd9d80:
+      ACT4Prologue_InitQuestDescriptor_6FCD9D80_113c(m, pQuest)
+      return
+    case 0x6fcdad40:
+      ACT4Q2_InitQuestData_6FCDAD40_113c(m, pQuest)
+      return
+    case 0x6fcdae40:
+      ACT4Q1_InitQuestData_6FCDAE40_113c(sm, pQuest)
+      return
+    case 0x6fcdc5f0:
+      ACT4Q3_InitQuestTableRecord_6FCDC5F0_113c(sm, pQuest)
+      return
+    case 0x6fce4880:
+      ACT2Q8_InitQuestData_6FCE4880_113c(m, pQuest)
+      return
+    case 0x6fce5690:
+      ACT2Q0_InitQuestData_6FCE5690_113c(m, pQuest)
+      return
+    case 0x6fce5730:
+      ACT2Intro_InitQuestData_6FCE5730_113c(m, pQuest)
+      return
+    case 0x6fce5790:
+      ACT2Q7_InitQuestData_6FCE5790_113c(m, pQuest)
+      return
+    case 0x6fce7080:
+      ACT2Q5_InitQuestData_6FCE7080_113c(sm, pQuest)
+      return
+    case 0x6fce7480:
+      ACT2Q3_InitQuestData_6FCE7480_113c(sm, pQuest)
+      return
+    case 0x6fce7b40:
+      ACT2Q1_InitQuestData_6FCE7B40_113c(sm, pQuest)
+      return
+    case 0x6fce7ed0:
+      ACT2Q2_InitQuestTableRecord_6FCE7ED0_113c(sm, pQuest)
+      return
+    case 0x6fce9400:
+      ACT2Q4_InitQuestData_6FCE9400_113c(sm, pQuest)
+      return
+    case 0x6fce9f60:
+      ACT2Q6_InitQuestTableRecord_6FCE9F60_113c(sm, pQuest)
+      return
+    case 0x6fd05920:
+      ACT3Q0_InitQuestData_6FD05920_113c(m, pQuest)
+      return
+    case 0x6fd06660:
+      ACT3Q0_InitHratliIntroQuestTable_6FD06660_113c(m, pQuest)
+      return
+    case 0x6fd06700:
+      ACT3_InitKurastNpcIntroQuestTable_6FD06700_113c(m, pQuest)
+      return
+    case 0x6fd07ce0:
+      ACT3Q3_InitQuestData_6FD07CE0_113c(sm, pQuest)
+      return
+    case 0x6fd09200:
+      ACT3Q5_InitQuestTableRecord_6FD09200_113c(sm, pQuest)
+      return
+    case 0x6fd092d0:
+      ACT3Q1_InitQuestTableRecord_6FD092D0_113c(sm, pQuest)
+      return
+    case 0x6fd093c0:
+      ACT3Q4_InitQuestTableRecord_6FD093C0_113c(sm, pQuest)
+      return
+    case 0x6fd09dc0:
+      ACT3Q2_InitQuestTableRecord_6FD09DC0_113c(sm, pQuest)
+      return
+    case 0x6fd0a080:
+      ACT3Q6_InitQuestData_6FD0A080_113c(sm, pQuest)
+      return
+    default:
+      return
+  }
+}
+
 /**
  * Allocates and initializes `pGame->pQuestControl (+0x10F4)` along with all regular quest nodes
  * (`0x6FD2DBF0`, count at `0x6FD2DF68`) and intro quest nodes (`0x6FD2DF6C`, count at `0x6FD2DF8C`),
@@ -587,6 +787,8 @@ export function QUESTS_AllocAndInitGameQuests_6FC548A0_113c(
         }
         if (hooks !== undefined && hooks.onQuestInit !== undefined) {
           hooks.onQuestInit(m, pfnInit, esi)
+        } else {
+          dispatchDefaultQuestInit113c(m, pfnInit, esi)
         }
       }
       edi = (edi + 0x18) >>> 0
@@ -615,6 +817,8 @@ export function QUESTS_AllocAndInitGameQuests_6FC548A0_113c(
         }
         if (hooks !== undefined && hooks.onQuestInit !== undefined) {
           hooks.onQuestInit(m, pfnInit, esi)
+        } else {
+          dispatchDefaultQuestInit113c(m, pfnInit, esi)
         }
       }
     }
@@ -643,6 +847,32 @@ export function QUESTS_AllocAndInitGameQuests_6FC548A0_113c(
   const pQuestFlags = QUESTRECORD_AllocRecord113c(m, pMemPool) >>> 0
   m.setU32((pQuestCtrl + 0x0c) >>> 0, pQuestFlags)
   m.setU32((game + 0x10f4) >>> 0, pQuestCtrl)
+}
+
+let k4QuestStatusFilterDispatcher:
+  | ((
+      m: Memory113c,
+      pfnStatus: number,
+      pQuest: number,
+      pPlayerUnit: number,
+      pGameQuestFlags: number,
+      pPlayerQuestFlags: number,
+      pOutByte: number,
+    ) => number)
+  | null = null
+
+export function registerK4QuestStatusFilterDispatcher113c(
+  fn: (
+    m: Memory113c,
+    pfnStatus: number,
+    pQuest: number,
+    pPlayerUnit: number,
+    pGameQuestFlags: number,
+    pPlayerQuestFlags: number,
+    pOutByte: number,
+  ) => number,
+): void {
+  k4QuestStatusFilterDispatcher = fn
 }
 
 /**
@@ -714,6 +944,17 @@ export function QUESTS_SendPlayerQuestAlert5D_6FC554F0_113c(
         statusHandled =
           hooks.onQuestStatus(m, pfnStatus, pQuest, player, pGameQuestFlags, pPlayerQuestFlags, pOutByte) &
           0xff
+      } else if (k4QuestStatusFilterDispatcher !== null) {
+        statusHandled =
+          k4QuestStatusFilterDispatcher(
+            m,
+            pfnStatus,
+            pQuest,
+            player,
+            pGameQuestFlags,
+            pPlayerQuestFlags,
+            pOutByte,
+          ) & 0xff
       }
       if (statusHandled === 1) {
         m.setU8((pPacket + 0x03) >>> 0, m.u8(pOutByte))
@@ -807,6 +1048,17 @@ export function QUESTS_SendQuestLogPackets50And52_6FC55640_113c(
                 pPlayerQuestFlags,
                 pOutByte,
               ) & 0xff
+          } else if (k4QuestStatusFilterDispatcher !== null) {
+            statusHandled =
+              k4QuestStatusFilterDispatcher(
+                m,
+                pfnStatus,
+                pQuest,
+                player,
+                pGameQuestFlags,
+                pPlayerQuestFlags,
+                pOutByte,
+              ) & 0xff
           }
           if (statusHandled === 1) {
             const nSeqId = m.u32((pQuest + 0xe0) >>> 0) >>> 0
@@ -861,10 +1113,10 @@ export function QUESTS_SendQuestLogPackets50And52_6FC55640_113c(
     if (bSend50 !== 0) {
       m.setU8(pPacket50, 0x50)
       m.setU16((pPacket50 + 0x01) >>> 0, 1)
-      NET_QueuePacketToClientBuffer113c(m, pClient, 4, pPacket50, 0x0f)
+      NET_QueuePacketToClientBuffer113c(m, pClient, 1, pPacket50, 0x0f)
     }
 
-    NET_QueuePacketToClientBuffer113c(m, pClient, 4, pPacket52, 0x2a)
+    NET_QueuePacketToClientBuffer113c(m, pClient, 1, pPacket52, 0x2a)
   } finally {
     k2W3B3StackPtr = savedSp
   }
@@ -946,7 +1198,7 @@ export function QUESTS_TriggerNpcInteractAndSendPacket27_6FC55910_113c(
     const nNpcType = npc !== 0 ? m.u32(npc) & 0xff : 6
     m.setU8((pPacket27 + 0x01) >>> 0, nNpcType)
     TEXT_BuildMessageList113c(m, pTextHeader, (pPacket27 + 0x06) >>> 0)
-    NET_QueuePacketToClientBuffer113c(m, pClient, 4, pPacket27, 0x28)
+    NET_QueuePacketToClientBuffer113c(m, pClient, 1, pPacket27, 0x28)
   } finally {
     k2W3B3StackPtr = savedSp
   }
@@ -999,9 +1251,10 @@ export function QUESTS_SendNpcIntroPacket91_6FC55B60_113c(
   k2W3B3StackPtr = (savedSp + 0x20) >>> 0
   try {
     m.fill(pPacket91, 0x1a, 0)
+    // 0x6FC55BA9 passes pPacket91 (+0x00); QUESTS_PackNpcIntroFlags_6FC54C70 adds +2 internally (0x6FC54C73).
     const packed = QUESTS_PackNpcIntroFlags_6FC54C70_113c(
       m,
-      (pPacket91 + 0x02) >>> 0,
+      pPacket91,
       pNpcIds,
       pQuestIntro,
       nCount,
@@ -1015,7 +1268,7 @@ export function QUESTS_SendNpcIntroPacket91_6FC55B60_113c(
       const pPlayerData2 = UNITS_GetPlayerData113c(m, player) >>> 0
       pClient = m.u32((pPlayerData2 + 0x9c) >>> 0) >>> 0
     }
-    NET_QueuePacketToClientBuffer113c(m, pClient, 4, pPacket91, 0x1a)
+    NET_QueuePacketToClientBuffer113c(m, pClient, 1, pPacket91, 0x1a)
   } finally {
     k2W3B3StackPtr = savedSp
   }
@@ -2675,7 +2928,8 @@ export function MISSILES_SpawnRing16WithOptionalInnerRingSubMissiles_6FC5D680_11
   const pMissilesTxt = getMissilesTxtRecord113c(m, subId)
   if (pMissilesTxt === 0) return 0
   const game = pGame >>> 0
-  if (game === 0) return 0
+  const owner = pOwnerUnit >>> 0
+  if (owner === 0) return 0
   const origin = pOriginUnit >>> 0
   if (origin === 0) return 0
 
@@ -2774,15 +3028,16 @@ export function MISSILES_SrvDmg29_ApplySkillStateAndAuraStatsCalc1_6FC5E8A0_113c
   if (duration < 5) duration = 5
   const expireFrame = ((m.u32((game + 0xa8) >>> 0) >>> 0) + (duration >>> 0)) >>> 0
 
-  let pStatList = STATLIST_GetStatListFromUnitAndStateMemPort113c(m, target, nState) >>> 0
+  const pStatList = STATLIST_GetStatListFromUnitAndStateMemPort113c(m, target, nState) >>> 0
   if (pStatList === 0) {
     const uOwnerType = m.u32(pOwner) >>> 0
     const uOwnerId = m.u32((pOwner + 0x0c) >>> 0) >>> 0
-    pStatList = STATLIST_AllocList113c(m, 2, uOwnerType, uOwnerId, 0, expireFrame) >>> 0
-    if (pStatList === 0) return 1
-    STATLIST_SetState113c(m, pStatList, nState)
-    STATLIST_SetStatRemoveProc113c(m, pStatList, 0x6fcbf7a0)
-    STATLIST_MergeStatLists113c(m, target, pStatList, 1)
+    // 1.13c native 0x6FC5E9BF stores newly allocated statlist in [esp+0x24] without updating ebp (pStatList).
+    const pNewStatList = STATLIST_AllocList113c(m, 2, uOwnerType, uOwnerId, 0, expireFrame) >>> 0
+    if (pNewStatList === 0) return 1
+    STATLIST_SetState113c(m, pNewStatList, nState)
+    STATLIST_SetStatRemoveProc113c(m, pNewStatList, 0x6fcbf7a0)
+    STATLIST_MergeStatLists113c(m, target, pNewStatList, 1)
     STATES_ToggleGfxStateFlag113c(m, target, nState, 1)
   }
 
@@ -2836,16 +3091,17 @@ export function MISSILES_SrvDmg30_ApplySkillStateAndAuraStatsCalc4_6FC5EC10_113c
   let duration = SKILLS_EvalCalcByOffset113c(m, pOwner, dwCalc4, nSkillId, nLevel) | 0
   if (duration < 5) duration = 5
 
-  let pStatList = STATLIST_GetStatListFromUnitAndStateMemPort113c(m, target, nState) >>> 0
+  const pStatList = STATLIST_GetStatListFromUnitAndStateMemPort113c(m, target, nState) >>> 0
   if (pStatList === 0) {
     const uOwnerType = m.u32(pOwner) >>> 0
     const uOwnerId = m.u32((pOwner + 0x0c) >>> 0) >>> 0
     const initExpire = ((m.u32((game + 0xa8) >>> 0) >>> 0) + (duration >>> 0)) >>> 0
-    pStatList = STATLIST_AllocList113c(m, 2, uOwnerType, uOwnerId, 0, initExpire) >>> 0
-    if (pStatList === 0) return 1
-    STATLIST_SetState113c(m, pStatList, nState)
-    STATLIST_SetStatRemoveProc113c(m, pStatList, 0x6fcbf7a0)
-    STATLIST_MergeStatLists113c(m, target, pStatList, 1)
+    // 1.13c native 0x6FC5ED28 stores newly allocated statlist in [esp+0x24] without updating [esp+0x14] (pStatList).
+    const pNewStatList = STATLIST_AllocList113c(m, 2, uOwnerType, uOwnerId, 0, initExpire) >>> 0
+    if (pNewStatList === 0) return 1
+    STATLIST_SetState113c(m, pNewStatList, nState)
+    STATLIST_SetStatRemoveProc113c(m, pNewStatList, 0x6fcbf7a0)
+    STATLIST_MergeStatLists113c(m, target, pNewStatList, 1)
     STATES_ToggleGfxStateFlag113c(m, target, nState, 1)
   }
 
@@ -3145,7 +3401,7 @@ export function MISSILES_SrvDo15_FollowOwnerAndSpawnRandomSubMissile_6FC5FB40_11
   if (
     pFollowUnit === 0 ||
     pOwner === 0 ||
-    (SUNIT_IsDeadOrDying113c(m, pFollowUnit) | 0) !== 0 ||
+    (SUNIT_IsDeadOrDying113c(m, pOwner) | 0) !== 0 ||
     (MISSILE_GetRemainingFrames113c(m, missile) | 0) < 0
   ) {
     MISSILE_ProcessTargetCollisionHit113c(m, missile, game, 0, 1, hooks)

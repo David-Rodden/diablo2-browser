@@ -318,13 +318,14 @@ function worldSourceLevel(areaId: number): LocalAreaLevelGeometry {
 describe('Issue #1325 — LocalLoopbackAdapter delegates the bootstrap to GameInstance', () => {
   it('LocalLobbyProvider.enterGame wires the level source into the game server', async () => {
     const builds: number[] = []
-    const lobby = new LocalLobbyProvider()
+    const lobby = new LocalLobbyProvider({ backend: 'legacy' })
     await lobby.createCharacter({ name: 'Kashya', classId: 0 })
-    const adapter = (await lobby.enterGame({
+    const adapter = await lobby.enterGame({
       charName: 'Kashya',
       difficulty: 0,
+      backend: 'legacy',
       areaLevelSource: worldSource(builds),
-    })) as LocalLoopbackAdapter
+    })
     const game = adapter.getGameInstance()
     expect(builds).toEqual([1])
     expect(game.isAreaLoaded(1)).toBe(true)
@@ -387,13 +388,14 @@ describe('Issue #1325 — full 1.13c level spectrum through the MapService DRLG 
     const { createMapServiceAreaLevelSource } = await import('../../src/client/map/map-service-area-source.ts')
     const { OnlineSession } = await import('../../src/client/session/online-session.ts')
     const svc = await MapService.fromPackedDir('public/act-packs/tiles')
-    const lobby = new LocalLobbyProvider()
+    const lobby = new LocalLobbyProvider({ backend: 'legacy' })
     await lobby.createCharacter({ name: 'Rogue', classId: 0 })
-    const adapter = (await lobby.enterGame({
+    const adapter = await lobby.enterGame({
       charName: 'Rogue',
       difficulty: 0,
+      backend: 'legacy',
       areaLevelSource: createMapServiceAreaLevelSource(svc),
-    })) as LocalLoopbackAdapter
+    })
     const game = adapter.getGameInstance()
     const session = new OnlineSession()
     const lost: string[] = []

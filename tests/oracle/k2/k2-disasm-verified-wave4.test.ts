@@ -899,25 +899,25 @@ describe('[K2] D2Game 1.13c Disassembly-Verified Promotion Wave 4 (+164 VAs)', (
       m.setU32((pItemsTxt + D2ItemsTxt.dwCode.off) >>> 0, 0x20706163) // 'cap '
       m.setU8((pItemsTxt + 0x137) >>> 0, 1) // nCompactSave
 
-      // S2C queue helpers (8 VAs)
+      // S2C queue helpers (8 VAs; D2Game.dll@0x6FCAA3E0 returns queued byte count)
       const c1 = allocClientWithQueue(m, pGame)
-      expect(S2C_QueueLocationPacket11_6FCABF80_113c(m, 0x15, 0x01, 0x11223344, c1.pClient, 0x1234, 0x5678, 0x09)).toBe(1)
+      expect(S2C_QueueLocationPacket11_6FCABF80_113c(m, 0x15, 0x01, 0x11223344, c1.pClient, 0x1234, 0x5678, 0x09)).toBe(11)
       expect(m.u32(c1.pQueue)).toBe(11)
       expect(m.u8((c1.pQueue + 4) >>> 0)).toBe(0x15)
       expect(m.u32((c1.pQueue + 6) >>> 0)).toBe(0x11223344)
 
       const c2 = allocClientWithQueue(m, pGame)
-      expect(S2C_QueueMonsterMovePacket12_6FCAC160_113c(m, 0x67, 0xdeadbeef, c2.pClient, 0xaa, 0xbb, 0x01020304, 0xcc)).toBe(1)
+      expect(S2C_QueueMonsterMovePacket12_6FCAC160_113c(m, 0x67, 0xdeadbeef, c2.pClient, 0xaa, 0xbb, 0x01020304, 0xcc)).toBe(12)
       expect(m.u32(c2.pQueue)).toBe(12)
       expect(m.u8((c2.pQueue + 4) >>> 0)).toBe(0x67)
 
       const c3 = allocClientWithQueue(m, pGame)
-      expect(S2C_QueueUnitTargetMovePacket16_6FCAC230_113c(m, 0x68, 1, 0x100, c3.pClient, 2, 0, 0x200, 0x1111, 0x2222)).toBe(1)
+      expect(S2C_QueueUnitTargetMovePacket16_6FCAC230_113c(m, 0x68, 1, 0x100, c3.pClient, 2, 0, 0x200, 0x1111, 0x2222)).toBe(16)
       expect(m.u32(c3.pQueue)).toBe(16)
       expect(m.u8((c3.pQueue + 4) >>> 0)).toBe(0x68)
 
       const c4 = allocClientWithQueue(m, pGame)
-      expect(S2C_QueueByteDwordPacket6_6FCAC3B0_113c(m, 0x20, 3, 0x89abcdef, c4.pClient)).toBe(1)
+      expect(S2C_QueueByteDwordPacket6_6FCAC3B0_113c(m, 0x20, 3, 0x89abcdef, c4.pClient)).toBe(6)
       expect(m.u32(c4.pQueue)).toBe(6)
       expect(m.u32((c4.pQueue + 6) >>> 0)).toBe(0x89abcdef)
 
@@ -929,9 +929,9 @@ describe('[K2] D2Game 1.13c Disassembly-Verified Promotion Wave 4 (+164 VAs)', (
       const plr = allocPlayerUnit(m, pGame, 11)
       const pRawPkt = m.alloc(16) >>> 0
       for (let i = 0; i < 12; i += 1) m.setU8((pRawPkt + i) >>> 0, 0x40 + i)
-      expect(S2C_Send10BytePacketToPlayerUnit_6FCAC530_113c(m, plr.pPlayer, pRawPkt)).toBe(1)
-      expect(S2C_Send7BytePacketToPlayerUnit_6FCAC5F0_113c(m, plr.pPlayer, pRawPkt)).toBe(1)
-      expect(S2C_Send11BytePacketToPlayerUnit_6FCAC690_113c(m, plr.pPlayer, pRawPkt)).toBe(1)
+      expect(S2C_Send10BytePacketToPlayerUnit_6FCAC530_113c(m, plr.pPlayer, pRawPkt)).toBe(10)
+      expect(S2C_Send7BytePacketToPlayerUnit_6FCAC5F0_113c(m, plr.pPlayer, pRawPkt)).toBe(7)
+      expect(S2C_Send11BytePacketToPlayerUnit_6FCAC690_113c(m, plr.pPlayer, pRawPkt)).toBe(11)
       expect(m.u32(plr.pQueue)).toBe(28)
 
       // Item 0x9C wrappers (7 VAs) + client-mismatch assertion
@@ -1418,7 +1418,7 @@ describe('[K2] D2Game 1.13c Disassembly-Verified Promotion Wave 4 (+164 VAs)', (
       m.setU32((plr.pPlayerData + 0x5c) >>> 0, pCached)
       const pDirectBuf = m.alloc(8) >>> 0
       m.setU32(pDirectBuf, 0x22222222) // NOT a valid pointer — would fault/miswrite if dereferenced!
-      expect(PLAYERSAVE_WriteInventoryOrCachedSaveBuffer_6FC73B40_113c(m, plr.pPlayer, pDirectBuf, 0, 8, 1, 0, 0)).toBe(4)
+      expect(PLAYERSAVE_WriteInventoryOrCachedSaveBuffer_6FC73B40_113c(m, plr.pPlayer, 0, pDirectBuf, 8, 1, 0, 0)).toBe(4)
       expect(m.u32(pDirectBuf)).toBe(0x13579bdf)
 
       // Disassembly Fix 3F: ALL 11 SendAlert*IfQuest*Active callbacks (exact 1.13c boolean truth table!)
@@ -1817,20 +1817,9 @@ describe('[K2] D2Game 1.13c Disassembly-Verified Promotion Wave 4 (+164 VAs)', (
       SUNIT_InsertServerUnit113c(m, pGame, smiteMon.pMonster)
       SUNIT_InsertServerUnit113c(m, pGame, smiteTgt.pMonster)
       PATH_SetTargetUnit113c(m, smiteMon.pPath, smiteTgt.pMonster)
-      // Fix 4E: Smite sets dwHitClass = 0x65 at pDmg + 0x60 (NOT pDmg + 0x68 dwConvPct!)
-      let pSmiteDmg = 0
-      const origAlloc = m.alloc.bind(m)
-      m.alloc = (size: number): number => {
-        const ptr = origAlloc(size)
-        if (size === 0x70 && pSmiteDmg === 0) pSmiteDmg = ptr >>> 0
-        return ptr
-      }
-      try {
-        expect(SKILLS_SrvDo_SmiteShieldBashAttack_6FCB9000_113c(m, pGame, smiteMon.pMonster, skillId, 1)).toBe(1)
-      } finally {
-        m.alloc = origAlloc
-      }
-      expect(pSmiteDmg).not.toBe(0)
+      // Fix 4E: Smite sets dwHitClass = 0x65 at stack-frame pDmg + 0x60 (NOT pDmg + 0x68 dwConvPct!)
+      const pSmiteDmg = 0x7efc0000
+      expect(SKILLS_SrvDo_SmiteShieldBashAttack_6FCB9000_113c(m, pGame, smiteMon.pMonster, skillId, 1)).toBe(1)
       expect(m.u32((pSmiteDmg + 0x60) >>> 0)).toBe(0x65)
       expect(m.u32((pSmiteDmg + 0x68) >>> 0)).toBe(0)
       expect(SKILLS_SrvDo_SpawnLeapOrChargeProjectile_6FCB94C0_113c(m, pGame, plr1.pPlayer, skillId, 1)).toBe(0)

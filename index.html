@@ -843,6 +843,24 @@
           copiedPrefix: "已复制：",
           fallbackUpdates: [
             {
+              date: "2026-11-23",
+              version: "v1.13c",
+              title: "魔兽英雄皮肤与大量战斗逻辑修正",
+              summary: "死灵法师新增克尔苏加德皮肤与天灾召唤外观，另六个职业各获一套魔兽III英雄皮肤（吉安娜、希尔瓦娜斯、阿尔萨斯、格罗姆、玛法里奥、玛维），可在设置里开关；同时修正大批战斗、怪物AI、城镇NPC与任务判定细节，手感更贴近原版。"
+            },
+            {
+              date: "2026-11-22",
+              version: "v1.13c",
+              title: "单人模式默认切换 1.13c 内核",
+              summary: "单人模式默认改用 1.13c 内核，战斗、物品、腰带、换武器与商人交互更贴近原版；天灾石魔改用石魔像、恶鬼与血肉魔像外观，克尔苏加德与召唤物改为实时骨骼动画。"
+            },
+            {
+              date: "2026-11-21",
+              version: "v1.13c",
+              title: "角色皮肤系统上线与传送修复",
+              summary: "新增角色皮肤引擎，支持导入 .d2skin.zip；凯尔苏加德巫妖皮肤与天灾召唤物登场；修复传送最小位移与施法前校验，单人存档可完整保存技能与物品。"
+            },
+            {
               date: "2026-11-20",
               version: "v1.13c",
               title: "怪物AI与战斗判定更贴近原版",
@@ -859,24 +877,6 @@
               version: "v1.13c",
               title: "引擎内核对齐原版：战斗与掉落",
               summary: "战斗结算、物品掉落和怪物与 NPC 的 AI 逻辑进一步按原版重写对齐，单人流程更稳定，画面与手感更接近原版。"
-            },
-            {
-              date: "2026-11-17",
-              version: "v1.13c",
-              title: "引擎内核移植完成，第二章修复",
-              summary: "服务端 4810 个游戏函数已全部移植，怪物、技能与物品结算更贴近原版；修复第二章赫拉迪克方块界面与光标使用异常，并补充光环、持续伤害与防御机制的回归验证。"
-            },
-            {
-              date: "2026-11-16",
-              version: "v1.13c",
-              title: "内核对齐波浪 5 完成，怪物暴击修复",
-              summary: "战斗、技能、掉落与任务流程继续逐条对齐原版，累计覆盖 3939/4810 个 D2Game 函数；修正怪物暴击数值越界，近战对拍全部通过。"
-            },
-            {
-              date: "2026-11-15",
-              version: "v1.13c",
-              title: "同构内核成果展厅上线",
-              summary: "新增可交互展厅页，可视化浏览 D2Common 1479 个函数与调用路径；同时批量还原战斗、怪物 AI 与掉落结算逻辑，行为更贴近原版。"
             }
           ]
         },
@@ -908,6 +908,24 @@
           copiedPrefix: "Copied: ",
           fallbackUpdates: [
             {
+              date: "2026-11-23",
+              version: "v1.13c",
+              title: "Warcraft hero skins and combat fixes",
+              summary: "The Necromancer gains a Kel-Thuzad skin with Scourge summon visuals, and the other six classes each get a Warcraft III hero skin (Jaina, Sylvanas, Arthas, Grom, Malfurion, Maiev), toggleable in settings. Numerous combat, monster AI, town NPC and quest checks were also corrected for closer parity with the original."
+            },
+            {
+              date: "2026-11-22",
+              version: "v1.13c",
+              title: "Single-player: 1.13c kernel",
+              summary: "Single-player now defaults to the 1.13c kernel; golems got Rock, Abomination and Flesh Golem looks."
+            },
+            {
+              date: "2026-11-21",
+              version: "v1.13c",
+              title: "Skins, summons, teleport fix",
+              summary: "Skin engine with .d2skin.zip import, Kel'Thuzad and Scourge summons; teleport fix; saves keep skills and items."
+            },
+            {
               date: "2026-11-20",
               version: "v1.13c",
               title: "1.13c-accurate AI and combat",
@@ -924,24 +942,6 @@
               version: "v1.13c",
               title: "Engine kernel aligned with the original game",
               summary: "Combat resolution, item drops and monster/NPC AI logic were rewritten to match the original game 1:1; the single-player flow is more stable."
-            },
-            {
-              date: "2026-11-17",
-              version: "v1.13c",
-              title: "Kernel port done, Act 2 fix",
-              summary: "All 4810 server game functions are now ported, so monsters, skills and items resolve closer to the original. Fixed the Act 2 Horadric Orifice interface and cursor use, and added regression checks for auras, damage over time and defense."
-            },
-            {
-              date: "2026-11-16",
-              version: "v1.13c",
-              title: "Kernel wave 5 done, crit fix",
-              summary: "Combat, skill, drop and quest logic now matches the original binary across 3939 of 4810 D2Game functions; out-of-range monster crit lookups are fixed and melee replays pass."
-            },
-            {
-              date: "2026-11-15",
-              version: "v1.13c",
-              title: "Kernel Showcase Page",
-              summary: "New interactive showcase page lets you explore 1,479 D2Common functions and call paths. Combat, monster AI and loot resolution now behave closer to the original build."
             }
           ]
         }

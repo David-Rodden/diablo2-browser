@@ -464,9 +464,17 @@ function stepPlayerAnimations113c(this: GameInstanceHost): void {
           return
         }
       }
-      // 1.13c `D2Game.dll` `SKILLS_DoSkillDo` (`0x6FCC19A0`): `pfnSrvDo` runs BEFORE `SKILLS_UseMana` (`0x6FCBF9D0`),
-      // so self-buffs like `#149 Battle Orders` scale `manaFixed` up before deducting the cast's mana cost.
-      pending.onStrike(strikeIdx, activeAnim.totalStrikes)
+      // 1.13c `D2Game.dll` `SKILLS_DoSkillDo` (`0x6FCC19A0` @ `0x6FCC1C43`): `pfnSrvDo` runs BEFORE
+      // `SKILLS_UseMana` (`0x6FCBF9D0`); if `pfnSrvDo` returns `0` (`false`), mana is NOT spent.
+      const strikeOutcome = pending.onStrike(strikeIdx, activeAnim.totalStrikes) as boolean | void
+      if (strikeOutcome === false) {
+        this.emitToPlayer(player.unitId, {
+          type: 'PlaySound',
+          unit: { unitType: 0, id: player.unitId },
+          sound: 19,
+        })
+        return
+      }
       if (needCommitOnStrike && !player.dead) {
         this.commitPlayerSkillCast(player, pending.cast)
       }
@@ -723,6 +731,29 @@ function consumeSingleHandThrowQuantity113c(this: GameInstanceHost,
 
 
 
+function emitPlayerTownSkillBlockedFeedback113c(
+  host: GameInstanceHost,
+  player: InternalPlayerRecord,
+  skillId: number,
+): void {
+  if (!TOWN_AREAS.has(player.areaId)) return
+  const sk = host.registry.getSkillById(skillId)
+  if (
+    sk !== undefined &&
+    !sk.passive &&
+    !sk.inTown &&
+    (host.isPlayerSkillSelectable(player, skillId, 'right') ||
+      host.isPlayerSkillSelectable(player, skillId, 'left'))
+  ) {
+    // 1.13c `D2Game.dll` `0x6FCEF8DC..0x6FCEF8EB`: `SUNIT_AttachSound(pPlayer, 0x18 /* 24 = notInTown1 */)`.
+    host.emitToPlayer(player.unitId, {
+      type: 'PlaySound',
+      unit: { unitType: 0, id: player.unitId },
+      sound: 24,
+    })
+  }
+}
+
 function executeSkillAtLocation(this: GameInstanceHost, 
   player: InternalPlayerRecord,
   skillId: number,
@@ -735,11 +766,29 @@ function executeSkillAtLocation(this: GameInstanceHost,
   if (!Number.isFinite(tx) || !Number.isFinite(ty)) return
   // `#1883` Bone Prison (#88) requires an explicit unit target; Bone Wall (#78) & Bone Prison (#88) are blocked in Town!
   if (skillId === 88) return
-  if (skillId === 78 && TOWN_AREAS.has(player.areaId)) return
+  if (skillId === 78 && TOWN_AREAS.has(player.areaId)) {
+    emitPlayerTownSkillBlockedFeedback113c(this, player, skillId)
+    return
+  }
   const cast = this.resolvePlayerSkillCast(player, skillId)
-  if (cast === null) return
+  if (cast === null) {
+    emitPlayerTownSkillBlockedFeedback113c(this, player, skillId)
+    return
+  }
   // #1812: Double Throw needs a throwing weapon with quantity in both hands (checked before mana).
   if (!this.passesWave2HandRequirement113c(player, skillId)) return
+
+  // `#2024`: Pre-validate `#54 Teleport` destination BEFORE windup / mana spend / broadcast so
+  // forbidden levels, `Teleport === 2` (`Area 73`) wall/door LOS blocks, deep void (>5 sub-tiles),
+  // and completely boxed-in cells spend 0 mana, do not lock cast windup, and play `impossible1` (`19`).
+  if (skillId === SKILL_TELEPORT && this.resolvePlayerTeleportDestination113c(player, tx, ty) === null) {
+    this.emitToPlayer(player.unitId, {
+      type: 'PlaySound',
+      unit: { unitType: 0, id: player.unitId },
+      sound: 19,
+    })
+    return
+  }
 
   const doFunc = cast.skill.srvDoFunc
   let validatedCorpse: InternalMonsterRecord | undefined
@@ -765,10 +814,9 @@ function executeSkillAtLocation(this: GameInstanceHost,
     }
   }
 
-  const executeLocationDoPhase = (strikeIndex: number, _totalStrikes: number): void => {
+  const executeLocationDoPhase = (strikeIndex: number, _totalStrikes: number): boolean | void => {
     if (skillId === SKILL_TELEPORT) {
-      this.relocatePlayerForSkill(player, tx, ty, true, true)
-      return
+      return this.relocatePlayerForSkill(player, tx, ty, true, true)
     }
     if (skillId === 219 || skillId === 220) {
       this.openTownPortal(player)
@@ -1005,11 +1053,33 @@ function executeSkillOnTarget(this: GameInstanceHost,
       }
     }
   }
+  if (TOWN_AREAS.has(player.areaId)) {
+    const townSk = this.registry.getSkillById(skillId)
+    if (townSk !== undefined && !townSk.passive && !townSk.inTown) {
+      this.resolvePlayerSkillCast(player, skillId)
+      emitPlayerTownSkillBlockedFeedback113c(this, player, skillId)
+      return
+    }
+  }
   if (!monster) return
 
   if ((skillId === 78 || skillId === 88) && TOWN_AREAS.has(player.areaId)) return
   const cast = this.resolvePlayerSkillCast(player, skillId)
-  if (cast === null) return
+  if (cast === null) {
+    emitPlayerTownSkillBlockedFeedback113c(this, player, skillId)
+    return
+  }
+  if (
+    skillId === SKILL_TELEPORT &&
+    this.resolvePlayerTeleportDestination113c(player, monster.x, monster.y) === null
+  ) {
+    this.emitToPlayer(player.unitId, {
+      type: 'PlaySound',
+      unit: { unitType: 0, id: player.unitId },
+      sound: 19,
+    })
+    return
+  }
   const doFunc = cast.skill.srvDoFunc
   if (doFunc === SRVDOFUNC_WHIRLWIND && this.resolveWhirlwindEquippedHandsForPlayer113c(player) === null) {
     return
@@ -1222,8 +1292,7 @@ function executeSkillOnTarget(this: GameInstanceHost,
           if (this.executeWave2MeleeOnTarget113c(player, cast, primaryMonster)) return
           if (this.executeWave4TargetSkillDo113c(player, cast, primaryMonster, options)) return
           if (skillId === SKILL_TELEPORT) {
-            this.relocatePlayerForSkill(player, primaryMonster.x, primaryMonster.y, true, true)
-            return
+            return this.relocatePlayerForSkill(player, primaryMonster.x, primaryMonster.y, true, true)
           }
           if (isMovementStrike) {
             const arrival = this.pointBefore(player, primaryMonster.x, primaryMonster.y, 1)
@@ -1575,9 +1644,26 @@ function executeSkillOnPvpTarget113c(this: GameInstanceHost,
     this.resolveHostilePvpTargetById113c(player.unitId, player.areaId, targetUnitId, wireUnitType) !==
     undefined
   const lockedTargetKey = this.onlineUnitKey113c(pvpTarget.kind, targetUnitId)
-  if ((skillId === 78 || skillId === 88) && TOWN_AREAS.has(player.areaId)) return
+  if ((skillId === 78 || skillId === 88) && TOWN_AREAS.has(player.areaId)) {
+    emitPlayerTownSkillBlockedFeedback113c(this, player, skillId)
+    return
+  }
   const cast = this.resolvePlayerSkillCast(player, skillId)
-  if (cast === null) return
+  if (cast === null) {
+    emitPlayerTownSkillBlockedFeedback113c(this, player, skillId)
+    return
+  }
+  if (
+    skillId === SKILL_TELEPORT &&
+    this.resolvePlayerTeleportDestination113c(player, tx, ty) === null
+  ) {
+    this.emitToPlayer(player.unitId, {
+      type: 'PlaySound',
+      unit: { unitType: 0, id: player.unitId },
+      sound: 19,
+    })
+    return
+  }
   const doFunc = cast.skill.srvDoFunc
   if (doFunc === SRVDOFUNC_WHIRLWIND && this.resolveWhirlwindEquippedHandsForPlayer113c(player) === null) {
     return

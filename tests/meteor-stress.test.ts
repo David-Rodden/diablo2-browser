@@ -10,6 +10,8 @@
  * 5. 50,000-tick continuous rapid-casting stress test: verify zero unhandled exceptions, zero NaN coordinates,
  *    clean missile disposal, and bounded memory.
  */
+import v8 from 'node:v8'
+import vm from 'node:vm'
 import { describe, expect, it } from 'vitest'
 import {
   tickProjectiles,
@@ -448,6 +450,9 @@ describe('[Skill #056] Meteor — Empirical Stress & Physics Challenger Suite', 
   // =========================================================================
   describe('Dimension 5: 50,000-Tick Continuous Rapid-Casting Stress Simulation', () => {
     it('runs 50,000 ticks of continuous Meteor casting without crashes, NaNs, or memory leaks', () => {
+      v8.setFlagsFromString('--expose-gc')
+      const forceGc = vm.runInNewContext('gc') as () => void
+      forceGc()
       const simStartMs = Date.now()
       const heapBefore = process.memoryUsage().heapUsed
 
@@ -549,6 +554,7 @@ describe('[Skill #056] Meteor — Empirical Stress & Physics Challenger Suite', 
       }
 
       const simElapsedMs = Date.now() - simStartMs
+      forceGc()
       const heapAfter = process.memoryUsage().heapUsed
       const heapDiffMb = (heapAfter - heapBefore) / (1024 * 1024)
 

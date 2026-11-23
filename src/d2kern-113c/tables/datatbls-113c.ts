@@ -21,7 +21,11 @@
  * - `0x6FD6A5B0` `MONSTERS_IsDemonOrUndead113c` (`#10239`)
  */
 import type { Memory113c } from '../mem/sparse-memory.ts'
-import { D2CommonAssertError, PLAYER_SetPlayerData150Params113c } from '../common/inline-helpers.ts'
+import {
+  D2CommonAssertError,
+  PLAYER_SetPlayerData150Params113c,
+  withDrlgStackScratch113c,
+} from '../common/inline-helpers.ts'
 import { DRLG_ComputeLevelRoomsBoundingBox113c } from '../common/drlg/drlg.ts'
 import { imul32, sar32, sdiv32 } from '../common/int-math.ts'
 import {
@@ -1401,15 +1405,16 @@ export function DRLG_ValidateAndRebaseLevelRooms113c(m: Memory113c, pLevel: numb
   }
   // 0x6FD7D3C0 seeds the box from the first room (0x6FD7D3C7..0x6FD7D3E2: min = pos, max = pos + size)
   // before widening it over every room (signed `jle`/`jge`).
+  const sm = withDrlgStackScratch113c(m)
   const pMinX = 0x7fb94200
   const pMinY = 0x7fb94204
   const pMaxX = 0x7fb94208
   const pMaxY = 0x7fb9420c
-  DRLG_ComputeLevelRoomsBoundingBox113c(m, lvl, pMinX, pMinY, pMaxX, pMaxY)
-  const minX = m.u32(pMinX) | 0
-  const minY = m.u32(pMinY) | 0
-  const maxX = m.u32(pMaxX) | 0
-  const maxY = m.u32(pMaxY) | 0
+  DRLG_ComputeLevelRoomsBoundingBox113c(sm, lvl, pMinX, pMinY, pMaxX, pMaxY)
+  const minX = sm.u32(pMinX) | 0
+  const minY = sm.u32(pMinY) | 0
+  const maxX = sm.u32(pMaxX) | 0
+  const maxY = sm.u32(pMaxY) | 0
   const spanX = (maxX - minX) | 0
   if ((m.get(lvl, D2DrlgLevelStrc.nWidth) | 0) < spanX) {
     throw new D2CommonAssertError('Drlg.cpp', 0x2eb)

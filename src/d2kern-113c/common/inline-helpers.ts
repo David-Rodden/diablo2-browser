@@ -630,3 +630,97 @@ export function DATATBLS_WalkMonsterClassChainInline113c(
   return eax
 }
 
+export const DRLG_STACK_SCRATCH_BASE_113C = 0x7fb94000
+
+let _drlgStackBuf = new ArrayBuffer(0x20000)
+let _drlgStackU8 = new Uint8Array(_drlgStackBuf)
+let _drlgStackDV = new DataView(_drlgStackBuf)
+
+function ensureDrlgStackScratchCapacity113c(minBytes: number): void {
+  if (minBytes <= _drlgStackBuf.byteLength) return
+  let nextCap = _drlgStackBuf.byteLength
+  while (nextCap < minBytes) nextCap = nextCap * 2
+  const nextBuf = new ArrayBuffer(nextCap)
+  const nextU8 = new Uint8Array(nextBuf)
+  nextU8.set(_drlgStackU8)
+  _drlgStackBuf = nextBuf
+  _drlgStackU8 = nextU8
+  _drlgStackDV = new DataView(nextBuf)
+}
+
+/**
+ * Overlays a private C-stack frame window at `0x7FB94000..+cap` onto `m` so
+ * stack-local struct/out-pointer arguments passed to canonical `D2Common`
+ * DRLG sub-calls never pollute or read unstaged guest `Memory113c` pages.
+ */
+export function withDrlgStackScratch113c(m: Memory113c, minBytes = 0x20000): Memory113c {
+  ensureDrlgStackScratchCapacity113c(minBytes)
+  if ((m as { __hasDrlgStackScratch?: boolean }).__hasDrlgStackScratch === true) {
+    return m
+  }
+  const isStack = (p: number): boolean => {
+    const u = p >>> 0
+    return u >= DRLG_STACK_SCRATCH_BASE_113C && u < DRLG_STACK_SCRATCH_BASE_113C + _drlgStackU8.byteLength
+  }
+  const mExt = m as Memory113c & {
+    free?: (p: number) => void
+    realloc?: (p: number, sz: number) => number
+  }
+  const self: Memory113c & {
+    __hasDrlgStackScratch: boolean
+    inner: Memory113c
+    free?: ((p: number) => void) | undefined
+    realloc?: ((p: number, sz: number) => number) | undefined
+  } = {
+    __hasDrlgStackScratch: true,
+    inner: m,
+    alloc: size => m.alloc(size),
+    free: mExt.free ? p => mExt.free!(p) : undefined,
+    realloc: mExt.realloc ? (p, sz) => mExt.realloc!(p, sz) : undefined,
+    u8: p => (isStack(p) ? _drlgStackU8[(p >>> 0) - DRLG_STACK_SCRATCH_BASE_113C]! : m.u8(p)),
+    u16: p =>
+      isStack(p) ? _drlgStackDV.getUint16((p >>> 0) - DRLG_STACK_SCRATCH_BASE_113C, true) : m.u16(p),
+    u32: p =>
+      isStack(p) ? _drlgStackDV.getUint32((p >>> 0) - DRLG_STACK_SCRATCH_BASE_113C, true) : m.u32(p),
+    setU8: (p, v) => {
+      if (isStack(p)) _drlgStackU8[(p >>> 0) - DRLG_STACK_SCRATCH_BASE_113C] = v & 0xff
+      else m.setU8(p, v)
+    },
+    setU16: (p, v) => {
+      if (isStack(p)) _drlgStackDV.setUint16((p >>> 0) - DRLG_STACK_SCRATCH_BASE_113C, v & 0xffff, true)
+      else m.setU16(p, v)
+    },
+    setU32: (p, v) => {
+      if (isStack(p)) _drlgStackDV.setUint32((p >>> 0) - DRLG_STACK_SCRATCH_BASE_113C, v >>> 0, true)
+      else m.setU32(p, v)
+    },
+    get: (base, f, idx = 0) => {
+      const width = f.type === 'u8' ? 1 : f.type === 'u16' ? 2 : 4
+      const addr = ((base >>> 0) + f.off + idx * width) >>> 0
+      if (!isStack(addr)) return m.get(base, f, idx)
+      return width === 1 ? self.u8(addr) : width === 2 ? self.u16(addr) : self.u32(addr)
+    },
+    set: (base, f, v, idx = 0) => {
+      const width = f.type === 'u8' ? 1 : f.type === 'u16' ? 2 : 4
+      const addr = ((base >>> 0) + f.off + idx * width) >>> 0
+      if (!isStack(addr)) {
+        m.set(base, f, v, idx)
+        return
+      }
+      if (width === 1) self.setU8(addr, v)
+      else if (width === 2) self.setU16(addr, v)
+      else self.setU32(addr, v)
+    },
+    fill: (p, len, v) => {
+      if (isStack(p)) {
+        const off = (p >>> 0) - DRLG_STACK_SCRATCH_BASE_113C
+        _drlgStackU8.fill(v & 0xff, off, off + len)
+      } else {
+        m.fill(p, len, v)
+      }
+    },
+  }
+  return self
+}
+
+

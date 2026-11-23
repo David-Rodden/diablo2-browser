@@ -345,9 +345,10 @@ describe('Milestone 33 [K2] Wave 3 Batch 2 (w3b2): 45 D2Game 0x6FC3BCA0..0x6FC52
     m.setU16(pItemData + 0x02, 0x60)
     m.setU32(pItemData + 0x18, 0x200000)
     const pInactiveHolder = m.alloc(0x20)
-    const pSavedNode = ITEMS_SaveItemToNodeAndFree_6FC403D0_113c(m, pGame, pItem, pInactiveHolder)
+    const pRetHolder = ITEMS_SaveItemToNodeAndFree_6FC403D0_113c(m, pGame, pItem, pInactiveHolder)
+    expect(pRetHolder).toBe(pInactiveHolder)
+    const pSavedNode = m.u32(pInactiveHolder + 0x08)
     expect(pSavedNode).toBeGreaterThan(0)
-    expect(m.u32(pInactiveHolder + 0x08)).toBe(pSavedNode)
     expect(m.u16(pSavedNode + 0x0c)).toBeGreaterThan(0)
 
     // [7/45] AIGENERAL_RemoveFromMinionList_6FC416A0_113c: unlinks minion from leader list & resets owner
@@ -413,8 +414,8 @@ describe('Milestone 33 [K2] Wave 3 Batch 2 (w3b2): 45 D2Game 0x6FC3BCA0..0x6FC52
     m.setU8(pMonUModTxt + 5 * 0x20 + 0x06, 1)
     expect(MONUMOD_CheckModEligibility_6FC43100_113c(m, pChamp, pGame, 5, 0)).toBe(1)
 
-    // [16/45] MONUMOD_EventReviveOrCorpseCheck_6FC43E20_113c
-    expect(MONUMOD_EventReviveOrCorpseCheck_6FC43E20_113c(m, pGame, 0)).toBe(1)
+    // [16/45] MONUMOD_EventReviveOrCorpseCheck_6FC43E20_113c (D2Game.dll@0x6FC43EF0 requires non-null unit; D2Common.dll@0x6FD891F0 returns 0 for null)
+    expect(MONUMOD_EventReviveOrCorpseCheck_6FC43E20_113c(m, pGame, pChamp)).toBe(1)
 
     // [17/45] MONUMOD_ApplyCursedAmplifyDamage_6FC44030_113c
     m.setU16(pSkillsTxt + 0x42 * 0x23c + 0x10, 9)

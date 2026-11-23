@@ -5,6 +5,8 @@
  * (`SparseMemory113c`) with zero legacy module imports, zero array sorting, and zero nullish coalescing.
  */
 import type { Memory113c, SparseMemory113c } from '../mem/sparse-memory.ts'
+import { D2CommonAssertError } from '../common/inline-helpers.ts'
+import { UNITS_FreePlayerData113c } from '../common/quest-record.ts'
 import { UNITS_GetPlayerData113c } from '../common/composit.ts'
 import { DRLG_GetActNoFromLevelId113c, DRLG_GetLevelDefField94_113c } from '../common/drlg/drlg.ts'
 import { STATLIST_EnumerateCopyListStats113c } from '../common/drlg/preset.ts'
@@ -79,6 +81,8 @@ import {
 } from './boot-init-gap-b-113c.ts'
 import { PLAYER_StartModeAttack113c } from './k2-real-s2c-combat-113c.ts'
 import { MISSILE_DestroyDataAndEvents113c } from './k2-gap-melee-dot-113c.ts'
+import { ITEMS_DestroyItemEventsAndSubInventory_6FC30700_113c } from './k2-laneI-0x6fc3-w1-113c.ts'
+import { QUESTS_FreeUnitQuestChain_6FC53FF0_113c } from './k2-laneJ-0x6fc4-w1-113c.ts'
 import { SUNIT_GetServerUnit113c } from './game-strc.ts'
 import { MONSTER_ClearModeEvents113c, UNITS_ChangeAnimMode113c } from './monster-events.ts'
 import {
@@ -786,12 +790,19 @@ export function SUNIT_SyncAdjacentRoomUnitsToClient113c(
  */
 export function SUNIT_FreeUnit113c(m: Memory113c, pGame: number, pUnit: number): void {
   hitD2GameVa113c(0x6FD020A0)
+  if ((pGame >>> 0) === 0) {
+    throw new D2CommonAssertError('SUnit.cpp', 0x5a)
+  }
+  if ((pUnit >>> 0) === 0) {
+    throw new D2CommonAssertError('SUnit.cpp', 0x5d)
+  }
+  if ((m.u32(pUnit >>> 0) | 0) >= 6) {
+    throw new D2CommonAssertError('SUnit.cpp', 0x62)
+  }
   SUNIT_DeactivateAndRemoveUnit113c(m, pGame, pUnit, 0)
-  let pNode74 = m.u32((pUnit + 0x74) >>> 0) >>> 0
+  const pNode74 = m.u32((pUnit + 0x74) >>> 0) >>> 0
   if (pNode74 !== 0) {
-    while (pNode74 !== 0) {
-      pNode74 = m.u32((pNode74 + 0x04) >>> 0) >>> 0
-    }
+    QUESTS_FreeUnitQuestChain_6FC53FF0_113c(m, pGame, pNode74)
     m.setU32((pUnit + 0x74) >>> 0, 0)
   }
 
@@ -814,6 +825,24 @@ export function SUNIT_FreeUnit113c(m: Memory113c, pGame: number, pUnit: number):
       }
       SUNITDMG_FreeAttackerCombatList113c(m, pUnit, pGame)
       SUNIT_ClearUnitInventoryItems113c(m, pGame, pUnit)
+      const pPlayerData0 = UNITS_GetPlayerData113c(m, pUnit) >>> 0
+      if (pPlayerData0 !== 0) {
+        m.setU32((pPlayerData0 + 0x60) >>> 0, 0)
+        m.setU32((pPlayerData0 + 0x64) >>> 0, 0)
+        m.setU32((pPlayerData0 + 0x68) >>> 0, 0)
+        let hasValidWaypoints = true
+        for (let off = 0x1c; off < 0x28; off += 4) {
+          if (m.u32((pPlayerData0 + off) >>> 0) === 0) {
+            hasValidWaypoints = false
+            break
+          }
+        }
+        if (hasValidWaypoints) {
+          UNITS_FreePlayerData113c(m, pMemPool, pUnit)
+        } else {
+          m.setU32((pUnit + 0x14) >>> 0, 0)
+        }
+      }
       EVENT_RemoveUnitEvents113c(m, pGame, pUnit)
       const pPath0 = m.u32((pUnit + 0x2c) >>> 0) >>> 0
       if (pPath0 !== 0) {
@@ -847,10 +876,14 @@ export function SUNIT_FreeUnit113c(m: Memory113c, pGame: number, pUnit: number):
       break
     }
     case 4: {
-      if (m.u32((pUnit + 0x60) >>> 0) !== 0) {
-        SUNIT_ClearUnitInventoryItems113c(m, pGame, pUnit)
+      if (m.u32(0x6fde9e1c) !== 0) {
+        ITEMS_DestroyItemEventsAndSubInventory_6FC30700_113c(m, pGame, pUnit)
+      } else {
+        if (m.u32((pUnit + 0x60) >>> 0) !== 0) {
+          SUNIT_ClearUnitInventoryItems113c(m, pGame, pUnit)
+        }
+        EVENT_RemoveUnitEvents113c(m, pGame, pUnit)
       }
-      EVENT_RemoveUnitEvents113c(m, pGame, pUnit)
       ITEMS_RemoveFromSocketedOwner113c(m, pMemPool, pUnit)
       UNITS_FreeStaticPath113c(m, pUnit)
       break

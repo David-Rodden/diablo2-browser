@@ -1633,13 +1633,16 @@ export function ITEMS_PickupGoldItemAndDistributeOrDropRemainder_6FCF6C80_113c(
   if (bPlayerDropped === 0) {
     if (pPlayer === 0) {
       bHandledByParty = true
-    } else if (
-      m.u32((pPlayer + 0x80) >>> 0) !== 0 &&
-      m.u32(pPlayer) === 0 &&
-      (D2GAME_PARTY_GetPartyIdForUnit113c(m, pPlayer, pGame) & 0xffff) !== 0xffff
-    ) {
-      nRemainder = PARTY_DistributeGoldPickupAndReturnRemainder_6FCBC270_113c(m, pGame, pPlayer, nPileGold) | 0
-      bHandledByParty = true
+    } else {
+      const pPlayerGame = m.u32((pPlayer + 0x80) >>> 0) >>> 0
+      if (
+        pPlayerGame !== 0 &&
+        m.u32(pPlayer) === 0 &&
+        (D2GAME_PARTY_GetPartyIdForUnit113c(m, pPlayer, pPlayerGame) & 0xffff) !== 0xffff
+      ) {
+        nRemainder = PARTY_DistributeGoldPickupAndReturnRemainder_6FCBC270_113c(m, pGame, pPlayer, nPileGold) | 0
+        bHandledByParty = true
+      }
     }
   }
   if (!bHandledByParty && pPlayer !== 0) {
@@ -1951,9 +1954,14 @@ export function SUNITDMG_RollSkillPhysAndElemDamage_6FCFCE00_113c(
   if (pSkillsTxt === 0) {
     return
   }
-  SKILLS_GetSkillPhysMinDamage113c(m, pAttacker, nSkillId, nSkillLevel, 0)
-  SKILLS_GetSkillPhysMaxDamage113c(m, pAttacker, nSkillId, nSkillLevel, 0)
-  const dwPhys = SUNITDMG_ComputeWeaponBaseDamage113c(m, pAttacker, 0, pDmg, 0, 0) >>> 0
+  const nMinDmg = SKILLS_GetSkillPhysMinDamage113c(m, pAttacker, nSkillId, nSkillLevel, 0) | 0
+  const nMaxDmg = SKILLS_GetSkillPhysMaxDamage113c(m, pAttacker, nSkillId, nSkillLevel, 0) | 0
+  const dwPhys =
+    SUNITDMG_ComputeWeaponBaseDamage113c(m, pAttacker, 0, pDmg, 0, 0, 0, {
+      min256: nMinDmg,
+      max256: nMaxDmg,
+      nSrcDamage: 0x80,
+    }) >>> 0
   m.setU32((pDmg + 0x08) >>> 0, dwPhys)
   SKILLS_RollAndAddSkillElemDamage_6FCBF210_113c(m, nSkillId, pAttacker, pDmg, nSkillLevel)
 }

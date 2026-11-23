@@ -1518,7 +1518,7 @@ export function ITEMS_RollSpawnableWeaponId_6FC2F8F0_113c(
   const startIndex = sdiv32((pWeapons - pItemsBase) | 0, 0x1a8)
   const pArmor = m.u32(pItemTables + 0x10)
   const count = sdiv32((pArmor - pWeapons) | 0, 0x1a8)
-  if (pWeapons === 0 || count <= 0) {
+  if (pWeapons === 0) {
     return -1
   }
 
@@ -1547,7 +1547,7 @@ export function ITEMS_RollSpawnableWeaponId_6FC2F8F0_113c(
   }
 
   if (matchCount <= 0) {
-    return -1
+    return matchedIds[0]! | 0
   }
   const newLo = stepSeed64At113c(m, pSeed)
   let pick = 0
@@ -1577,7 +1577,7 @@ export function ITEMS_RollSpawnableArmorId_6FC2FA30_113c(
   const startIndex = sdiv32((pArmor - pItemsBase) | 0, 0x1a8)
   const pMisc = m.u32(pItemTables + 0x18)
   const count = sdiv32((pMisc - pArmor) | 0, 0x1a8)
-  if (pArmor === 0 || count <= 0) {
+  if (pArmor === 0) {
     return -1
   }
 
@@ -1606,7 +1606,7 @@ export function ITEMS_RollSpawnableArmorId_6FC2FA30_113c(
   }
 
   if (matchCount <= 0) {
-    return -1
+    return matchedIds[0]! | 0
   }
   const newLo = stepSeed64At113c(m, pSeed)
   let pick = 0
@@ -1646,50 +1646,56 @@ export function ITEMS_CreateGoldPileInRoomAtCoords_6FC320E0_113c(
   const yOff = (y0 + 3) | 0
   const pFoundRoom = ROOM_FindRoomContainingSubtile113c(m, pRoom, xOff, yOff) >>> 0
 
-  const pScratch = allocZeroedScratch113c(m, 0xa0)
-  const pOutCoords = pScratch
-  const pCenterCoords = (pScratch + 0x08) >>> 0
-  const pDrop = (pScratch + 0x18) >>> 0
+  const sp = k2W3B1StackPtr
+  k2W3B1StackPtr = (sp + 0xa0) >>> 0
+  try {
+    m.fill(sp, 0xa0, 0)
+    const pOutCoords = sp
+    const pCenterCoords = (sp + 0x08) >>> 0
+    const pDrop = (sp + 0x18) >>> 0
 
-  m.setU32(pCenterCoords, x0 >>> 0)
-  m.setU32(pCenterCoords + 0x04, y0 >>> 0)
-  if (pFoundRoom !== 0) {
-    m.setU32(pOutCoords, xOff >>> 0)
-    m.setU32(pOutCoords + 0x04, yOff >>> 0)
-  } else {
-    m.setU32(pOutCoords, x0 >>> 0)
-    m.setU32(pOutCoords + 0x04, y0 >>> 0)
+    m.setU32(pCenterCoords, x0 >>> 0)
+    m.setU32(pCenterCoords + 0x04, y0 >>> 0)
+    if (pFoundRoom !== 0) {
+      m.setU32(pOutCoords, xOff >>> 0)
+      m.setU32(pOutCoords + 0x04, yOff >>> 0)
+    } else {
+      m.setU32(pOutCoords, x0 >>> 0)
+      m.setU32(pOutCoords + 0x04, y0 >>> 0)
+    }
+
+    const pTargetRoom =
+      COLLISION_FindFreePositionBasic113c(m, pRoom, pOutCoords, pCenterCoords, 1, 0x3e01, 0x801, 1) >>> 0
+    if (pTargetRoom === 0) {
+      return 0
+    }
+
+    const wItemFormat = m.u16(pGame + 0x78)
+    const nGoldClassId = m.u32(D2GAME_GDW_GOLD_CLASS_ID_VA_113C)
+    const outX = m.u32(pOutCoords)
+    const outY = m.u32(pOutCoords + 0x04)
+
+    m.setU32(pDrop + 0x00, 0)
+    m.setU32(pDrop + 0x04, pRoomSeed >>> 0)
+    m.setU32(pDrop + 0x08, pGame >>> 0)
+    m.setU32(pDrop + 0x0c, mlvl >>> 0)
+    m.setU32(pDrop + 0x14, nGoldClassId >>> 0)
+    m.setU32(pDrop + 0x18, 3)
+    m.setU32(pDrop + 0x1c, outX >>> 0)
+    m.setU32(pDrop + 0x20, outY >>> 0)
+    m.setU32(pDrop + 0x24, pTargetRoom >>> 0)
+    m.setU16(pDrop + 0x28, 1)
+    m.setU16(pDrop + 0x2a, wItemFormat)
+    m.setU32(pDrop + 0x30, 0)
+
+    const pItem = D2GAME_CreateItemEx_6FC31490_113c(m, pGame, pDrop, 0) >>> 0
+    if (pItem !== 0) {
+      ITEMS_SetOrClearCommandFlags113c(m, pItem, 0x2000, 0)
+    }
+    return pItem | 0
+  } finally {
+    k2W3B1StackPtr = sp
   }
-
-  const pTargetRoom =
-    COLLISION_FindFreePositionBasic113c(m, pRoom, pOutCoords, pCenterCoords, 1, 0x3e01, 0x801, 1) >>> 0
-  if (pTargetRoom === 0) {
-    return 0
-  }
-
-  const wItemFormat = m.u16(pGame + 0x78)
-  const nGoldClassId = m.u32(D2GAME_GDW_GOLD_CLASS_ID_VA_113C)
-  const outX = m.u32(pOutCoords)
-  const outY = m.u32(pOutCoords + 0x04)
-
-  m.setU32(pDrop + 0x00, 0)
-  m.setU32(pDrop + 0x04, pRoomSeed >>> 0)
-  m.setU32(pDrop + 0x08, pGame >>> 0)
-  m.setU32(pDrop + 0x0c, mlvl >>> 0)
-  m.setU32(pDrop + 0x14, nGoldClassId >>> 0)
-  m.setU32(pDrop + 0x18, 3)
-  m.setU32(pDrop + 0x1c, outX >>> 0)
-  m.setU32(pDrop + 0x20, outY >>> 0)
-  m.setU32(pDrop + 0x24, pTargetRoom >>> 0)
-  m.setU16(pDrop + 0x28, 1)
-  m.setU16(pDrop + 0x2a, wItemFormat)
-  m.setU32(pDrop + 0x30, 0)
-
-  const pItem = D2GAME_CreateItemEx_6FC31490_113c(m, pGame, pDrop, 0) >>> 0
-  if (pItem !== 0) {
-    ITEMS_SetOrClearCommandFlags113c(m, pItem, 0x2000, 0)
-  }
-  return pItem | 0
 }
 
 /**
@@ -2680,27 +2686,23 @@ function invokeMonsterStartMode113c(
   pTarget: number,
   nSpeedByte: number,
 ): number {
-  const pScratch = allocZeroedScratch113c(m, 0x24)
-  m.setU32(pScratch + 0x00, nMode >>> 0)
-  m.setU32(pScratch + 0x04, pUnit >>> 0)
-  m.setU32(pScratch + 0x08, pTarget >>> 0)
-  m.setU8(pScratch + 0x15, nSpeedByte & 0xff)
-  const pPath = pUnit !== 0 ? m.u32(pUnit + 0x2c) >>> 0 : 0
+  const pPath = pUnit !== 0 ? m.u32((pUnit + 0x2c) >>> 0) >>> 0 : 0
   if (pPath === 0) {
-    m.setU32(pUnit + 0x10, nMode >>> 0)
+    if (pUnit !== 0) {
+      m.setU32((pUnit + 0x10) >>> 0, nMode >>> 0)
+    }
     return 1
   }
-  const fakeWorld = {
+  return MONSTER_StartMode113c(
     m,
-    pGame,
-    pathUnitByPtr: new Map(),
-  } as unknown as Parameters<typeof MONSTER_StartMode113c>[0]
-  try {
-    return MONSTER_StartMode113c(fakeWorld, pUnit, nMode, pTarget, 0, 0) ? 1 : 0
-  } catch {
-    m.setU32(pUnit + 0x10, nMode >>> 0)
-    return 1
-  }
+    pGame >>> 0,
+    pUnit >>> 0,
+    nMode | 0,
+    pTarget >>> 0,
+    0,
+    0,
+    nSpeedByte & 0xff,
+  ) | 0
 }
 
 function invokeAiStall113c(
@@ -2709,18 +2711,7 @@ function invokeAiStall113c(
   pUnit: number,
   nDelay: number,
 ): void {
-  const fakeWorld = {
-    m,
-    pGame,
-    pathUnitByPtr: new Map(),
-  } as unknown as Parameters<typeof AI_Stall113c>[0]
-  try {
-    AI_Stall113c(fakeWorld, pUnit, nDelay)
-  } catch {
-    if (pUnit !== 0) {
-      m.setU32(pUnit + 0x10, 1)
-    }
-  }
+  AI_Stall113c(m, pGame >>> 0, pUnit >>> 0, nDelay | 0)
 }
 
 function invokeAiApproachTarget113c(
@@ -2734,30 +2725,17 @@ function invokeAiApproachTarget113c(
   nStepNum: number,
   nFlags: number,
 ): number {
-  const fakeWorld = {
+  return AI_ApproachTarget113c(
     m,
-    pGame,
-    pathUnitByPtr: new Map(),
-  } as unknown as Parameters<typeof AI_ApproachTarget113c>[0]
-  try {
-    return AI_ApproachTarget113c(
-      fakeWorld,
-      pUnit,
-      pTarget,
-      nMode,
-      targetX,
-      targetY,
-      nStepNum,
-      nFlags,
-    )
-      ? 1
-      : 0
-  } catch {
-    if (pUnit !== 0) {
-      m.setU32(pUnit + 0x10, nMode >>> 0)
-    }
-    return 0
-  }
+    pGame >>> 0,
+    pUnit >>> 0,
+    pTarget >>> 0,
+    nMode | 0,
+    targetX | 0,
+    targetY | 0,
+    nStepNum | 0,
+    nFlags | 0,
+  ) | 0
 }
 
 /**

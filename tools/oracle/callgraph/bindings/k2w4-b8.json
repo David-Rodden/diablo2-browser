@@ -5,8 +5,8 @@
     "name": "SKILLS_SrvDo127_HealTargetByMasteryCalc_6FCD3770",
     "kernFile": "src/d2kern-113c/game/k2-w4b8-113c.ts",
     "tsSymbol": "SKILLS_SrvDo127_HealTargetByMasteryCalc_6FCD3770_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w4b8.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k2/k2-disasm-verified-wave13.test.ts"
   },
   {
     "module": "D2Game",
@@ -14,8 +14,8 @@
     "name": "SKILLS_SrvSt58_ComputeApproachPathToTarget_6FCD3890",
     "kernFile": "src/d2kern-113c/game/k2-w4b8-113c.ts",
     "tsSymbol": "SKILLS_SrvSt58_ComputeApproachPathToTarget_6FCD3890_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w4b8.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k2/k2-disasm-verified-wave13.test.ts"
   },
   {
     "module": "D2Game",
@@ -23,8 +23,8 @@
     "name": "SKILLS_SrvSt59_SaveTargetPosToSkillParams_6FCD3930",
     "kernFile": "src/d2kern-113c/game/k2-w4b8-113c.ts",
     "tsSymbol": "SKILLS_SrvSt59_SaveTargetPosToSkillParams_6FCD3930_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w4b8.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k2/k2-disasm-verified-wave13.test.ts"
   },
   {
     "module": "D2Game",
@@ -32,8 +32,8 @@
     "name": "SKILLS_SrvDo129_SpawnSummonTowardsTarget_6FCD42D0",
     "kernFile": "src/d2kern-113c/game/k2-w4b8-113c.ts",
     "tsSymbol": "SKILLS_SrvDo129_SpawnSummonTowardsTarget_6FCD42D0_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w4b8.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k2/k2-disasm-verified-wave13.test.ts"
   },
   {
     "module": "D2Game",
@@ -41,8 +41,8 @@
     "name": "SKILLS_FireDirectionalMissile143ForSkill173_6FCD4870",
     "kernFile": "src/d2kern-113c/game/k2-w4b8-113c.ts",
     "tsSymbol": "SKILLS_FireDirectionalMissile143ForSkill173_6FCD4870_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w4b8.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k2/k2-disasm-verified-wave13.test.ts"
   },
   {
     "module": "D2Game",
@@ -50,8 +50,8 @@
     "name": "SKILLS_SrvDo132_SpawnNovaWithCalcSubLoopFrames_6FCD4D30",
     "kernFile": "src/d2kern-113c/game/k2-w4b8-113c.ts",
     "tsSymbol": "SKILLS_SrvDo132_SpawnNovaWithCalcSubLoopFrames_6FCD4D30_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w4b8.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k2/k2-disasm-verified-wave13.test.ts"
   },
   {
     "module": "D2Game",
@@ -59,8 +59,8 @@
     "name": "SKILLS_SrvDo134_FireProjectileTowardsTargetOrPath_6FCD5110",
     "kernFile": "src/d2kern-113c/game/k2-w4b8-113c.ts",
     "tsSymbol": "SKILLS_SrvDo134_FireProjectileTowardsTargetOrPath_6FCD5110_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w4b8.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k2/k2-disasm-verified-wave13.test.ts"
   },
   {
     "module": "D2Game",
@@ -68,8 +68,8 @@
     "name": "SKILLS_SrvDo135_SpawnPerimeterRingProjectiles_6FCD52A0",
     "kernFile": "src/d2kern-113c/game/k2-w4b8-113c.ts",
     "tsSymbol": "SKILLS_SrvDo135_SpawnPerimeterRingProjectiles_6FCD52A0_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w4b8.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k2/k2-disasm-verified-wave13.test.ts"
   },
   {
     "module": "D2Game",
@@ -77,8 +77,8 @@
     "name": "SKILLS_SrvDo136_FireSteppedAxisProjectile_6FCD5450",
     "kernFile": "src/d2kern-113c/game/k2-w4b8-113c.ts",
     "tsSymbol": "SKILLS_SrvDo136_FireSteppedAxisProjectile_6FCD5450_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w4b8.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k2/k2-disasm-verified-wave13.test.ts"
   },
   {
     "module": "D2Game",
@@ -86,8 +86,8 @@
     "name": "SKILLS_SrvDo138_ConsumeCorpseAndHealCaster_6FCD5D40",
     "kernFile": "src/d2kern-113c/game/k2-w4b8-113c.ts",
     "tsSymbol": "SKILLS_SrvDo138_ConsumeCorpseAndHealCaster_6FCD5D40_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w4b8.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k2/k2-disasm-verified-wave13.test.ts"
   },
   {
     "module": "D2Game",
@@ -95,8 +95,8 @@
     "name": "SKILLS_SrvDo139_EmergeSubmergedSummon_6FCD5E50",
     "kernFile": "src/d2kern-113c/game/k2-w4b8-113c.ts",
     "tsSymbol": "SKILLS_SrvDo139_EmergeSubmergedSummon_6FCD5E50_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w4b8.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k2/k2-disasm-verified-wave13.test.ts"
   },
   {
     "module": "D2Game",
@@ -104,8 +104,8 @@
     "name": "SKILLS_SrvSt61_PrepareSubmergedSummonParams_6FCD5FB0",
     "kernFile": "src/d2kern-113c/game/k2-w4b8-113c.ts",
     "tsSymbol": "SKILLS_SrvSt61_PrepareSubmergedSummonParams_6FCD5FB0_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w4b8.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k2/k2-disasm-verified-wave13.test.ts"
   },
   {
     "module": "D2Game",
@@ -113,8 +113,8 @@
     "name": "SKILLS_SrvDo141_SpawnPartyMinionsAndDistributeExp_6FCD65E0",
     "kernFile": "src/d2kern-113c/game/k2-w4b8-113c.ts",
     "tsSymbol": "SKILLS_SrvDo141_SpawnPartyMinionsAndDistributeExp_6FCD65E0_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w4b8.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k2/k2-disasm-verified-wave13.test.ts"
   },
   {
     "module": "D2Game",
@@ -122,8 +122,8 @@
     "name": "SKILLS_ScheduleUnitTimerEventType1_6FCD6720",
     "kernFile": "src/d2kern-113c/game/k2-w4b8-113c.ts",
     "tsSymbol": "SKILLS_ScheduleUnitTimerEventType1_6FCD6720_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w4b8.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k2/k2-disasm-verified-wave13.test.ts"
   },
   {
     "module": "D2Game",
@@ -131,8 +131,8 @@
     "name": "AIBAAL_ChooseActionWeighted_6FCD7380",
     "kernFile": "src/d2kern-113c/game/k2-w4b8-113c.ts",
     "tsSymbol": "AIBAAL_ChooseActionWeighted_6FCD7380_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w4b8.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k2/k2-disasm-verified-wave13.test.ts"
   },
   {
     "module": "D2Game",
@@ -140,8 +140,8 @@
     "name": "AIBAAL_ChooseMidRangeActionWeighted_6FCD75D0",
     "kernFile": "src/d2kern-113c/game/k2-w4b8-113c.ts",
     "tsSymbol": "AIBAAL_ChooseMidRangeActionWeighted_6FCD75D0_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w4b8.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k2/k2-disasm-verified-wave13.test.ts"
   },
   {
     "module": "D2Game",
@@ -149,8 +149,8 @@
     "name": "AIBAAL_ChooseCloseRangeActionWeighted_6FCD7750",
     "kernFile": "src/d2kern-113c/game/k2-w4b8-113c.ts",
     "tsSymbol": "AIBAAL_ChooseCloseRangeActionWeighted_6FCD7750_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w4b8.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k2/k2-disasm-verified-wave13.test.ts"
   },
   {
     "module": "D2Game",
@@ -158,8 +158,8 @@
     "name": "AIBAAL_ReinitAiThinkAndRestoreCmd10_6FCD78A0",
     "kernFile": "src/d2kern-113c/game/k2-w4b8-113c.ts",
     "tsSymbol": "AIBAAL_ReinitAiThinkAndRestoreCmd10_6FCD78A0_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w4b8.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k2/k2-disasm-verified-wave13.test.ts"
   },
   {
     "module": "D2Game",
@@ -176,8 +176,8 @@
     "name": "ACT4Q1_EnsureStartedOrInvokeLinkedQuestCallback_6FCD8A70",
     "kernFile": "src/d2kern-113c/game/k2-w4b8-113c.ts",
     "tsSymbol": "ACT4Q1_EnsureStartedOrInvokeLinkedQuestCallback_6FCD8A70_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w4b8.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w4b8.test.ts; Wave 19 1:1 PE32 indirect-call audit (vtable_or_struct_table; tools/oracle/callgraph/indirect-audit-batchA.json) verified in tests/oracle/k2/k2-disasm-verified-wave19-indA.test.ts"
   },
   {
     "module": "D2Game",
@@ -221,8 +221,8 @@
     "name": "ACT4Q2_SyncPlayerQuest1BState_6FCD8E80",
     "kernFile": "src/d2kern-113c/game/k2-w4b8-113c.ts",
     "tsSymbol": "ACT4Q2_SyncPlayerQuest1BState_6FCD8E80_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w4b8.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k2/k2-disasm-verified-wave13.test.ts"
   },
   {
     "module": "D2Game",
@@ -248,8 +248,8 @@
     "name": "ACT4Q3_SyncPlayerQuest1AState_6FCD9290",
     "kernFile": "src/d2kern-113c/game/k2-w4b8-113c.ts",
     "tsSymbol": "ACT4Q3_SyncPlayerQuest1AState_6FCD9290_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w4b8.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k2/k2-disasm-verified-wave13.test.ts"
   },
   {
     "module": "D2Game",
@@ -266,8 +266,8 @@
     "name": "ACT4Q1_CheckPlayerNearIzualAndMarkQuestBits_6FCD93B0",
     "kernFile": "src/d2kern-113c/game/k2-w4b8-113c.ts",
     "tsSymbol": "ACT4Q1_CheckPlayerNearIzualAndMarkQuestBits_6FCD93B0_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w4b8.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k2/k2-disasm-verified-wave13.test.ts"
   },
   {
     "module": "D2Game",
@@ -275,8 +275,8 @@
     "name": "ACT4Q1_MarkQuestFailedIfPlayerInAct4_6FCD94F0",
     "kernFile": "src/d2kern-113c/game/k2-w4b8-113c.ts",
     "tsSymbol": "ACT4Q1_MarkQuestFailedIfPlayerInAct4_6FCD94F0_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w4b8.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k2/k2-disasm-verified-wave13.test.ts"
   },
   {
     "module": "D2Game",
@@ -293,8 +293,8 @@
     "name": "ACT4Q1_SyncPlayerQuest19State_6FCD96A0",
     "kernFile": "src/d2kern-113c/game/k2-w4b8-113c.ts",
     "tsSymbol": "ACT4Q1_SyncPlayerQuest19State_6FCD96A0_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w4b8.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k2/k2-disasm-verified-wave13.test.ts"
   },
   {
     "module": "D2Game",
@@ -320,8 +320,8 @@
     "name": "ACT4Q2_SendQuestAlertIfEligible_6FCD9970",
     "kernFile": "src/d2kern-113c/game/k2-w4b8-113c.ts",
     "tsSymbol": "ACT4Q2_SendQuestAlertIfEligible_6FCD9970_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w4b8.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k2/k2-disasm-verified-wave13.test.ts"
   },
   {
     "module": "D2Game",
@@ -329,8 +329,8 @@
     "name": "ACT4Q3_SendQuestAlertIfEligible_6FCD99D0",
     "kernFile": "src/d2kern-113c/game/k2-w4b8-113c.ts",
     "tsSymbol": "ACT4Q3_SendQuestAlertIfEligible_6FCD99D0_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w4b8.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k2/k2-disasm-verified-wave13.test.ts"
   },
   {
     "module": "D2Game",
@@ -338,8 +338,8 @@
     "name": "ACT4Q3_CompleteQuestForPlayer_6FCD9A30",
     "kernFile": "src/d2kern-113c/game/k2-w4b8-113c.ts",
     "tsSymbol": "ACT4Q3_CompleteQuestForPlayer_6FCD9A30_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w4b8.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k2/k2-disasm-verified-wave13.test.ts"
   },
   {
     "module": "D2Game",
@@ -347,8 +347,8 @@
     "name": "ACT4Q3_NotifyDiabloKilledAndPlaySpeech_6FCD9B00",
     "kernFile": "src/d2kern-113c/game/k2-w4b8-113c.ts",
     "tsSymbol": "ACT4Q3_NotifyDiabloKilledAndPlaySpeech_6FCD9B00_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w4b8.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k2/k2-disasm-verified-wave13.test.ts"
   },
   {
     "module": "D2Game",
@@ -356,8 +356,8 @@
     "name": "ACT4Q1_IsRoomClearOfQuestPlayers_6FCD9C00",
     "kernFile": "src/d2kern-113c/game/k2-w4b8-113c.ts",
     "tsSymbol": "ACT4Q1_IsRoomClearOfQuestPlayers_6FCD9C00_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w4b8.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k2/k2-disasm-verified-wave13.test.ts"
   },
   {
     "module": "D2Game",
@@ -365,8 +365,8 @@
     "name": "ACT4Q1_SendQuestAlertIfEligible_6FCD9D20",
     "kernFile": "src/d2kern-113c/game/k2-w4b8-113c.ts",
     "tsSymbol": "ACT4Q1_SendQuestAlertIfEligible_6FCD9D20_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w4b8.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k2/k2-disasm-verified-wave13.test.ts"
   },
   {
     "module": "D2Game",
@@ -374,8 +374,8 @@
     "name": "ACT4Q2_DropHellforgeHammerAtUnit_6FCDA810",
     "kernFile": "src/d2kern-113c/game/k2-w4b8-113c.ts",
     "tsSymbol": "ACT4Q2_DropHellforgeHammerAtUnit_6FCDA810_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w4b8.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k2/k2-disasm-verified-wave13.test.ts"
   },
   {
     "module": "D2Game",
@@ -383,8 +383,8 @@
     "name": "ACT4Q3_SpawnDiabloInSanctuary_6FCDA850",
     "kernFile": "src/d2kern-113c/game/k2-w4b8-113c.ts",
     "tsSymbol": "ACT4Q3_SpawnDiabloInSanctuary_6FCDA850_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w4b8.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k2/k2-disasm-verified-wave13.test.ts"
   },
   {
     "module": "D2Game",
@@ -392,8 +392,8 @@
     "name": "ACT4Q3_SpawnLastPortalObject_6FCDAFF0",
     "kernFile": "src/d2kern-113c/game/k2-w4b8-113c.ts",
     "tsSymbol": "ACT4Q3_SpawnLastPortalObject_6FCDAFF0_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w4b8.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k2/k2-disasm-verified-wave13.test.ts"
   },
   {
     "module": "D2Game",
@@ -401,7 +401,7 @@
     "name": "ACT4Q2_ProcessHellforgeSmashRewardWave_6FCDB6A0",
     "kernFile": "src/d2kern-113c/game/k2-w4b8-113c.ts",
     "tsSymbol": "ACT4Q2_ProcessHellforgeSmashRewardWave_6FCDB6A0_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w4b8.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "tests/oracle/k2/k2-disasm-verified-wave13.test.ts"
   }
 ]

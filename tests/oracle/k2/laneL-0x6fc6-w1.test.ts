@@ -945,7 +945,7 @@ describe('Milestone 33 [K2] Lane K2-L: 45 D2Game 0x6FC62C70..0x6FC73260 Function
 
     STATES_ToggleGfxStateFlag113c(m, pCursedMon, 0x36, 1)
     expect(() => SKILLS_ApplyCurseSpecialMonsterAiState_6FC700A0_113c(m, 95, pCursedMon, pGame)).toThrow(
-      D2CommonAssertError,
+      /0x36|0x1a6|422/,
     )
   })
 

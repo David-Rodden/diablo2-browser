@@ -2583,7 +2583,7 @@ export function PATH_ComputeDirectSinglePointPath113c(
 
   m.set(path, D2DynamicPathStrc.dwPathPoints, 1)
   m.setU32((path + 0x9c) >>> 0, m.u32((path + 0x10) >>> 0))
-  m.set(path, D2DynamicPathStrc.dwCurrentPointIdx, 0)
+  m.set(path, D2DynamicPathStrc.dwVelocityChangeCounter, 0)
   PATH_ComputeVelocityToNextPoint113c(m, path, 1, 1)
 
   const pRoom = m.get(path, D2DynamicPathStrc.pRoom)

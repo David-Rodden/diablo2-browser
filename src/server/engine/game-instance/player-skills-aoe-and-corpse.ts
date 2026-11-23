@@ -28,10 +28,10 @@ import { STATE_BLADESHIELD_113C, STATE_CONVERSION_SAVE_113C, STATE_SLOWMISSILES_
 import { generateMonsterHorkDrop113c } from '../../items/drop-generator.ts'
 import { advanceWhirlwindSpinFrame113c, computeOpenWoundsBitrate256113c, computeWhirlwindDamageAndAr113c, computeWhirlwindStepDistancePerFrame113c, createWhirlwindSpinState113c, resolveWhirlwindWeaponHands113c, type WhirlwindEquippedHandInput113c, type WhirlwindHandWeaponSpec113c, type WhirlwindSpinState113c } from '../../skills/whirlwind-113c.ts'
 import { classifyPlayerSrvDoMissile113c, srvdo008FanTargets113c, srvdoRing64Targets113c, strafeShotCount113c } from '../player-srvdo-113c.ts'
-import { findStandableNear } from '../../world/area-bootstrap.ts'
+import { isStandableSubTile } from '../../world/area-bootstrap.ts'
 import type { GameInstanceHost } from './host.ts'
 import type { InternalMercenaryRecord, InternalMissileRecord, InternalMonsterRecord, InternalPlayerRecord, PlayerSkillCast, ServerItemEntry } from './types.ts'
-import { BODYLOC_LEFT_ARM, BODYLOC_RIGHT_ARM, PER_LEVEL_STAT_MAP_113C, PLAYER_MELEE_REACH_SUBTILES, SKILL_UNSUMMON, SRVDOFUNC_WHIRLWIND, STAT_ITEM_MAXDAMAGE_PERCENT, STAT_MAXDAMAGE, STAT_MINDAMAGE, STAT_SECONDARY_MAXDAMAGE, STAT_SECONDARY_MINDAMAGE, TOWN_AREAS, areaToAct, collectItemStats, UNIT_TYPE_113C, missileSpeedSubtilesPerFrame113c } from './constants-and-helpers.ts'
+import { BODYLOC_LEFT_ARM, BODYLOC_RIGHT_ARM, PER_LEVEL_STAT_MAP_113C, PLAYER_MELEE_REACH_SUBTILES, SKILL_UNSUMMON, SRVDOFUNC_WHIRLWIND, STAT_ITEM_MAXDAMAGE_PERCENT, STAT_MAXDAMAGE, STAT_MINDAMAGE, STAT_SECONDARY_MAXDAMAGE, STAT_SECONDARY_MINDAMAGE, TOWN_AREAS, areaToAct, collectItemStats, getLevelTeleportMode113c, UNIT_TYPE_113C, missileSpeedSubtilesPerFrame113c } from './constants-and-helpers.ts'
 
 
 function applyPlayerSkillEffect(this: GameInstanceHost, 
@@ -391,6 +391,160 @@ function applyPlayerSkillEffect(this: GameInstanceHost,
 
 
 
+const lastPlayerTeleportDir113c = new WeakMap<
+  InternalPlayerRecord,
+  { readonly dx: number; readonly dy: number }
+>()
+
+const DIR64_OCTANT_STEP_113C: ReadonlyArray<{ readonly dx: number; readonly dy: number }> = [
+  { dx: 1, dy: 1 }, // 0: S (+X,+Y)
+  { dx: 0, dy: 1 }, // 8: SW (0,+Y)
+  { dx: -1, dy: 1 }, // 16: W (-X,+Y)
+  { dx: -1, dy: 0 }, // 24: NW (-X,0)
+  { dx: -1, dy: -1 }, // 32: N (-X,-Y)
+  { dx: 0, dy: -1 }, // 40: NE (0,-Y)
+  { dx: 1, dy: -1 }, // 48: E (+X,-Y)
+  { dx: 1, dy: 0 }, // 56: SE (+X,0)
+]
+
+function quantizeAdjacentStep113c(vx: number, vy: number): { readonly dx: number; readonly dy: number } {
+  const len = Math.hypot(vx, vy)
+  if (!(len > 1e-6)) return { dx: 0, dy: 1 }
+  // sin(22.5 deg) = 0.3826834323650898
+  const stepDx = Math.abs(vx) >= len * 0.3826834323650898 ? Math.sign(vx) : 0
+  const stepDy = Math.abs(vy) >= len * 0.3826834323650898 ? Math.sign(vy) : 0
+  if (stepDx === 0 && stepDy === 0) return { dx: 0, dy: 1 }
+  return { dx: stepDx, dy: stepDy }
+}
+
+/**
+ * 1.13c `D2Game.dll` `SKILLS_SrvDo027_Teleport` (`0x6FC63450`) + `DUNGEON_TeleportUnitToRoomAndCoords`
+ * (`0x6FD019C0`) + `D2Common.dll` `COLLISION_FindFreePositionSimple` (`0x6FD9D840` -> `0x6FD9D140`, `0x1C09`, #2024):
+ * - Enforces `TOWN_AREAS` (`InTown = 0`) and 136-level `Levels.txt` `Teleport` (`0` = forbidden, `2` = `0x804`
+ *   missile/door barrier LOS in `Area 73` Duriel's Lair, `1` = through-walls).
+ * - Because `(curX, curY)` carries the player's own `COLLIDE_PLAYER` (`0x0400`/`0x0008`) and living monsters
+ *   carry `COLLIDE_MONSTER` (`0x0800`) under `wMask = 0x1C09`, `(curX, curY)` is NEVER free:
+ *   - Same-subtile / near-feet clicks (`Math.round(rawX) === curX && Math.round(rawY) === curY`) project 1 subtile
+ *     along the unrounded offset `(rawX - player.x, rawY - player.y)` (or the player's last target / facing vector,
+ *     defaulting to `(0, 1)`).
+ *   - Searches outward rings `r = 0..5` around `(destX, destY)` using `0x6FD9D36E` Manhattan tie-breaking
+ *     (`|cx - destX| + |cy - destY|`), strictly excluding `(curX, curY)` and avoiding monster-occupied subtiles
+ *     unless no monster-free walkable cell exists within `r = 0..5` (still never `(curX, curY)`).
+ */
+function resolvePlayerTeleportDestination113c(
+  this: GameInstanceHost,
+  player: InternalPlayerRecord,
+  rawX: number,
+  rawY: number,
+): { readonly x: number; readonly y: number } | null {
+  if (!Number.isFinite(rawX) || !Number.isFinite(rawY)) return null
+  if (TOWN_AREAS.has(player.areaId)) return null
+  const teleMode = getLevelTeleportMode113c(player.areaId)
+  if (teleMode === 0) return null
+
+  const curX = Math.round(player.x)
+  const curY = Math.round(player.y)
+  let destX = Math.round(rawX)
+  let destY = Math.round(rawY)
+
+  if (destX === curX && destY === curY) {
+    let step: { readonly dx: number; readonly dy: number } | undefined
+    const clickDx = rawX - player.x
+    const clickDy = rawY - player.y
+    if (Math.hypot(clickDx, clickDy) > 1e-6) {
+      step = quantizeAdjacentStep113c(clickDx, clickDy)
+    } else if (
+      Number.isFinite(player.targetX) &&
+      Number.isFinite(player.targetY) &&
+      Math.hypot(player.targetX - player.x, player.targetY - player.y) > 1e-6
+    ) {
+      step = quantizeAdjacentStep113c(player.targetX - player.x, player.targetY - player.y)
+    } else {
+      const prevDir = lastPlayerTeleportDir113c.get(player)
+      if (prevDir !== undefined && Math.hypot(prevDir.dx, prevDir.dy) > 1e-6) {
+        step = quantizeAdjacentStep113c(prevDir.dx, prevDir.dy)
+      } else {
+        const motion = this.playerMotion.get(player.unitId)
+        const dir64 = motion?.mover.getSnapshot().dir64 ?? 0
+        if (motion !== undefined && dir64 !== 0) {
+          const octant = Math.round(dir64 / 8) & 7
+          step = DIR64_OCTANT_STEP_113C[octant] ?? { dx: 0, dy: 1 }
+        } else {
+          step = { dx: 0, dy: 1 }
+        }
+      }
+    }
+    destX = curX + step.dx
+    destY = curY + step.dy
+  }
+
+  const hasLoadedArea = this.loadedAreas.has(player.areaId)
+  const isTerrainFree = (cx: number, cy: number): boolean =>
+    hasLoadedArea
+      ? isStandableSubTile((sx, sy) => this.isWorldWalkableForPlayer(player.areaId, sx, sy), cx, cy)
+      : this.isWorldWalkableForPlayer(player.areaId, cx, cy)
+
+  // 1.13c `0x6FC63498..0x6FC634AC`: in `Teleport === 2` (`Area 73` Duriel's Lair), aiming at floor across
+  // a wall or closed door `#153` fails `0x804` LOS immediately without snapping back onto the near side.
+  if (
+    teleMode === 2 &&
+    isTerrainFree(destX, destY) &&
+    !this.isMonsterStepWalkable(player.areaId, player.x, player.y, destX, destY, true)
+  ) {
+    return null
+  }
+
+  const occupiedSubtiles = new Set<string>()
+  for (const m of this.monsters.values()) {
+    if (m.dead || m.submerged || m.areaId !== player.areaId) continue
+    occupiedSubtiles.add(`${Math.round(m.x)},${Math.round(m.y)}`)
+  }
+  for (const other of this.players.values()) {
+    if (other.unitId === player.unitId || other.dead || other.areaId !== player.areaId) continue
+    occupiedSubtiles.add(`${Math.round(other.x)},${Math.round(other.y)}`)
+  }
+
+  let bestFree: { readonly x: number; readonly y: number } | null = null
+  let bestOccupiedFallback: { readonly x: number; readonly y: number } | null = null
+  for (let r = 0; r <= 5; r++) {
+    let ringFree: { readonly x: number; readonly y: number; readonly manhattan: number } | undefined
+    let ringOccupied: { readonly x: number; readonly y: number; readonly manhattan: number } | undefined
+    for (let dy = -r; dy <= r; dy++) {
+      for (let dx = -r; dx <= r; dx++) {
+        if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue
+        const cx = destX + dx
+        const cy = destY + dy
+        if (cx === curX && cy === curY) continue
+        if (!isTerrainFree(cx, cy)) continue
+        if (
+          teleMode === 2 &&
+          !this.isMonsterStepWalkable(player.areaId, player.x, player.y, cx, cy, true)
+        ) {
+          continue
+        }
+        const manhattan = Math.abs(dx) + Math.abs(dy)
+        if (!occupiedSubtiles.has(`${cx},${cy}`)) {
+          if (ringFree === undefined || manhattan < ringFree.manhattan) {
+            ringFree = { x: cx, y: cy, manhattan }
+          }
+        } else if (bestOccupiedFallback === null) {
+          if (ringOccupied === undefined || manhattan < ringOccupied.manhattan) {
+            ringOccupied = { x: cx, y: cy, manhattan }
+          }
+        }
+      }
+    }
+    if (ringFree !== undefined) {
+      bestFree = { x: ringFree.x, y: ringFree.y }
+      break
+    }
+    if (bestOccupiedFallback === null && ringOccupied !== undefined) {
+      bestOccupiedFallback = { x: ringOccupied.x, y: ringOccupied.y }
+    }
+  }
+  return bestFree ?? bestOccupiedFallback
+}
+
 /**
  * Move the player for a movement skill (Teleport, Charge, Leap, Leap Attack, Dragon Flight,
  * Whirlwind) to the validated arrival point, sync server motion predictor + seamless area border
@@ -408,45 +562,15 @@ function relocatePlayerForSkill(
   let destX = Math.round(x)
   let destY = Math.round(y)
   if (throughWalls) {
-    if (TOWN_AREAS.has(player.areaId)) return false
-    if (this.loadedAreas.has(player.areaId)) {
-      const stand = findStandableNear(
-        (sx, sy) => this.isWorldWalkableForPlayer(player.areaId, sx, sy),
-        destX,
-        destY,
-        5,
-      )
-      if (stand === null) return false
-      destX = stand.x
-      destY = stand.y
-    } else if (
-      this.terrainWalkableCheck !== undefined ||
-      this.isBlockedByBonePrison(player.areaId, destX, destY) ||
-      this.isClosedDoorAt(player.areaId, destX, destY)
-    ) {
-      let found: { x: number; y: number; distSq: number } | undefined
-      for (let dy = -5; dy <= 5; dy++) {
-        for (let dx = -5; dx <= 5; dx++) {
-          const distSq = dx * dx + dy * dy
-          if (found !== undefined && distSq >= found.distSq) continue
-          const cx = destX + dx
-          const cy = destY + dy
-          if (this.isWorldWalkableForPlayer(player.areaId, cx, cy)) {
-            found = { x: cx, y: cy, distSq }
-          }
-        }
-      }
-      if (found === undefined) return false
-      destX = found.x
-      destY = found.y
+    const resolved = this.resolvePlayerTeleportDestination113c(player, x, y)
+    if (resolved === null) return false
+    const stepDx = resolved.x - Math.round(player.x)
+    const stepDy = resolved.y - Math.round(player.y)
+    if (stepDx !== 0 || stepDy !== 0) {
+      lastPlayerTeleportDir113c.set(player, { dx: stepDx, dy: stepDy })
     }
-    // 1.13c Levels.txt `Teleport === 2` (Area 73 Duriel's Lair): wall/door LOS blocks Teleport.
-    if (
-      player.areaId === 73 &&
-      !this.isMonsterStepWalkable(player.areaId, player.x, player.y, destX, destY, true)
-    ) {
-      return false
-    }
+    destX = resolved.x
+    destY = resolved.y
   } else {
     const path = this.findPlayerPath(player.areaId, Math.round(player.x), Math.round(player.y), destX, destY)
     const last = path[path.length - 1]
@@ -3242,6 +3366,7 @@ function applyWarcryBuffToAlly113c(
 
 export interface PlayerSkillsAoeAndCorpseMethods {
   applyPlayerSkillEffect(player: InternalPlayerRecord, cast: PlayerSkillCast, tx: number, ty: number, targetMonster: InternalMonsterRecord | undefined): void
+  resolvePlayerTeleportDestination113c(player: InternalPlayerRecord, rawX: number, rawY: number): { readonly x: number; readonly y: number } | null
   relocatePlayerForSkill(player: InternalPlayerRecord, x: number, y: number, throughWalls: boolean, relocateFollowers?: boolean): boolean
   pointBefore(player: InternalPlayerRecord, tx: number, ty: number, standoff: number): { x: number; y: number }
   resolvePlayerWeaponRangeAdder(player: InternalPlayerRecord): number
@@ -3348,6 +3473,7 @@ export interface PlayerSkillsAoeAndCorpseMethods {
 
 export const playerSkillsAoeAndCorpseMethods: Record<keyof PlayerSkillsAoeAndCorpseMethods, unknown> = {
   applyPlayerSkillEffect,
+  resolvePlayerTeleportDestination113c,
   relocatePlayerForSkill,
   pointBefore,
   resolvePlayerWeaponRangeAdder,

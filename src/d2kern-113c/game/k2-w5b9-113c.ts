@@ -1172,8 +1172,8 @@ export function PLAYERSAVE_WritePlayerItemsSection_6FD0C0E0_113c(
   const nWritten = PLAYERSAVE_WriteInventoryOrCachedSaveBuffer_6FC73B40_113c(
     m,
     pPlayerUnit >>> 0,
-    pCur,
     pGame >>> 0,
+    pCur,
     ((pEndPos >>> 0) - pCur) | 0,
     bUseCached5C,
     arg4,
@@ -1803,18 +1803,18 @@ export function NET_SendPacket5A_PartyRelationEvent_6FD10720_113c(
     switch (act) {
       case 1:
       case 2:
-        m.setU8((sp + 0x06) >>> 0, 0x04)
+        m.setU8((sp + 0x02) >>> 0, 0x04)
         break
       case 3:
-        m.setU8((sp + 0x06) >>> 0, 0x08)
+        m.setU8((sp + 0x02) >>> 0, 0x08)
         break
       case 4:
-        m.setU8((sp + 0x06) >>> 0, 0x00)
+        m.setU8((sp + 0x02) >>> 0, 0x00)
         break
       case 5:
       case 7:
       case 8:
-        m.setU8((sp + 0x06) >>> 0, 0x02)
+        m.setU8((sp + 0x02) >>> 0, 0x02)
         break
       case 6:
       case 9:
@@ -1876,6 +1876,20 @@ export function PARTY_SyncMutualRelationState_6FD109E0_113c(
  *
  * @va D2Game:0x6FD10A70
  */
+// Exact 10-entry `D2Game.dll` `.rdata` table at `0x6FD1A3B0..0x6FD1A3D7` (party relation action handlers).
+const DEFAULT_PARTY_ACTION_TABLE_6FD1A3B0: readonly number[] = [
+  0,
+  0x6fd10f40,
+  0x6fd10ee0,
+  0x6fd10e80,
+  0x6fd11130,
+  0,
+  0x6fd10870,
+  0x6fd10900,
+  0x6fd10d50,
+  0x6fd110f0,
+]
+
 export function PARTY_DispatchRelationAction_6FD10A70_113c(
   m: D2KernMemory113c,
   dwTargetGuid: number,
@@ -1892,6 +1906,7 @@ export function PARTY_DispatchRelationAction_6FD10A70_113c(
     dwExtraArg: number,
     pOutError: number,
   ) => void,
+  isBadCodePtr?: (pfn: number) => number,
 ): number {
   hitD2GameVa113c(0x6FD10A70)
   if (pGame === 0) throw new D2CommonAssertError('PlayerList.cpp', 0x2d3)
@@ -1901,9 +1916,24 @@ export function PARTY_DispatchRelationAction_6FD10A70_113c(
   }
   if (pTarget === 0) return 0
 
-  const pfnHandler = m.u32((0x6fd1a3b0 + imul32(nActionIdx | 0, 4)) >>> 0) >>> 0
+  const idx = nActionIdx | 0
+  let pfnHandler = 0
+  try {
+    pfnHandler = m.u32((0x6fd1a3b0 + imul32(idx, 4)) >>> 0) >>> 0
+  } catch {
+    pfnHandler = 0
+  }
+  if (pfnHandler === 0 && idx >= 0 && idx < DEFAULT_PARTY_ACTION_TABLE_6FD1A3B0.length) {
+    pfnHandler = DEFAULT_PARTY_ACTION_TABLE_6FD1A3B0[idx]! >>> 0
+  }
   if (pfnHandler === 0) return 0
-  if ((m.u32(0x6fd18d14) >>> 0) !== 0) return 3
+  const badPtr =
+    isBadCodePtr !== undefined
+      ? isBadCodePtr(pfnHandler) | 0
+      : pfnHandler < 0x6fc21000 || pfnHandler >= 0x6fd18000
+        ? 1
+        : 0
+  if (badPtr !== 0) return 3
 
   const sp = k2W5B9StackPtr
   k2W5B9StackPtr = (sp + 8) >>> 0

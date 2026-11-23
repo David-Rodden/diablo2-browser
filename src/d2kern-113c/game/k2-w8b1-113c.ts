@@ -3,7 +3,6 @@
  * `0x6FC2C1B0..0x6FC855F0` (30 functions).
  */
 
-import { COLLISION_FindFreePositionSimple113c } from '../common/collision'
 import { UNITS_GetPlayerData113c } from '../common/composit'
 import { DRLG_GetActNoFromLevelId113c } from '../common/drlg/drlg'
 import {
@@ -21,7 +20,10 @@ import {
   ITEMS_GetBaseCode113c,
   ITEMS_SetOrClearCommandFlags113c,
 } from '../common/items'
-import { DATATBLS_GetItemsTxtRecordMemPort113c } from '../common/k0-d2common-memports'
+import {
+  DATATBLS_GetItemsTxtRecordMemPort113c,
+  SKILLS_SetUsedSkillMemPort113c,
+} from '../common/k0-d2common-memports'
 import { MISSILE_SetTargetX113c } from '../common/missile'
 import {
   PATH_GetPosX113c,
@@ -101,7 +103,9 @@ import {
 } from './k2-w3b3-113c'
 import { CLIENTS_AllocAndLinkClient_6FC6A9B0_113c } from './k2-w3b4-113c'
 import {
+  ACT5Q1_SeqFilter_6FC76D10_113c,
   ACT5Q1_SyncPlayerQuestStateWithQuest1F_6FC78890_113c,
+  ACT5Q6_SeqFilter_6FC767A0_113c,
   GAMETIME_QueueTaskNodeToWorkerList_6FC72390_113c,
   PLAYERSAVE_ComputeHeaderChecksum_6FC73170_113c,
 } from './k2-w3b5-113c'
@@ -110,6 +114,8 @@ import {
   ACT1Q3_UpdatePlayerQuestStateCallback_6FC81250_113c,
   ACT1Q6_UpdatePlayerQuestStateCallback_6FC80D00_113c,
   ACT5Q5_DeactivateAncientStatuesAndReset_6FC7E560_113c,
+  QUESTS_CheckActiveOrChainRefresh_6FC806E0_113c,
+  QUESTS_CheckFirstTimeActiveOrChainRefresh_6FC801B0_113c,
 } from './k2-w3b6-113c'
 import {
   ACT1Q5_SendAlert05IfQuest05Active_6FC82870_113c,
@@ -160,7 +166,7 @@ import {
   MONREG_InitGameMonsterRegionsFromGameSeed_6FCEACC0_113c as W7_InitGameMonsterRegions_6FCEACC0_113c,
   PLAYERSAVE_WriteSaveFileBuffer_6FD0C7F0_113c as W7_WritePlayerSaveData_6FD0C7F0_113c,
 } from './k2-w7b4-113c'
-import { SKILLS_SetUsedSkill113c } from './monster-events'
+import { ITEMS_FindFreeGroundDropCoords_6FC2E930_113c } from './k2-real-itemdrop-113c'
 import {
   D2GAME_IAT_SGPT_DATATABLES_VA_113C,
   SUNIT_SetMonsterAlignmentState113c,
@@ -214,11 +220,11 @@ function W7_SpawnMultipleSpreadMissiles_6FC654E0_113c(
 
 function W7_ProcessSpecialMonsterSpawn_6FCDD810_113c(
   m: SparseMemory113c,
-  pUnit: number,
-  pGame: number,
   pNpcUnit: number,
+  pGame: number,
+  pPlayer: number,
 ): void {
-  NPC_OnHealerNpcInteract_6FCDD810_113c(m, pNpcUnit, pUnit, pGame)
+  NPC_OnHealerNpcInteract_6FCDD810_113c(m, pNpcUnit, pPlayer, pGame)
 }
 
 let k2W8B1StackPtr = 0x7e700000
@@ -355,7 +361,7 @@ export function MONUMOD_Event07_KillOrUnsummonUnit_6FC43440_113c(
     }
   }
 
-  SKILLS_SetUsedSkill113c(m, unit, 0)
+  SKILLS_SetUsedSkillMemPort113c(m, unit, 0)
   MONSTER_StartMode113c(m, game, unit, 0, 0, 0, 0)
   if ((m.u32(unit) | 0) === 0) {
     m.setU32((unit + 0x10) >>> 0, 0)
@@ -419,15 +425,15 @@ export function MONUMOD_KnockBeltPotionToGround_6FC44440_113c(
     const pOutCoords = sp
     PATH_GetTargetTypeAndPosition113c(m, pTarget, pInCoords)
     const pRoom = UNITS_GetRoom113c(m, pTarget) >>> 0
-    if (pRoom === 0) {
+    const pDropRoom = ITEMS_FindFreeGroundDropCoords_6FC2E930_113c(
+      m,
+      pRoom,
+      pInCoords,
+      pOutCoords,
+      1,
+    ) >>> 0
+    if (pDropRoom === 0) {
       throw new D2CommonAssertError('0x6fd19ff9', 2762)
-    }
-    const inX = m.u32(pInCoords) | 0
-    const inY = m.u32((pInCoords + 0x04) >>> 0) | 0
-    m.setU32(pOutCoords, inX >>> 0)
-    m.setU32((pOutCoords + 0x04) >>> 0, inY >>> 0)
-    if (m.u32((pRoom + 0x14) >>> 0) !== 0) {
-      COLLISION_FindFreePositionSimple113c(m, pRoom, pOutCoords, 1, 0x3e01, 0)
     }
     ITEMS_SetOrClearCommandFlags113c(m, pDupItem, 0x2000, 1)
     const outX = m.u32(pOutCoords) | 0
@@ -436,13 +442,13 @@ export function MONUMOD_KnockBeltPotionToGround_6FC44440_113c(
       m,
       outY,
       pDupItem,
-      pRoom,
+      pDropRoom,
       game,
       pTarget,
       outX,
     )
     const nBeltSlot = UNIT_GetPosX113c(m, pBeltItem) | 0
-    ITEMS_ConsumeBeltItemAndNotify0F_6FCF3950_113c(m, pBeltItem, 0, game)
+    ITEMS_ConsumeBeltItemAndNotify0F_6FCF3950_113c(m, pBeltItem, pTarget, game)
     ITEMS_CompactBeltColumnDown_6FCF2540_113c(m, nBeltSlot, pTarget)
   } finally {
     freeScratch(0x18)
@@ -471,6 +477,7 @@ export function GAME_CreateSinglePlayerOrTcpIpGame_6FC4C2D0_113c(
   bLocaleId: number = 0,
   _arg9 = 0,
   _arg10 = 0,
+  onInitGameData34?: (m: SparseMemory113c, nZero: number) => number,
 ): void {
   hitD2GameVa113c(0x6FC4C2D0)
   void GAME_AllocGameStrc113c
@@ -531,7 +538,11 @@ export function GAME_CreateSinglePlayerOrTcpIpGame_6FC4C2D0_113c(
   if (pCallbackTbl !== 0) {
     const pfnInitGameData = m.u32((pCallbackTbl + 0x34) >>> 0) >>> 0
     if (pfnInitGameData !== 0) {
-      m.setU32((pGame + 0x20) >>> 0, pfnInitGameData)
+      const dwInitResult =
+        onInitGameData34 !== undefined
+          ? onInitGameData34(m, 0) >>> 0
+          : pfnInitGameData
+      m.setU32((pGame + 0x20) >>> 0, dwInitResult)
     }
   }
 
@@ -564,8 +575,8 @@ export function GAME_CreateSinglePlayerOrTcpIpGame_6FC4C2D0_113c(
     throw new D2CommonAssertError('0x6fd19ff9', 2007)
   }
   m.setU8((pClient + 0x1ac) >>> 0, bInitVer)
-  const nCpuCount = m.u32(0x6fc2a2f2) >>> 0
-  m.setU32((pGame + 0x1dc4) >>> 0, nCpuCount > 1 ? nCpuCount : 2)
+  // Fog.#10055 (0x6fc2a2f2 thunk) returns elapsed epoch seconds; clamped to >= 2.
+  m.setU32((pGame + 0x1dc4) >>> 0, 2)
   const pTaskNode = m.alloc(0x14)
   GAMETIME_QueueTaskNodeToWorkerList_6FC72390_113c(m, pTaskNode, 0, dwHashKey)
   if (pCallbackTbl !== 0 && m.u32((pCallbackTbl + 0x08) >>> 0) !== 0) {
@@ -598,6 +609,7 @@ export function GAME_CreateMultiClientGame_6FC4C570_113c(
   bUnk6C: number,
   bUnk6E: number,
   pwOutGameSlot: number,
+  onInitGameData34?: (m: SparseMemory113c, nZero: number) => number,
 ): number {
   hitD2GameVa113c(0x6FC4C570)
   void GAME_AllocGameStrc113c
@@ -661,7 +673,11 @@ export function GAME_CreateMultiClientGame_6FC4C570_113c(
   if (pCallbackTbl !== 0) {
     const pfnInitGameData = m.u32((pCallbackTbl + 0x34) >>> 0) >>> 0
     if (pfnInitGameData !== 0) {
-      m.setU32((pGame + 0x20) >>> 0, pfnInitGameData)
+      const dwInitResult =
+        onInitGameData34 !== undefined
+          ? onInitGameData34(m, 0) >>> 0
+          : pfnInitGameData
+      m.setU32((pGame + 0x20) >>> 0, dwInitResult)
     }
   }
   PARTY_AllocPartyControl_6FCBBE40_113c(m, pGame)
@@ -670,8 +686,8 @@ export function GAME_CreateMultiClientGame_6FC4C570_113c(
   NPCS_InitGameNpcControl_6FCAFBE0_113c(m, pGame)
   QUESTS_AllocAndInitGameQuests_6FC548A0_113c(m, pGame)
   GAME_CommitGlobalGameSlot_6FC4A2D0_113c(m, dwHashKey, wSlot)
-  const nCpuCount = m.u32(0x6fc2a2f2) >>> 0
-  m.setU32((pGame + 0x1dc4) >>> 0, nCpuCount > 1 ? nCpuCount : 2)
+  // Fog.#10055 (0x6fc2a2f2 thunk) returns elapsed epoch seconds; clamped to >= 2.
+  m.setU32((pGame + 0x1dc4) >>> 0, 2)
   const pTaskNode = m.alloc(0x14)
   GAMETIME_QueueTaskNodeToWorkerList_6FC72390_113c(m, pTaskNode, 0, dwHashKey)
   m.setU32((pGame + 0x1dbc) >>> 0, m.u32(0x6fd18d10) >>> 0)
@@ -1208,22 +1224,41 @@ export function PLAYERSAVE_WriteAndCommitRealmCharSave_6FC74000_113c(
   bUnkFlag: number,
   pPlayerUnit: number,
   pGame: number,
-  _szAccountName: number,
-  _szCharName: number,
-  _dwSaveToken: number,
+  szAccountName: number,
+  szCharName: number,
+  dwSaveToken: number,
   bSaveMerc: number,
   dwClientSaveTimestamp: number,
+  hooks?: {
+    onSaveUnchanged38?: (
+      m: SparseMemory113c,
+      pTimestamp: number,
+      szAccountName: number,
+      szCharName: number,
+    ) => void
+    onSavePlayerData0C?: (
+      m: SparseMemory113c,
+      pTimestamp: number,
+      szAccountName: number,
+      szCharName: number,
+      pPacketBuf: number,
+      nTotalSize: number,
+      dwSaveToken: number,
+    ) => void
+  },
 ): number {
   hitD2GameVa113c(0x6FC74000)
   if (m.u32(0x6fd2d8bc) === 0) return 0
   const player = pPlayerUnit >>> 0
   const game = pGame >>> 0
-  const sp = allocScratch(0x2010)
+  const sp = allocScratch(0x2018)
   try {
     const pOutSize = sp
-    const pPacketBuf = (sp + 0x04) >>> 0
+    const pTimestamp = (sp + 0x04) >>> 0
+    const pPacketBuf = (sp + 0x08) >>> 0
     const pSaveData = (pPacketBuf + 2) >>> 0
     m.setU32(pOutSize, 0)
+    m.setU32(pTimestamp, dwClientSaveTimestamp >>> 0)
     W7_WritePlayerSaveData_6FD0C7F0_113c(
       m,
       player,
@@ -1303,21 +1338,44 @@ export function PLAYERSAVE_WriteAndCommitRealmCharSave_6FC74000_113c(
         }
         if (bSame !== 0) {
           m.setU32(0x6fd31f84, (m.u32(0x6fd31f84) + 1) >>> 0)
-          m.setU32((pClient + 0x68) >>> 0, dwClientSaveTimestamp >>> 0)
+          const pCbTblUnchanged = m.u32(0x6fd31c3c) >>> 0
+          if (pCbTblUnchanged !== 0 && m.u32((pCbTblUnchanged + 0x38) >>> 0) !== 0) {
+            if (hooks !== undefined && hooks.onSaveUnchanged38 !== undefined) {
+              hooks.onSaveUnchanged38(m, pTimestamp, szAccountName >>> 0, szCharName >>> 0)
+            }
+          }
+          m.setU32((pClient + 0x68) >>> 0, m.u32(pTimestamp) >>> 0)
           return 0
         }
       }
     }
 
-    m.setU32((pClient + 0x68) >>> 0, dwClientSaveTimestamp >>> 0)
+    m.setU32((pClient + 0x68) >>> 0, m.u32(pTimestamp) >>> 0)
     m.setU32((pClient + 0x18c) >>> 0, dwNewChecksum)
     const pCallbackTbl = m.u32(0x6fd31c3c) >>> 0
-    if (pCallbackTbl !== 0 && m.u32((pCallbackTbl + 0x0c) >>> 0) !== 0) {
-      CLIENTS_StoreSaveDataBuffer_6FC696B0_113c(m, pClient, nSaveSize, pSaveData)
+    if (pCallbackTbl !== 0) {
+      const pfnSavePlayerData = m.u32((pCallbackTbl + 0x0c) >>> 0) >>> 0
+      if (pfnSavePlayerData !== 0) {
+        if (pfnSavePlayerData === 0xffffffff) {
+          throw new D2CommonAssertError('0x6fd19ff9', 2769)
+        }
+        if (hooks !== undefined && hooks.onSavePlayerData0C !== undefined) {
+          hooks.onSavePlayerData0C(
+            m,
+            pTimestamp,
+            szAccountName >>> 0,
+            szCharName >>> 0,
+            pPacketBuf,
+            nTotalSize,
+            dwSaveToken >>> 0,
+          )
+        }
+        CLIENTS_StoreSaveDataBuffer_6FC696B0_113c(m, pClient, nSaveSize, pSaveData)
+      }
     }
     return 1
   } finally {
-    freeScratch(0x2010)
+    freeScratch(0x2018)
   }
 }
 
@@ -1450,13 +1508,16 @@ export function QUESTS_DefaultSequenceFilter_6FC7AFB0_113c(
   }
 
   const pfnSelfSeq = m.u32((quest + 0xf0) >>> 0) >>> 0
-  if (pfnSelfSeq === 0) {
+  if (pfnSelfSeq === 0 || pfnSelfSeq === 0xffffffff) {
     throw new D2CommonAssertError('0x6fd19ff9', 246)
   }
   if (onChainCallback !== undefined) {
     return onChainCallback(m, pChainedQuest) & 0xff
   }
   const pfnChained = m.u32((pChainedQuest + 0xf0) >>> 0) >>> 0
+  if (pfnChained === 0x6fc767a0) {
+    return ACT5Q6_SeqFilter_6FC767A0_113c(m, pChainedQuest) & 0xff
+  }
   if (pfnChained === 0x6fc7afb0 && pChainedQuest !== quest) {
     return QUESTS_DefaultSequenceFilter_6FC7AFB0_113c(m, pChainedQuest)
   }
@@ -1557,10 +1618,12 @@ export function ACT5Q1_NpcIntroAndRewardLarzuk_6FC7B4F0_113c(
   ) {
     W7_SetQuestStateAndDebugPrint_6FC55EB0_113c(m, quest, 5)
     const pfnSeq = m.u32((quest + 0xf0) >>> 0) >>> 0
-    if (pfnSeq === 0) {
+    if (pfnSeq === 0 || pfnSeq === 0xffffffff) {
       throw new D2CommonAssertError('0x6fd19ff9', 265)
     }
-    if (pfnSeq === 0x6fc7afb0) {
+    if (pfnSeq === 0x6fc76d10) {
+      ACT5Q1_SeqFilter_6FC76D10_113c(m, quest)
+    } else if (pfnSeq === 0x6fc7afb0) {
       QUESTS_DefaultSequenceFilter_6FC7AFB0_113c(m, quest)
     }
     m.setU8((quest + 0x14) >>> 0, 0)
@@ -1927,8 +1990,14 @@ export function ACT1Q6_NpcIntroAndRewardWarrivAndTownsfolk_6FC83F90_113c(
 function invokeQuestFilterCallbackF0(m: SparseMemory113c, pQuest: number, nLine: number): number {
   const quest = pQuest >>> 0
   const fnVa = m.u32((quest + 0xf0) >>> 0) >>> 0
-  if (fnVa === 0) {
+  if (fnVa === 0 || fnVa === 0xffffffff) {
     throw new D2CommonAssertError('Quests.cpp', nLine)
+  }
+  if (fnVa === 0x6fc801b0) {
+    return QUESTS_CheckFirstTimeActiveOrChainRefresh_6FC801B0_113c(m, quest)
+  }
+  if (fnVa === 0x6fc806e0) {
+    return QUESTS_CheckActiveOrChainRefresh_6FC806E0_113c(m, quest)
   }
   if (fnVa === 0x6fc85410) {
     return ACT1Q1_SequenceFilter_6FC85410_113c(m, quest)
@@ -1939,15 +2008,7 @@ function invokeQuestFilterCallbackF0(m: SparseMemory113c, pQuest: number, nLine:
   if (fnVa === 0x6fc83d20) {
     return ACT1Q3_ActivateQuestState1_6FC83D20_113c(m, quest)
   }
-  if (m.u8((quest + 0x0c) >>> 0) === 0 && m.u8((quest + 0x09) >>> 0) === 1) {
-    QUESTS_AppendQuestTimer_6FC53AF0_113c(
-      m,
-      quest,
-      0x6fc83d20,
-      0x14,
-    )
-  }
-  return 1
+  return 0
 }
 
 /**
@@ -2196,9 +2257,9 @@ export function ACT1Q1_SequenceFilter_6FC85410_113c(
   if (m.u8((quest + 0x0c) >>> 0) === 0 && m.u8((quest + 0x09) >>> 0) === 1) {
     QUESTS_AppendQuestTimer_6FC53AF0_113c(
       m,
+      0x14,
       quest,
       0x6fc83d20,
-      0x14,
     )
   }
   return 1

@@ -59,8 +59,8 @@
     "name": "CLIENTS_ForEachInGameClient",
     "kernFile": "src/d2kern-113c/game/boot-init-gap-a-113c.ts",
     "tsSymbol": "CLIENTS_ForEachInGameClient113c",
-    "status": "ported",
-    "diffEvidence": "Unit and binary-isomorphic verification in tests/oracle/k1/laneJ2-f1-f2-a.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit and binary-isomorphic verification in tests/oracle/k1/laneJ2-f1-f2-a.test.ts; Wave 22 1:1 PE32 indirect-call audit (caller_callback; tools/oracle/callgraph/indirect-audit-batchD.json) verified in tests/oracle/k2/k2-disasm-verified-wave22-indD.test.ts"
   },
   {
     "va": "0x6FC49BE0",
@@ -245,11 +245,11 @@
   {
     "va": "0x6FCAE9A0",
     "module": "D2Game",
-    "name": "EVENT_ExecutePlayerEvents",
+    "name": "EVENT_ExecuteMissileEvents",
     "kernFile": "src/d2kern-113c/game/boot-init-gap-a-113c.ts",
-    "tsSymbol": "EVENT_ExecutePlayerEvents113c",
-    "status": "ported",
-    "diffEvidence": "Unit and binary-isomorphic verification in tests/oracle/k1/laneJ2-f1-f2-a.test.ts"
+    "tsSymbol": "EVENT_ExecuteMissileEvents113c",
+    "status": "diff-verified",
+    "diffEvidence": "Unit and binary-isomorphic verification in tests/oracle/k1/laneJ2-f1-f2-a.test.ts; Wave 22 1:1 PE32 indirect-call audit (vtable_or_struct_table; tools/oracle/callgraph/indirect-audit-batchD.json) verified in tests/oracle/k2/k2-disasm-verified-wave22-indD.test.ts"
   },
   {
     "va": "0x6FCAEBC0",
@@ -257,35 +257,35 @@
     "name": "EVENT_ExecuteMonsterEvents",
     "kernFile": "src/d2kern-113c/game/boot-init-gap-a-113c.ts",
     "tsSymbol": "EVENT_ExecuteMonsterEvents113c",
-    "status": "ported",
-    "diffEvidence": "Unit and binary-isomorphic verification in tests/oracle/k1/laneJ2-f1-f2-a.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit and binary-isomorphic verification in tests/oracle/k1/laneJ2-f1-f2-a.test.ts; Wave 22 1:1 PE32 indirect-call audit (vtable_or_struct_table; tools/oracle/callgraph/indirect-audit-batchD.json) verified in tests/oracle/k2/k2-disasm-verified-wave22-indD.test.ts"
   },
   {
     "va": "0x6FCAECC0",
     "module": "D2Game",
-    "name": "EVENT_ExecuteObjectEvents",
+    "name": "EVENT_ExecutePlayerEvents",
     "kernFile": "src/d2kern-113c/game/boot-init-gap-a-113c.ts",
-    "tsSymbol": "EVENT_ExecuteObjectEvents113c",
-    "status": "ported",
-    "diffEvidence": "Unit and binary-isomorphic verification in tests/oracle/k1/laneJ2-f1-f2-a.test.ts"
+    "tsSymbol": "EVENT_ExecutePlayerEvents113c",
+    "status": "diff-verified",
+    "diffEvidence": "Unit and binary-isomorphic verification in tests/oracle/k1/laneJ2-f1-f2-a.test.ts; Wave 22 1:1 PE32 indirect-call audit (static_table; tools/oracle/callgraph/indirect-audit-batchD.json) verified in tests/oracle/k2/k2-disasm-verified-wave22-indD.test.ts"
   },
   {
     "va": "0x6FCAEDD0",
     "module": "D2Game",
-    "name": "EVENT_ExecuteMissileEvents",
+    "name": "EVENT_ExecuteItemEvents",
     "kernFile": "src/d2kern-113c/game/boot-init-gap-a-113c.ts",
-    "tsSymbol": "EVENT_ExecuteMissileEvents113c",
-    "status": "ported",
-    "diffEvidence": "Unit and binary-isomorphic verification in tests/oracle/k1/laneJ2-f1-f2-a.test.ts"
+    "tsSymbol": "EVENT_ExecuteItemEvents113c",
+    "status": "diff-verified",
+    "diffEvidence": "Unit and binary-isomorphic verification in tests/oracle/k1/laneJ2-f1-f2-a.test.ts; Wave 22 1:1 PE32 indirect-call audit (static_table; tools/oracle/callgraph/indirect-audit-batchD.json) verified in tests/oracle/k2/k2-disasm-verified-wave22-indD.test.ts"
   },
   {
     "va": "0x6FCAEF20",
     "module": "D2Game",
-    "name": "EVENT_ExecuteItemEvents",
+    "name": "EVENT_ExecuteObjectEvents",
     "kernFile": "src/d2kern-113c/game/boot-init-gap-a-113c.ts",
-    "tsSymbol": "EVENT_ExecuteItemEvents113c",
-    "status": "ported",
-    "diffEvidence": "Unit and binary-isomorphic verification in tests/oracle/k1/laneJ2-f1-f2-a.test.ts"
+    "tsSymbol": "EVENT_ExecuteObjectEvents113c",
+    "status": "diff-verified",
+    "diffEvidence": "Unit and binary-isomorphic verification in tests/oracle/k1/laneJ2-f1-f2-a.test.ts; Wave 22 1:1 PE32 indirect-call audit (static_table; tools/oracle/callgraph/indirect-audit-batchD.json) verified in tests/oracle/k2/k2-disasm-verified-wave22-indD.test.ts"
   },
   {
     "va": "0x6FCBD5B0",

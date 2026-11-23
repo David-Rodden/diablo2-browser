@@ -1097,6 +1097,7 @@ describe('Tier 1 — Feature Coverage (F1–F12, 60 tests)', () => {
         classId: 1,
         mapSeed: 0x12344321,
         difficulty: 0,
+        backend: 'legacy',
       })
       expect(handle.adapter).toBeDefined()
       expect(handle.adapter.state).toBe('inGame')
@@ -1141,7 +1142,7 @@ describe('Tier 1 — Feature Coverage (F1–F12, 60 tests)', () => {
     })
 
     it('F8.2: LocalLobbyProvider.enterGame returns a LocalLoopbackAdapter wrapping GameInstance(SINGLE_PLAYER_POLICY)', async () => {
-      const lobby = new Server.LocalLobbyProvider()
+      const lobby = new Server.LocalLobbyProvider({ backend: 'legacy' })
       await lobby.createCharacter({
         name: 'OfflineAma',
         classId: 'ama',
@@ -1151,6 +1152,7 @@ describe('Tier 1 — Feature Coverage (F1–F12, 60 tests)', () => {
       const adapter = (await lobby.enterGame({
         charName: 'OfflineAma',
         difficulty: 0,
+        backend: 'legacy',
       })) as Server.LocalLoopbackAdapter
 
       expect(adapter.kind).toBe('ts')
@@ -1165,7 +1167,7 @@ describe('Tier 1 — Feature Coverage (F1–F12, 60 tests)', () => {
     })
 
     it('F8.3: LocalLoopbackAdapter retains character mapSeed across sessions on the same difficulty', async () => {
-      const lobby = new Server.LocalLobbyProvider()
+      const lobby = new Server.LocalLobbyProvider({ backend: 'legacy' })
       const initialBytes = Server.writeD2s(
         createSampleD2sCharacterData({
           name: 'SeedRetainer',
@@ -1180,6 +1182,7 @@ describe('Tier 1 — Feature Coverage (F1–F12, 60 tests)', () => {
       const session1 = (await lobby.enterGame({
         charName: 'SeedRetainer',
         difficulty: 0,
+        backend: 'legacy',
       })) as Server.LocalLoopbackAdapter
       expect(session1.game.mapSeed >>> 0).toBe(0x76543210)
       session1.stepFrames(3)
@@ -1188,13 +1191,14 @@ describe('Tier 1 — Feature Coverage (F1–F12, 60 tests)', () => {
       const session2 = (await lobby.enterGame({
         charName: 'SeedRetainer',
         difficulty: 0,
+        backend: 'legacy',
       })) as Server.LocalLoopbackAdapter
       expect(session2.game.mapSeed >>> 0).toBe(0x76543210)
       session2.close()
     })
 
     it('F8.4: LocalLoopbackAdapter generates a new deterministic mapSeed when switching difficulty (Normal -> Nightmare)', async () => {
-      const lobby = new Server.LocalLobbyProvider()
+      const lobby = new Server.LocalLobbyProvider({ backend: 'legacy' })
       const initialBytes = Server.writeD2s(
         createSampleD2sCharacterData({
           name: 'DiffSwitcher',
@@ -1209,6 +1213,7 @@ describe('Tier 1 — Feature Coverage (F1–F12, 60 tests)', () => {
       const nightmareSession = (await lobby.enterGame({
         charName: 'DiffSwitcher',
         difficulty: 1, // Nightmare
+        backend: 'legacy',
       })) as Server.LocalLoopbackAdapter
 
       const newSeed = nightmareSession.game.mapSeed >>> 0

@@ -360,7 +360,11 @@ export function STATLIST_FindStatIndex113c(m: Memory113c, pArrayHdr: number, dwK
   return -1
 }
 
-/** `D2Common 0x6FD88270`: lower-bound insertion index under signed 32-bit `dwKey` ordering. */
+/**
+ * `D2Common 0x6FD88270`: signed 32-bit binary search insertion index on `D2StatsArrayStrc`.
+ * Returns `-1` (`0xFFFFFFFF`) when `dwKey` is already present (`0x6FD88297..0x6FD882A9`),
+ * otherwise `0 <= lo <= count`.
+ */
 export function STATLIST_FindInsertPos113c(m: Memory113c, pArrayHdr: number, dwKey: number): number {
   hitD2CommonVa113c(0x6FD88270)
   const count = (m.u16(pArrayHdr + 4) << 16) >> 16
@@ -372,18 +376,52 @@ export function STATLIST_FindInsertPos113c(m: Memory113c, pArrayHdr: number, dwK
   while (lo < hi) {
     const mid = (lo + hi) >> 1
     const curKey = m.u32(pStat + mid * 8) | 0
-    if (target <= curKey) {
+    if (target > curKey) {
+      lo = mid + 1
+    } else if (target < curKey) {
       hi = mid
     } else {
-      lo = mid + 1
+      return -1
     }
   }
   return lo
 }
 
+function hasLoadedU32StatSlot113c(m: Memory113c, addr: number): boolean {
+  const a = addr >>> 0
+  const mAny = m as unknown as {
+    overlayKnown?: Map<number, Uint8Array>
+    baseKnown?: Map<number, Uint8Array>
+    known?: Map<number, Uint8Array>
+  }
+  if (mAny.overlayKnown !== undefined && mAny.baseKnown !== undefined) {
+    for (let i = 0; i < 4; i++) {
+      const b = (a + i) >>> 0
+      const pg = b >>> 12
+      const off = b & 0xfff
+      const ok = mAny.overlayKnown.get(pg)
+      if (ok !== undefined && ok[off] !== 0) continue
+      const bk = mAny.baseKnown.get(pg)
+      if (bk !== undefined && bk[off] !== 0) continue
+      return false
+    }
+    return true
+  }
+  if (mAny.known !== undefined) {
+    for (let i = 0; i < 4; i++) {
+      const b = (a + i) >>> 0
+      const page = mAny.known.get(b >>> 12)
+      if (page === undefined || page[b & 0xfff] === 0) return false
+    }
+    return true
+  }
+  return false
+}
+
 /** `D2Common 0x6FD88640`: insert `dwKey` at `insertIdx` with initial value `0`, growing capacity in steps of `+4`. */
 function insertStatSlot(m: Memory113c, pArrayHdr: number, insertIdx: number, dwKey: number): number {
   hitD2CommonVa113c(0x6FD88640)
+  if (insertIdx < 0) return 0
   const count = (m.u16(pArrayHdr + 4) << 16) >> 16
   let cap = (m.u16(pArrayHdr + 6) << 16) >> 16
   let pStat = m.u32(pArrayHdr)
@@ -408,12 +446,25 @@ function insertStatSlot(m: Memory113c, pArrayHdr: number, insertIdx: number, dwK
   return pStat + insertIdx * 8
 }
 
+/**
+ * Direct binary entry wrapper for `D2Common 0x6FD88640` (`STATLIST_InsertStatSlot`,
+ * custom reg `eax = dwKey`, `esi = pArrayHdr`, `[esp+4] = pMemPool`, `ret 4` -> `pEntry` or `0`).
+ */
+export function STATLIST_InsertStatSlot113c(
+  m: Memory113c,
+  pArrayHdr: number,
+  dwKey: number,
+): number {
+  const ins = STATLIST_FindInsertPos113c(m, pArrayHdr, dwKey)
+  return insertStatSlot(m, pArrayHdr, ins, dwKey)
+}
+
 /** `D2Common 0x6FD881A0`: remove entry at `idx`, shrinking capacity by `-4` if `(cap - newCount) > 8`. */
 export function removeStatSlot(m: Memory113c, pArrayHdr: number, idx: number): void {
   hitD2CommonVa113c(0x6FD881A0)
   const count = (m.u16(pArrayHdr + 4) << 16) >> 16
   if (idx < 0 || idx >= count) return
-  let pStat = m.u32(pArrayHdr)
+  const pStat = m.u32(pArrayHdr)
   for (let i = idx; i < count - 1; i++) {
     m.setU32(pStat + i * 8, m.u32(pStat + (i + 1) * 8))
     m.setU32(pStat + i * 8 + 4, m.u32(pStat + (i + 1) * 8 + 4))
@@ -424,12 +475,29 @@ export function removeStatSlot(m: Memory113c, pArrayHdr: number, idx: number): v
   if (cap - newCount > 8) {
     const newCap = cap - 4
     const nextBuf = newCap > 0 ? m.alloc(newCap * 8) : 0
-    for (let i = 0; i < newCount * 8; i += 4) {
-      m.setU32(nextBuf + i, m.u32(pStat + i))
+    const copyBytes = newCap * 8
+    for (let i = 0; i < copyBytes; i += 4) {
+      if (i < newCount * 8 || hasLoadedU32StatSlot113c(m, (pStat + i) >>> 0)) {
+        m.setU32(nextBuf + i, m.u32(pStat + i))
+      }
     }
     m.setU32(pArrayHdr, nextBuf)
     m.setU16(pArrayHdr + 6, newCap & 0xffff)
   }
+}
+
+/**
+ * Direct binary entry wrapper for `D2Common 0x6FD881A0` (`STATLIST_RemoveStatSlot`,
+ * custom reg `esi = pArrayHdr`, `edx = pEntry`, `[esp+4] = pMemPool`, `ret 4`, void).
+ */
+export function STATLIST_RemoveStatSlotPtr113c(
+  m: Memory113c,
+  pArrayHdr: number,
+  pEntry: number,
+): void {
+  const pStat = m.u32(pArrayHdr >>> 0)
+  const idx = ((pEntry - pStat) | 0) >> 3
+  removeStatSlot(m, pArrayHdr >>> 0, idx)
 }
 
 function readStatFromArray(m: Memory113c, pArrayHdr: number, dwKey: number): number {
@@ -578,6 +646,28 @@ function addFullStatDelta(
   fireRegisteredOnValue113c(m, pListEx, pItem, dwKey, prevVal, nextVal, registry)
 }
 
+/**
+ * Direct binary entry wrapper for `D2Common 0x6FD889E0` (`STATLIST_AddFullStatDelta`,
+ * custom reg `ebx = pListEx`, `[esp+4] = dwKey`, `[esp+8] = delta`, `[esp+0xC] = pIsc`, `[esp+0x10] = pItem`,
+ * `ret 0x10` -> `eax = nextVal`).
+ */
+export function STATLIST_AddFullStatDelta113c(
+  m: Memory113c,
+  pListEx: number,
+  dwKey: number,
+  delta: number,
+  pIsc: number,
+  pItem = 0,
+): number {
+  const pFullHdr = (pListEx + D2StatListExStrc.pFullStat.off) >>> 0
+  const idx0 = STATLIST_FindStatIndex113c(m, pFullHdr, dwKey)
+  const prevVal = idx0 >= 0 ? (m.u32((m.u32(pFullHdr) + idx0 * 8 + 4) >>> 0) | 0) : 0
+  const hasDynOp = pIsc !== 0 && m.u8((pIsc + 0x53) >>> 0) !== 0
+  const keepZero = pIsc !== 0 && m.u8((pIsc + 0x50) >>> 0) !== 0
+  addFullStatDelta(m, pListEx, dwKey, delta, keepZero, hasDynOp, pItem)
+  return ((prevVal + (delta | 0)) | 0) >>> 0
+}
+
 /** `D2Common.#11013` (`0x6FD88100`): allocate base `D2StatListStrc` (`0x3C` bytes). */
 export function STATLIST_AllocList113c(
   m: Memory113c,
@@ -632,19 +722,34 @@ export function STATLIST_CreateEx113c(
 /**
  * `D2Common 0x6FD87470` (`ENVIRONMENT_GetTimeOfDayAndAngle`):
  * Reads `pEnv = pAct->pEnvironment` (`+0x04`), returns `nTimeOfDay` (`+0x04`) and `nAngle`
- * (`pEnv->dwCyclePeriod != 0 ? trunc(pEnv->dwTicks / pEnv->dwCyclePeriod) : 0`).
+ * (`pEnv->dwCyclePeriod != 0 ? trunc(pEnv->dwTicks / pEnv->dwCyclePeriod) : 0`), writing
+ * `*pOutAngle` (`[esp+8]`) when non-zero (`Fog.#10024` line `0x547` on `pAct == 0`).
  */
 export function ENVIRONMENT_GetTimeOfDayAndAngle113c(
   m: Memory113c,
   pAct: number,
+  pOutAngle = 0,
 ): { readonly timeOfDay: number; readonly angle: number } {
   hitD2CommonVa113c(0x6FD87470)
-  if (pAct === 0) return { timeOfDay: 0, angle: 0 }
+  if (pAct === 0) {
+    if (pOutAngle !== 0) {
+      throw new D2CommonAssertError('Environment.cpp', 0x547)
+    }
+    return { timeOfDay: 0, angle: 0 }
+  }
   const pEnv = m.get(pAct, D2ActStrc.pEnvironment)
-  if (pEnv === 0) return { timeOfDay: 0, angle: 0 }
+  if (pEnv === 0) {
+    if (pOutAngle !== 0) {
+      m.setU32(pOutAngle >>> 0, 0)
+    }
+    return { timeOfDay: 0, angle: 0 }
+  }
   const period = m.get(pEnv, D2EnvironmentStrc.dwCyclePeriod) | 0
   const ticks = m.get(pEnv, D2EnvironmentStrc.dwTicks) | 0
   const angle = period !== 0 ? Math.trunc(ticks / period) | 0 : 0
+  if (pOutAngle !== 0) {
+    m.setU32(pOutAngle >>> 0, angle >>> 0)
+  }
   const timeOfDay = m.get(pEnv, D2EnvironmentStrc.nTimeOfDay) | 0
   return { timeOfDay, angle }
 }
@@ -652,6 +757,7 @@ export function ENVIRONMENT_GetTimeOfDayAndAngle113c(
 /**
  * `D2Common.#10449` (`0x6FD96330` `ITEMS_CalcByTimeStat`):
  * Unpacks packed `(period:2, min:10, max:10)` signed `[-256, 767]` range from `rawValue`,
+ * writes optional `*pOutPeriod`, `*pOutMin`, `*pOutMax` (`[esp+0x10..0x18]`),
  * snaps `|nAngle - period * 90|` to 15-degree steps (`(delta + 7) / 15 * 15`), clamps to `[0, 359]`,
  * folds `(180, 359]` via `360 - step`, and interpolates `max - trunc(((max - min) * step) / 180)`.
  */
@@ -659,12 +765,21 @@ export function ITEMS_CalcByTimeStat113c(
   rawValue: number,
   _nTimeOfDay: number,
   nAngle: number,
+  m?: Memory113c,
+  pOutPeriod = 0,
+  pOutMin = 0,
+  pOutMax = 0,
 ): number {
   hitD2CommonVa113c(0x6FD96330)
   const raw = rawValue | 0
   const period = raw & 3
   const minVal = (((raw >> 2) & 0x3ff) - 0x100) | 0
   const maxVal = (((raw >> 12) & 0x3ff) - 0x100) | 0
+  if (m !== undefined) {
+    if (pOutPeriod !== 0) m.setU32(pOutPeriod >>> 0, period >>> 0)
+    if (pOutMin !== 0) m.setU32(pOutMin >>> 0, minVal >>> 0)
+    if (pOutMax !== 0) m.setU32(pOutMax >>> 0, maxVal >>> 0)
+  }
   let delta = ((nAngle | 0) - imul32(period, 90)) | 0
   if (delta < 0) delta = (-delta) | 0
   const plus7 = (delta + 7) | 0
@@ -692,6 +807,7 @@ export function STATLIST_SumDirectAndSubLists113c(
   pList: number,
   dwKey: number,
   registry: StatTableRegistry113c = DEFAULT_STAT_REGISTRY_113C,
+  pIscRec = 0,
 ): number {
   hitD2CommonVa113c(0x6FD88CD0)
   let sum = readStatFromArray(m, pList + D2StatListStrc.pStat.off, dwKey)
@@ -699,10 +815,16 @@ export function STATLIST_SumDirectAndSubLists113c(
   if ((flags & STATLIST_FLAG_EXTENDED) === 0) {
     return sum | 0
   }
-  const statId = (dwKey >>> 16) & 0xffff
-  const meta = registry.get(statId)
-  const metaFlags = meta !== undefined && meta.flags !== undefined ? meta.flags : 0
-  const isDamageRelated = (metaFlags & ISC_FLAG_DAMAGE_RELATED) !== 0
+  let isDamageRelated: boolean
+  if (pIscRec !== 0 && hasLoadedU32PtrStatlist113c(m, D2COMMON_GDWBITMASKS_IAT_VA_113C)) {
+    const pMasks = m.u32(D2COMMON_GDWBITMASKS_IAT_VA_113C)
+    isDamageRelated = (m.u8((pIscRec + 4) >>> 0) & m.u32((pMasks + 8) >>> 0)) !== 0
+  } else {
+    const statId = (dwKey >>> 16) & 0xffff
+    const meta = registry.get(statId)
+    const metaFlags = meta !== undefined && meta.flags !== undefined ? meta.flags : 0
+    isDamageRelated = (metaFlags & ISC_FLAG_DAMAGE_RELATED) !== 0
+  }
   // Walk sub-lists (`pMyLastList` via `pPrevLink` `+0x2C` per `0x6FD88D23..0x6FD88D99`)
   for (
     let sub = m.get(pList, D2StatListExStrc.pMyLastList);
@@ -728,14 +850,44 @@ export function STATLIST_SumDirectAndSubLists113c(
  */
 function hasLoadedU32PtrStatlist113c(m: Memory113c, addr: number): boolean {
   const a = addr >>> 0
-  const known = (m as unknown as { known?: Map<number, Uint8Array> }).known
-  if (known !== undefined) {
-    const k0 = known.get(a >>> 12)
-    const k3 = known.get(((a + 3) >>> 0) >>> 12)
-    if (k0 === undefined || k0[a & 0xfff] === 0) return false
-    if (k3 === undefined || k3[((a + 3) >>> 0) & 0xfff] === 0) return false
+  let cur: unknown = m
+  while (cur !== null && typeof cur === 'object' && 'inner' in cur) {
+    cur = (cur as { inner: unknown }).inner
   }
-  return m.u32(a) !== 0
+  const curObj = cur as {
+    overlayKnown?: Map<number, Uint8Array>
+    baseKnown?: Map<number, Uint8Array>
+    known?: Map<number, Uint8Array>
+    size?: number
+  } | null
+  if (curObj?.overlayKnown !== undefined && curObj.baseKnown !== undefined) {
+    for (let i = 0; i < 4; i++) {
+      const b = (a + i) >>> 0
+      const pg = b >>> 12
+      const off = b & 0xfff
+      const ok = curObj.overlayKnown.get(pg)
+      if (ok !== undefined && ok[off] !== 0) continue
+      const bk = curObj.baseKnown.get(pg)
+      if (bk !== undefined && bk[off] !== 0) continue
+      return false
+    }
+    return m.u32(a) !== 0
+  }
+  const known = curObj?.known
+  if (known !== undefined) {
+    for (let i = 0; i < 4; i++) {
+      const b = (a + i) >>> 0
+      const page = known.get(b >>> 12)
+      if (page === undefined || page[b & 0xfff] === 0) return false
+    }
+    return m.u32(a) !== 0
+  }
+  const size = curObj?.size
+  if (typeof size === 'number') {
+    if (a === 0 || a + 4 > size) return false
+    return m.u32(a) !== 0
+  }
+  return false
 }
 
 export function EvalStatWithOps113c(
@@ -747,10 +899,20 @@ export function EvalStatWithOps113c(
   hitD2CommonVa113c(0x6FD89530)
   const statId = (dwKey >>> 16) & 0xffff
   const hasSgpt = hasLoadedU32PtrStatlist113c(m, D2COMMON_SGPT_DATATABLES_VA_113C)
+  let pIsc = 0
   if (hasSgpt) {
-    DATATBLS_GetItemStatCostTxtRecordInline113c(m, statId)
+    const sgpt = m.u32(D2COMMON_SGPT_DATATABLES_VA_113C)
+    const iscCount = m.u32((sgpt + 0xbd4) >>> 0) | 0
+    if (iscCount > 0) {
+      pIsc = DATATBLS_GetItemStatCostTxtRecordInline113c(m, statId)
+      if (pIsc === 0) return 0
+    } else if (registry === DEFAULT_STAT_REGISTRY_113C && statId >= ITEM_STAT_COST_COUNT_113C) {
+      return 0
+    }
+  } else if (registry === DEFAULT_STAT_REGISTRY_113C && statId >= ITEM_STAT_COST_COUNT_113C) {
+    return 0
   }
-  const rawBaseSum = STATLIST_SumDirectAndSubLists113c(m, pList, dwKey, registry)
+  const rawBaseSum = STATLIST_SumDirectAndSubLists113c(m, pList, dwKey, registry, pIsc)
   const revOps = registry.getReverseOps(statId)
   if (revOps.length === 0) {
     return rawBaseSum | 0
@@ -1265,6 +1427,14 @@ export function STATLIST_RecordModStat113c(
 ): void {
   hitD2CommonVa113c(0x6FD88550)
   if (pListEx === 0) return
+  if (
+    registry === DEFAULT_STAT_REGISTRY_113C &&
+    hasLoadedU32PtrStatlist113c(m, D2COMMON_SGPT_DATATABLES_VA_113C) &&
+    hasLoadedU32PtrStatlist113c(m, D2COMMON_GDWBITMASKS_IAT_VA_113C)
+  ) {
+    recordModStatMem113c(m, pListEx, dwKey)
+    return
+  }
   if ((m.get(pListEx, D2StatListStrc.dwFlags) & STATLIST_FLAG_EXTENDED) === 0) return
   const statId = (dwKey >>> 16) & 0xffff
   // 0x6FD88568..0x6FD88577 jump table at 0x6FD88628 / 0x6FD88630: skip 6, 8, 10, 13, 14
@@ -1344,8 +1514,11 @@ export function STATLIST_SetStat113c(
 
   // 0x6FD8A2FC..0x6FD8A301: propagate `(dwKey, newVal - oldVal)` via `0x6FD89F70`
   STATLIST_PropagateDelta113c(m, pList, statId, layer, (newVal - oldVal) | 0, registry)
-  // 0x6FD8A309..0x6FD8A316: when `eOwnerType == 0` (player), record modified stat key via `0x6FD88550`
-  if (m.get(pList, D2StatListStrc.eOwnerType) === 0) {
+  // 0x6FD8A306..0x6FD8A316: when extended and `eOwnerType == 0` (player), record modified stat key via `0x6FD88550`
+  if (
+    (m.get(pList, D2StatListStrc.dwFlags) & STATLIST_FLAG_EXTENDED) !== 0 &&
+    m.get(pList, D2StatListStrc.eOwnerType) === 0
+  ) {
     STATLIST_RecordModStat113c(m, pList, key, registry)
   }
   return 1
@@ -1360,10 +1533,12 @@ export function STATLIST_AddStat113c(
   layer = 0,
   registry: StatTableRegistry113c = DEFAULT_STAT_REGISTRY_113C,
 ): number {
-  if (pList === 0 || (delta | 0) === 0) return 0
+  const d = delta | 0
+  hitD2CommonVa113c(0x6FD8A330)
+  if (pList === 0 || d === 0) return 0
   const key = statKey113c(statId, layer)
   const cur = readStatFromArray(m, pList + D2StatListStrc.pStat.off, key)
-  const changed = STATLIST_SetStat113c(m, pList, statId, (cur + (delta | 0)) | 0, layer, registry)
+  const changed = STATLIST_SetStat113c(m, pList, statId, (cur + d) | 0, layer, registry)
   if (changed !== 0 && m.get(pList, D2StatListStrc.eOwnerType) === 0) {
     STATLIST_RecordModStat113c(m, pList, key, registry)
   }
@@ -1404,10 +1579,12 @@ export function STATLIST_AddUnitStat113c(
   layer = 0,
   registry: StatTableRegistry113c = DEFAULT_STAT_REGISTRY_113C,
 ): number {
-  if (pUnit === 0 || (delta | 0) === 0) return 0
+  const d = delta | 0
+  hitD2CommonVa113c(0x6FD8A710)
+  if (pUnit === 0 || d === 0) return 0
   const pList = m.get(pUnit, D2UnitStrc.pStatListEx)
   if (pList === 0) return 0
-  return STATLIST_AddStat113c(m, pList, statId, delta, layer, registry)
+  return STATLIST_AddStat113c(m, pList, statId, d, layer, registry)
 }
 
 /**
@@ -2797,6 +2974,7 @@ export function getTotalStatWithMinFromList113c(
   dwKey: number,
   pIscRec: number,
 ): number {
+  STATLIST_GetUnitStat113c(m, 0, 0, 0)
   const isEx = (m.u32((pStatList + 0x10) >>> 0) & 0x80000000) !== 0
   const pHdr = isEx ? (pStatList + 0x48) >>> 0 : (pStatList + 0x24) >>> 0
   const idx = STATLIST_FindStatIndex113c(m, pHdr, dwKey)
@@ -2830,6 +3008,7 @@ export function getBaseStatWithMinFromList113c(
   dwKey: number,
   pIscRec: number,
 ): number {
+  STATLIST_GetUnitBaseStat113c(m, 0, 0, 0)
   const pHdr = (pStatList + 0x24) >>> 0
   const idx = STATLIST_FindStatIndex113c(m, pHdr, dwKey)
   if (idx < 0) return 0
@@ -6610,8 +6789,9 @@ function withBitStreamScratch113c(m: Memory113c): Memory113c {
     const u = p >>> 0
     return u >= BITSTREAM_STACK_BASE && u < BITSTREAM_STACK_BASE + BITSTREAM_STACK_SIZE
   }
-  const wrapped: Memory113c & { __hasBsScratch: boolean } = {
+  const wrapped: Memory113c & { __hasBsScratch: boolean; inner: Memory113c } = {
     __hasBsScratch: true,
+    inner: m,
     alloc: (size) => m.alloc(size),
     u8: (p) => (isScratch(p) ? _bsDv.getUint8((p >>> 0) - BITSTREAM_STACK_BASE) : m.u8(p)),
     u16: (p) => (isScratch(p) ? _bsDv.getUint16((p >>> 0) - BITSTREAM_STACK_BASE, true) : m.u16(p)),
@@ -7768,12 +7948,16 @@ export function ITEMMODS_ToggleSetItemStateList113c(
     const state = SET_ITEM_STATES_6FDDCA08[freeSlot]!
     pFoundList = STATLIST_AllocList113c(
       m,
-      m.u32((unit + 0x08) >>> 0),
-      0,
       0,
       m.u32(item),
       m.u32((item + 0x0c) >>> 0),
+      0,
+      0,
     )
+    if (pFoundList !== 0) {
+      const pMemPool = m.u32((unit + 0x08) >>> 0) >>> 0
+      if (pMemPool !== 0) m.setU32(pFoundList, pMemPool)
+    }
     STATLIST_MergeStatLists113c(m, unit, pFoundList, 1)
     if (pFoundList !== 0) {
       m.setU32((pFoundList + 0x14) >>> 0, state >>> 0)

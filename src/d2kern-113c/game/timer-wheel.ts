@@ -29,6 +29,7 @@ import {
   EVENT_UPDATE_PARTITION_ORDER_113C,
   type EventWheelHooks113c,
 } from '../mem/event-wheel-113c.ts'
+import { D2CommonAssertError } from '../common/inline-helpers.ts'
 import { STATES_CheckState113c, STATES_ToggleGfxStateFlag113c } from '../common/statlist.ts'
 import { UNITROOM_RefreshUnit113c } from '../common/unit.ts'
 import { SUNIT_GetServerUnit113c } from './game-strc.ts'
@@ -60,28 +61,22 @@ export type EventDispatchCallback113c = (
   pNode: number,
 ) => void
 
-/** `@va D2Game:0x6FCAE420`: allocate one `0x7088` chunk of 600 `0x30`-byte `D2EventStrc` nodes. */
-export function EVENT_AllocChunk113c(m: Memory113c, pTimer: number): number {
+/** `@va D2Game:0x6FCAE420`: allocate one `0x7088` chunk of 600 `0x30`-byte `D2EventStrc` nodes (`eax = pGame`). */
+export function EVENT_AllocChunk113c(m: Memory113c, pGame: number): number {
   hitD2GameVa113c(0x6FCAE420)
+  // 0x6FCAE420: `mov ecx, [eax+0x1c]` (`pGame->pMemPool`)
+  if (pGame !== 0) {
+    void m.u32((pGame + 0x1c) >>> 0)
+  }
   const chunk = m.alloc(EVENT_CHUNK_SIZE_113C)
+  m.fill(chunk, EVENT_CHUNK_SIZE_113C, 0)
+  m.setU32(chunk + EVENT_CHUNK_FREE_OFF_113C, chunk)
   for (let i = 0; i < EVENT_NODES_PER_CHUNK_113C - 1; i++) {
     const node = chunk + i * EVENT_NODE_SIZE_113C
     const nextNode = chunk + (i + 1) * EVENT_NODE_SIZE_113C
     m.setU32(node + 0x1c, nextNode)
   }
   m.setU32(chunk + (EVENT_NODES_PER_CHUNK_113C - 1) * EVENT_NODE_SIZE_113C + 0x1c, 0)
-  m.setU32(chunk + EVENT_CHUNK_FREE_OFF_113C, chunk)
-
-  const firstChunk = m.get(pTimer, D2TimerStrc.pPool)
-  if (firstChunk === 0) {
-    m.setU32(chunk + EVENT_CHUNK_NEXT_OFF_113C, 0)
-    m.set(pTimer, D2TimerStrc.pPool, chunk)
-  } else {
-    // 0x6FCAE570: links newly allocated overflow chunk directly after `firstChunk`.
-    const secondChunk = m.u32(firstChunk + EVENT_CHUNK_NEXT_OFF_113C)
-    m.setU32(chunk + EVENT_CHUNK_NEXT_OFF_113C, secondChunk)
-    m.setU32(firstChunk + EVENT_CHUNK_NEXT_OFF_113C, chunk)
-  }
   return chunk
 }
 
@@ -90,12 +85,13 @@ export function EVENT_InitTimerQueue113c(m: Memory113c, pGame: number): number {
   hitD2GameVa113c(0x6FCAE630)
   const pTimer = m.alloc(D2TimerStrc_SIZE)
   m.set(pGame, D2GameStrc.pTimer, pTimer)
-  EVENT_AllocChunk113c(m, pTimer)
+  const chunk = EVENT_AllocChunk113c(m, pGame)
+  m.set(pTimer, D2TimerStrc.pPool, chunk)
   return pTimer
 }
 
 /** `@va D2Game:0x6FCAE540`: pop a free `D2EventStrc` node across pool chunks, allocating a new chunk if full. */
-export function EVENT_AllocNodeWithGrowth113c(m: Memory113c, pTimer: number): number {
+export function EVENT_AllocNodeWithGrowth113c(m: Memory113c, pTimer: number, pGame = 0): number {
   hitD2GameVa113c(0x6FCAE540)
   for (let chunk = m.get(pTimer, D2TimerStrc.pPool); chunk !== 0; chunk = m.u32(chunk + EVENT_CHUNK_NEXT_OFF_113C)) {
     const node = m.u32(chunk + EVENT_CHUNK_FREE_OFF_113C)
@@ -104,7 +100,17 @@ export function EVENT_AllocNodeWithGrowth113c(m: Memory113c, pTimer: number): nu
     m.fill(node, EVENT_NODE_SIZE_113C, 0)
     return node
   }
-  const newChunk = EVENT_AllocChunk113c(m, pTimer)
+  const newChunk = EVENT_AllocChunk113c(m, pGame)
+  const firstChunk = m.get(pTimer, D2TimerStrc.pPool)
+  if (firstChunk === 0) {
+    m.setU32(newChunk + EVENT_CHUNK_NEXT_OFF_113C, 0)
+    m.set(pTimer, D2TimerStrc.pPool, newChunk)
+  } else {
+    // 0x6FCAE56D..0x6FCAE585: link overflow chunk directly after `pTimer->pPool` (`firstChunk`).
+    const secondChunk = m.u32(firstChunk + EVENT_CHUNK_NEXT_OFF_113C)
+    m.setU32(newChunk + EVENT_CHUNK_NEXT_OFF_113C, secondChunk)
+    m.setU32(firstChunk + EVENT_CHUNK_NEXT_OFF_113C, newChunk)
+  }
   const node = m.u32(newChunk + EVENT_CHUNK_FREE_OFF_113C)
   m.setU32(newChunk + EVENT_CHUNK_FREE_OFF_113C, m.u32(node + 0x1c))
   m.fill(node, EVENT_NODE_SIZE_113C, 0)
@@ -115,7 +121,7 @@ export function EVENT_AllocNodeWithGrowth113c(m: Memory113c, pTimer: number): nu
 export function EVENT_CreateNodeWithGrowth113c(m: Memory113c, pGame: number, pUnit: number): number {
   hitD2GameVa113c(0x6FCAE680)
   const pTimer = m.get(pGame, D2GameStrc.pTimer)
-  const node = EVENT_AllocNodeWithGrowth113c(m, pTimer)
+  const node = EVENT_AllocNodeWithGrowth113c(m, pTimer, pGame)
   m.set(node, D2EventStrc.pUnit, pUnit)
   const oldFirst = pUnit === 0 ? 0 : m.get(pUnit, D2UnitStrc.pEventFirst)
   m.set(node, D2EventStrc.pUnitNext, oldFirst)
@@ -212,7 +218,10 @@ export function EVENT_FreeNode113c(m: Memory113c, pGame: number, pNode: number):
  */
 export function SUNIT_GetLastAttacker113c(m: Memory113c, pGame: number, pUnit: number): number {
   hitD2GameVa113c(0x6FD009D0)
-  if (pUnit === 0 || pGame === 0) return 0
+  if (pUnit === 0) {
+    throw new D2CommonAssertError('SUnit.cpp', 0x321)
+  }
+  if (pGame === 0) return 0
   if ((m.get(pUnit, D2UnitStrc.dwFlags2) & 0x20000) === 0) return 0
   return SUNIT_GetServerUnit113c(m, pGame, m.u32(pUnit + 0x9c), m.u32(pUnit + 0xa0))
 }

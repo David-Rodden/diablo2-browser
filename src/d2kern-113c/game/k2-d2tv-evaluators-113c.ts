@@ -166,11 +166,45 @@ function rollSeedLimited(m: Memory113c, pSeed: number, nMax: number): number {
   return ((newLo >>> 0) % maxU) | 0
 }
 
+const D2GAME_DEFAULT_BASE_UMOD_IDS_6FD1CE7C: readonly number[] = [1, 2, 3, 4]
+const D2GAME_MONUMOD_HANDLER_TABLE_6FD2E550: readonly (readonly [number, number])[] = [
+  [1, 0x6fc43020],
+  [2, 0x6fc42fa0],
+  [4, 0x6fc41e80],
+  [5, 0x6fc42bc0],
+  [6, 0x6fc42880],
+  [8, 0x6fc41be0],
+  [9, 0x6fc42740],
+  [16, 0x6fc42da0],
+  [17, 0x6fc42600],
+  [18, 0x6fc42490],
+  [23, 0x6fc42320],
+  [25, 0x6fc421d0],
+  [26, 0x6fc441b0],
+  [27, 0x6fc41be0],
+  [28, 0x6fc41be0],
+  [30, 0x6fc44cd0],
+  [36, 0x6fc43850],
+  [37, 0x6fc43810],
+  [38, 0x6fc437c0],
+  [39, 0x6fc42d00],
+  [41, 0x6fc469f0],
+  [43, 0xdeaddead],
+]
+
 export function bindK2KernelGlobals113c(m: Memory113c): void {
   const pSgpt = m.u32(D2COMMON_SGPT_DATATABLES_VA_113C) >>> 0
   initD2GameGlobalsInMem113c(m, pSgpt)
   const pMasks = m.u32(D2GAME_IAT_GDW_BITMASKS_VA_113C) >>> 0
   m.setU32(D2COMMON_GDWBITMASKS_IAT_VA_113C, pMasks)
+  for (let i = 0; i < D2GAME_DEFAULT_BASE_UMOD_IDS_6FD1CE7C.length; i++) {
+    m.setU32((0x6fd1ce7c + i * 4) >>> 0, D2GAME_DEFAULT_BASE_UMOD_IDS_6FD1CE7C[i]! >>> 0)
+  }
+  m.fill(0x6fd2e550, 44 * 4, 0)
+  for (let i = 0; i < D2GAME_MONUMOD_HANDLER_TABLE_6FD2E550.length; i++) {
+    const [idx, va] = D2GAME_MONUMOD_HANDLER_TABLE_6FD2E550[i]!
+    m.setU32((0x6fd2e550 + idx * 4) >>> 0, va >>> 0)
+  }
 }
 
 function checkMonsterMonTypeMask113c(m: Memory113c, pUnit: number, nExcludedType: number): number {
@@ -594,13 +628,15 @@ function initMonsterStatsExact113c(
 
   const pSubList = STATLIST_AllocList113c(
     m,
-    m.u32((pGame + 0x1c) >>> 0),
     1,
-    0,
     1,
     m.u32((pUnit + 0x0c) >>> 0),
+    0,
+    0,
   )
   if (pSubList !== 0) {
+    const pMemPool = m.u32((pGame + 0x1c) >>> 0) >>> 0
+    if (pMemPool !== 0) m.setU32(pSubList, pMemPool)
     STATLIST_MergeStatLists113c(m, pUnit, pSubList, 1)
   }
 

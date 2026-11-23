@@ -98,6 +98,7 @@ import {
 } from './ai-fallen-113c'
 import { NET_QueuePacketToClientBuffer113c } from './boot-init-gap-a-113c'
 import { D2GAME_SUNIT_GetGameFromUnit113c } from './boot-init-gap-b-113c'
+import { PLAYER_StartModeOnUnit113c } from './c2s-packet-113c'
 import {
   AI_Stall113c,
   ITEMS_DropGoldPileAtUnit113c,
@@ -121,6 +122,7 @@ import {
   D2GAME_CreateItemEx_6FC31490_113c,
   ITEMS_FindFreeGroundDropCoords_6FC2E930_113c,
   ITEMS_GetDropItemLevel_6FC2E5D0_113c,
+  ITEMS_ScheduleReplenishQuantityEvent_6FC2EA10_113c,
 } from './k2-real-itemdrop-113c'
 import {
   AURA_ForEachUnitInRadius113c,
@@ -142,7 +144,11 @@ import {
   MONREG_IsMonsterDeadAtCoords_6FC3EE50_113c,
 } from './k2-laneI-0x6fc3-w1-113c'
 import { SKILLS_ApplySkillAuraStatCalcs_6FC648E0_113c } from './k2-laneL-0x6fc6-w1-113c'
+import { SKILLS_RedemptionCorpseCallback_6FC59930_113c } from './k2-laneK-0x6fc5-w1-113c'
 import { ACT5Q5_GetSummitPlayerCount_6FC766D0_113c } from './k2-laneM-0x6fc7-w1-113c'
+import { SKILLS_SetTargetAndDoNihlathakCorpseExplosion_6FC2C8D0_113c } from './k2-w4b1-113c'
+import { MISSILES_RedeemCorpseWithSkill124_6FC59910_113c } from './k2-w5b1-113c'
+import { SKILLS_CanUnownedMonsterUseSkillInMode12_6FC47130_113c } from './k2-w6b1-113c'
 import { SUNIT_GetOwnerUnit113c } from './k2-sunit-spawn-w1-113c'
 import { SKILLS_CorpseSearchFilterCallback_6FCBE2E0_113c } from './k2-w2b4-113c'
 import {
@@ -345,6 +351,16 @@ export interface K2W4B6Hooks113c {
 
 /** Isolated reentrant scratch stack pointer for Wave 4 Batch 6 helpers on `Memory113c`. */
 let w4b6ScratchSp = 0x7eb90000
+
+function withW4B6Stack<T>(size: number, fn: (sp: number) => T): T {
+  const sp = w4b6ScratchSp >>> 0
+  w4b6ScratchSp = (sp + ((size + 15) & ~15)) >>> 0
+  try {
+    return fn(sp)
+  } finally {
+    w4b6ScratchSp = sp
+  }
+}
 
 function sx16(v: number): number {
   return (v << 16) >> 16
@@ -832,10 +848,12 @@ export function SKILLS_FindClosestUnitCallback_6FCBEDB0_113c(
   const pfnFilter = m.u32((pClosestCtx + 0x10) >>> 0) >>> 0
   if (pfnFilter !== 0) {
     const pArg0 = m.u32(pFindArg >>> 0) >>> 0
-    const pass =
-      hooks !== undefined && hooks.onUnitFindFilter !== undefined
-        ? hooks.onUnitFindFilter(m, pfnFilter, pArg0, pCandidateUnit >>> 0) | 0
-        : 1
+    let pass = 0
+    if (hooks !== undefined && hooks.onUnitFindFilter !== undefined) {
+      pass = hooks.onUnitFindFilter(m, pfnFilter, pArg0, pCandidateUnit >>> 0) | 0
+    } else if (pfnFilter === 0x6fc47130) {
+      pass = SKILLS_CanUnownedMonsterUseSkillInMode12_6FC47130_113c(m, pArg0, pCandidateUnit >>> 0) | 0
+    }
     if (pass === 0) return 0
   }
 
@@ -938,7 +956,7 @@ export function SKILLS_ForEachUnitInSearchRadius_6FCBEEB0_113c(
     UNITFINDS_FindAllMatchingUnitsInAdjacentRooms113c(m, pUnitFindData)
 
     const pfn = m.u32((pSearchSpec + 0x20) >>> 0) >>> 0
-    if (pfn === 0) {
+    if (pfn === 0 || m.u32(0x6fd18d14) === 1) {
       throw new D2CommonAssertError('Client.cpp', 0x10db)
     }
     let nFound = m.u32((pUnitFindData + 0x18) >>> 0) | 0
@@ -951,6 +969,41 @@ export function SKILLS_ForEachUnitInSearchRadius_6FCBEEB0_113c(
       const cb = m.u32((pSearchSpec + 0x20) >>> 0) >>> 0
       if (hooks !== undefined && hooks.onIndirectCall !== undefined) {
         hooks.onIndirectCall(m, cb, pGame >>> 0, pUnitArg, pCandidate, arg2, arg3)
+      } else {
+        switch (cb) {
+          case 0x6fc2c8d0:
+            SKILLS_SetTargetAndDoNihlathakCorpseExplosion_6FC2C8D0_113c(
+              m,
+              pGame >>> 0,
+              pUnitArg,
+              pCandidate,
+              arg2,
+              arg3,
+            )
+            break
+          case 0x6fc59910:
+            MISSILES_RedeemCorpseWithSkill124_6FC59910_113c(
+              m,
+              pGame >>> 0,
+              pUnitArg,
+              pCandidate,
+              arg2,
+              arg3,
+            )
+            break
+          case 0x6fc59930:
+            SKILLS_RedemptionCorpseCallback_6FC59930_113c(
+              m,
+              pGame >>> 0,
+              pUnitArg,
+              pCandidate,
+              arg2,
+              arg3,
+            )
+            break
+          default:
+            break
+        }
       }
       nFound = m.u32((pUnitFindData + 0x18) >>> 0) | 0
     }
@@ -1569,7 +1622,7 @@ export function SKILLS_ConsumeItemQuantityAndSyncDurability_6FCC16A0_113c(
     nNewQty = 0;
   }
   STATLIST_SetUnitStat113c(m, pItem, 0x46, nNewQty, 0);
-  ITEMS_GetQualityBonusDivisor113c(m, pItem, pGame);
+  ITEMS_ScheduleReplenishQuantityEvent_6FC2EA10_113c(m, pGame, pItem);
   let pClient = 0;
   if (pOwnerUnit !== 0 && m.u32(pOwnerUnit) === 0) {
     const pPlayerData = UNITS_GetPlayerData113c(m, pOwnerUnit);
@@ -1587,7 +1640,7 @@ export function SKILLS_ConsumeItemQuantityAndSyncDurability_6FCC16A0_113c(
     }
     NET_SendPacket0x3E_ItemStatBitStream113c(m, pItem, 0, pDurClient, 1, 0x48, nMaxDur);
   }
-  PLAYER_ScheduleSkillActionFrameEvents113c(m, pGame, pOwnerUnit, 0, 0);
+  PLAYER_ScheduleSkillActionFrameEvents113c(m, pGame, pOwnerUnit);
   if (bDepleted !== 0) {
     return 0;
   }
@@ -1676,17 +1729,18 @@ export function SKILLS_ResetAttackerCombatAndStartWeaponOrMonsterAttack_6FCC2DE0
   SUNITDMG_FreeAttackerCombatList113c(m, pUnit, pGame);
   UNITS_ChangeAnimMode113c(m, pUnit, 1);
   SKILLS_SetUsedSkillMemPort113c(m, pUnit, 0);
-  SKILLS_GetSkillById113c(m, pUnit, 0, -1);
+  const pSkill = SKILLS_GetSkillById113c(m, pUnit, 0, -1);
   const dwUnitType = m.u32(pUnit);
   if (dwUnitType === 0) {
-    PLAYER_StartModeAttack113c(m, pGame, pUnit, 7, pTarget);
+    PLAYER_StartModeOnUnit113c(m, pGame, pUnit, pTarget, 7, 0, 0, 1, pSkill);
     return 1;
   }
   if (dwUnitType === 1) {
-    const sp = m.alloc(0x20);
-    MONSTER_InitModeChangeStrc113c(m, pUnit, sp, 4);
-    m.setU32(sp + 0x08, pTarget);
-    MONSTER_StartMode113c(m, pGame, pUnit, 4, pTarget, 0, 0);
+    withW4B6Stack(0x20, (sp) => {
+      MONSTER_InitModeChangeStrc113c(m, pUnit, sp, 4);
+      m.setU32(sp + 0x08, pTarget);
+      MONSTER_StartMode113c(m, pGame, pUnit, 4, pTarget, 0, 0);
+    });
   }
   return 1;
 }
@@ -1764,11 +1818,11 @@ export function SKILLS_ApplyStunStateAndNeutralModeToMonster_6FCC2F90_113c(
     nExpireFrame = (nExpireFrame + 0x64) | 0;
     const pStatList = STATLIST_AllocList113c(
       m,
-      m.u32(pGame + 0x1c),
       2,
-      nExpireFrame,
       m.u32(pUnit),
       m.u32(pUnit + 0x0c),
+      0,
+      nExpireFrame,
     );
     if (pStatList !== 0) {
       EVENT_SetEventFull113c(m, pGame, pUnit, 0x0c, nExpireFrame, 0, 0);
@@ -1782,9 +1836,10 @@ export function SKILLS_ApplyStunStateAndNeutralModeToMonster_6FCC2F90_113c(
     STATLIST_SetExpireFrameEx113c(m, pExisting, nExpireFrame);
     EVENT_SetEventFull113c(m, pGame, pUnit, 0x0c, nExpireFrame, 0, 0);
   }
-  const sp = m.alloc(0x20);
-  MONSTER_InitModeChangeStrc113c(m, pUnit, sp, 1);
-  MONSTER_StartMode113c(m, pGame, pUnit, 1, 0, 0, 0);
+  withW4B6Stack(0x20, (sp) => {
+    MONSTER_InitModeChangeStrc113c(m, pUnit, sp, 1);
+    MONSTER_StartMode113c(m, pGame, pUnit, 1, 0, 0, 0);
+  });
   m.setU32(pUnit + 0xc4, m.u32(pUnit + 0xc4) & ~1);
 }
 
@@ -1835,10 +1890,10 @@ export function SKILLS_SchedulePeriodicSkillEvent_6FCC3120_113c(
         pEv = pNext;
       }
     }
-    EVENT_SetEventFull113c(m, pGame, pUnit, 8, nNextFrame, -1, 0);
+    EVENT_SetEventFull113c(m, pGame, pUnit, 8, nNextFrame, 0, -1, 0);
   } else {
-    EVENT_DeleteEventByArg14_113c(m, pGame, pUnit, 9, nSkillId);
-    EVENT_SetEventFull113c(m, pGame, pUnit, 9, nNextFrame, nSkillLevel, nSkillId);
+    EVENT_DeleteEventByArg14_113c(m, pGame, pUnit, 9, nSkillLevel);
+    EVENT_SetEventFull113c(m, pGame, pUnit, 9, nNextFrame, 0, nSkillLevel, nSkillId);
   }
   return 1;
 }
@@ -1853,6 +1908,7 @@ export function SKILLS_ApplyMeleeHitAuraStatesAndExecuteEvents_6FCC3220_113c(
   pUnit: number,
   nSkillId: number,
   nSkillLevel: number,
+  hooks?: SUnitDmgHooks113c,
 ): number {
   hitD2GameVa113c(0x6FCC3220)
   if (nSkillId < 0) {
@@ -1904,11 +1960,11 @@ export function SKILLS_ApplyMeleeHitAuraStatesAndExecuteEvents_6FCC3220_113c(
         if (pStatList === 0) {
           pStatList = STATLIST_AllocList113c(
             m,
-            m.u32(pGame + 0x1c),
             2,
-            nExpireFrame,
             m.u32(pTarget),
             m.u32(pTarget + 0x0c),
+            0,
+            nExpireFrame,
           );
           if (pStatList === 0) {
             return 1;
@@ -1931,7 +1987,7 @@ export function SKILLS_ApplyMeleeHitAuraStatesAndExecuteEvents_6FCC3220_113c(
       if (pSelfStatList === 0) {
         const nOwnerType = pUnit !== 0 ? m.u32(pUnit) : 6;
         const nOwnerId = pUnit !== 0 ? m.u32(pUnit + 0x0c) : -1;
-        pSelfStatList = STATLIST_AllocList113c(m, m.u32(pGame + 0x1c), 4, 0, nOwnerType, nOwnerId);
+        pSelfStatList = STATLIST_AllocList113c(m, 4, nOwnerType, nOwnerId, 0, 0);
         if (pSelfStatList === 0) {
           return 1;
         }
@@ -1951,7 +2007,7 @@ export function SKILLS_ApplyMeleeHitAuraStatesAndExecuteEvents_6FCC3220_113c(
   if (pFinalTarget === pUnit || pFinalTarget === 0) {
     return 0;
   }
-  SUNITDMG_ExecuteEvents113c(m, pGame, pUnit, pFinalTarget, 1, 0);
+  SUNITDMG_ExecuteEvents113c(m, pGame, pUnit, pFinalTarget, 1, 0, hooks);
   return 1;
 }
 
@@ -1984,7 +2040,7 @@ export function SKILLS_CreateTimedAuraStatListOnTarget_6FCC34E0_113c(
   const nOwnerType = pCaster !== 0 ? m.u32(pCaster) : 6;
   const nOwnerId = pCaster !== 0 ? m.u32(pCaster + 0x0c) : -1;
   const nExpireFrame = (m.u32(pGame + 0xa8) + nLen) | 0;
-  const pStatList = STATLIST_AllocList113c(m, m.u32(pGame + 0x1c), 2, nExpireFrame, nOwnerType, nOwnerId);
+  const pStatList = STATLIST_AllocList113c(m, 2, nOwnerType, nOwnerId, 0, nExpireFrame);
   if (pStatList === 0) {
     return 0;
   }
@@ -2063,32 +2119,34 @@ export function SKILLS_CheckMonsterDeadAlongReverseVelocitySteps_6FCC3B50_113c(
   if (pRoom === 0) {
     if (hooks !== undefined && hooks.assertFault !== undefined) {
       hooks.assertFault(0x141b);
+      return 0;
     }
-    return 0;
+    throw new D2CommonAssertError('0x6fd19ff9', 0x141b);
   }
-  const sp = m.alloc(0x30);
-  const pOutDx = sp + 0x00;
-  const pOutDy = sp + 0x04;
-  const pCoords = sp + 0x08;
-  DUNGEON_GetRoomCoordinates113c(m, pRoom, pCoords);
-  let curX = m.u32(pCoords + 0x00) | 0;
-  let curY = m.u32(pCoords + 0x04) | 0;
-  m.setU32(pOutDx, 0);
-  m.setU32(pOutDy, 0);
-  MONSTER_GetSubClassVelocityInfo113c(m, pUnit, pOutDx, pOutDy);
-  const negDx = (-(m.u32(pOutDx) | 0)) | 0;
-  const negDy = (-(m.u32(pOutDy) | 0)) | 0;
-  const nMonHcIdx = pUnit === 0 ? -20 : ((m.u32(pUnit + 0x04) | 0) - 19) | 0;
-  let nRes = 0;
-  for (let step = 0; step < 3; step += 1) {
-    curX = (curX + Math.imul(m.u32(pCoords + 0x08) | 0, negDx)) | 0;
-    curY = (curY + Math.imul(m.u32(pCoords + 0x0c) | 0, negDy)) | 0;
-    nRes = MONREG_IsMonsterDeadAtCoords_6FC3EE50_113c(m, curY, curX, pGame, pRoom, nMonHcIdx);
-    if (nRes !== 0) {
-      break;
+  return withW4B6Stack(0x30, (sp) => {
+    const pOutDx = sp + 0x00;
+    const pOutDy = sp + 0x04;
+    const pCoords = sp + 0x08;
+    DUNGEON_GetRoomCoordinates113c(m, pRoom, pCoords);
+    let curX = m.u32(pCoords + 0x00) | 0;
+    let curY = m.u32(pCoords + 0x04) | 0;
+    m.setU32(pOutDx, 0);
+    m.setU32(pOutDy, 0);
+    MONSTER_GetSubClassVelocityInfo113c(m, pUnit, pOutDx, pOutDy);
+    const negDx = (-(m.u32(pOutDx) | 0)) | 0;
+    const negDy = (-(m.u32(pOutDy) | 0)) | 0;
+    const nMonHcIdx = pUnit === 0 ? -20 : ((m.u32(pUnit + 0x04) | 0) - 19) | 0;
+    let nRes = 0;
+    for (let step = 0; step < 3; step += 1) {
+      curX = (curX + Math.imul(m.u32(pCoords + 0x08) | 0, negDx)) | 0;
+      curY = (curY + Math.imul(m.u32(pCoords + 0x0c) | 0, negDy)) | 0;
+      nRes = MONREG_IsMonsterDeadAtCoords_6FC3EE50_113c(m, curX, curY, pGame, pRoom, nMonHcIdx);
+      if (nRes !== 0) {
+        break;
+      }
     }
-  }
-  return nRes;
+    return nRes;
+  });
 }
 
 /**
@@ -2143,7 +2201,7 @@ export function AI_SetStateDirAndStartWalkMode_6FCC41B0_113c(
   pUnit: number,
   pGame: number,
   pTargetOrDest: number,
-): void {
+): number {
   hitD2GameVa113c(0x6FCC41B0)
   const nMappedState = nAiState === 1 ? 7 : nAiState;
   let pAiControl = 0;
@@ -2164,16 +2222,17 @@ export function AI_SetStateDirAndStartWalkMode_6FCC41B0_113c(
     m.setU8(pAiControl + 0x20, bDir);
   }
   SKILLS_SetUsedSkillMemPort113c(m, pUnit, 0);
-  const sp = m.alloc(0x20);
-  for (let i = 0; i < 8; i += 1) {
-    m.setU32(sp + i * 4, 0);
-  }
-  m.setU32(sp + 0x00, 2);
-  m.setU32(sp + 0x04, pUnit);
-  m.setU8(sp + 0x15, pUnit !== 0 ? 0x65 : 0x64);
-  PATH_SetStepNum113c(m, m.u32(pUnit + 0x2c), 1);
-  m.setU32(sp + 0x08, pTargetOrDest);
-  MONSTER_StartMode113c(m, pGame, pUnit, 2, pTargetOrDest, 0, 0);
+  return withW4B6Stack(0x20, (sp) => {
+    for (let i = 0; i < 8; i += 1) {
+      m.setU32(sp + i * 4, 0);
+    }
+    m.setU32(sp + 0x00, 2);
+    m.setU32(sp + 0x04, pUnit);
+    m.setU8(sp + 0x15, pUnit !== 0 ? 0x65 : 0x64);
+    PATH_SetStepNum113c(m, m.u32(pUnit + 0x2c), 1);
+    m.setU32(sp + 0x08, pTargetOrDest);
+    return MONSTER_StartMode113c(m, pGame, pUnit, 2, pTargetOrDest, 0, 0);
+  });
 }
 
 /**
@@ -2219,8 +2278,8 @@ export function AI_InitSummonSkillLevelAndBasicAttack_6FCC4260_113c(
   if (SKILLS_GetSkillById113c(m, pUnit, 0, -1) === 0) {
     SKILLS_SetSkillLevelOnUnit113c(m, pUnit, 0, 1, 0, 0x6fd1b6b0, 0xc1d);
   }
-  SKILLS_SetRightSkill113c(m, pUnit, 0, -1);
   SKILLS_SetLeftSkill113c(m, pUnit, 0, -1);
+  SKILLS_SetRightSkill113c(m, pUnit, 0, -1);
 }
 
 /**
@@ -2303,13 +2362,14 @@ export function AI_UpdateSummonOwnerTownAndChargeCounter_6FCC4A10_113c(
   }
   if (bOwnerOutsideTown === 0) {
     SKILLS_SetUsedSkillMemPort113c(m, pUnit, 0);
-    const sp = m.alloc(0x20);
-    for (let i = 0; i < 8; i += 1) {
-      m.setU32(sp + i * 4, 0);
-    }
-    m.setU32(sp + 0x04, pUnit);
-    m.setU8(sp + 0x15, 0x64);
-    MONSTER_StartMode113c(m, pGame, pUnit, 0, 0, 0, 0);
+    withW4B6Stack(0x20, (sp) => {
+      for (let i = 0; i < 8; i += 1) {
+        m.setU32(sp + i * 4, 0);
+      }
+      m.setU32(sp + 0x04, pUnit);
+      m.setU8(sp + 0x15, 0x64);
+      MONSTER_StartMode113c(m, pGame, pUnit, 0, 0, 0, 0);
+    });
     return 1;
   }
   let pAiCmd = m.u32(pAiArgs + 0x00);
@@ -2365,13 +2425,14 @@ export function AI_AttackWestOffsetThenDie_6FCC4B90_113c(
       m.setU32(pUnit + 0xc4, m.u32(pUnit + 0xc4) | 0x20000);
     }
     SKILLS_SetUsedSkillMemPort113c(m, pUnit, 0);
-    const sp = m.alloc(0x20);
-    for (let i = 0; i < 8; i += 1) {
-      m.setU32(sp + i * 4, 0);
-    }
-    m.setU32(sp + 0x04, pUnit);
-    m.setU8(sp + 0x15, 0x64);
-    MONSTER_StartMode113c(m, pGame, pUnit, 0, 0, 0, 0);
+    withW4B6Stack(0x20, (sp) => {
+      for (let i = 0; i < 8; i += 1) {
+        m.setU32(sp + i * 4, 0);
+      }
+      m.setU32(sp + 0x04, pUnit);
+      m.setU8(sp + 0x15, 0x64);
+      MONSTER_StartMode113c(m, pGame, pUnit, 0, 0, 0, 0);
+    });
     return;
   }
   const dwTypeY = m.u32(pUnit);
@@ -2400,16 +2461,17 @@ export function AI_AttackWestOffsetThenDie_6FCC4B90_113c(
       bAnimSpeed = 0x65;
     }
   }
-  const sp = m.alloc(0x20);
-  for (let i = 0; i < 8; i += 1) {
-    m.setU32(sp + i * 4, 0);
-  }
-  m.setU32(sp + 0x00, 4);
-  m.setU32(sp + 0x04, pUnit);
-  m.setU8(sp + 0x15, bAnimSpeed);
-  m.setU32(sp + 0x0c, (nPosX - 10) | 0);
-  m.setU32(sp + 0x10, nPosY);
-  MONSTER_StartMode113c(m, pGame, pUnit, 4, 0, (nPosX - 10) | 0, nPosY);
+  withW4B6Stack(0x20, (sp) => {
+    for (let i = 0; i < 8; i += 1) {
+      m.setU32(sp + i * 4, 0);
+    }
+    m.setU32(sp + 0x00, 4);
+    m.setU32(sp + 0x04, pUnit);
+    m.setU8(sp + 0x15, bAnimSpeed);
+    m.setU32(sp + 0x0c, (nPosX - 10) | 0);
+    m.setU32(sp + 0x10, nPosY);
+    MONSTER_StartMode113c(m, pGame, pUnit, 4, 0, (nPosX - 10) | 0, nPosY);
+  });
   m.setU32(pAiCmd + 0x18, 1);
 }
 
@@ -2440,7 +2502,10 @@ export function AI_TickSummonedTimedAttacker_6FCC4D10_113c(
   if (m.u32(pAiCmd + 0x1c) === 0) {
     const bDiff = m.u8(pGame + 0x6d);
     const nBaseSec = sx16(m.u16(pMonStats + 0x62 + bDiff * 2));
-    const nRoll = SEED_RollLimitedFast113c(m, pUnit + 0x20, nBaseSec);
+    const seed = { lo: m.u32(pUnit + 0x20), hi: m.u32(pUnit + 0x24) };
+    const nRoll = seedRoll(seed, nBaseSec) | 0;
+    m.setU32(pUnit + 0x20, seed.lo >>> 0);
+    m.setU32(pUnit + 0x24, seed.hi >>> 0);
     const nExpireFrame = (m.u32(pGame + 0xa8) + Math.imul((nRoll + nBaseSec) | 0, 25)) | 0;
     m.setU32(m.u32(pAiArgs + 0x00) + 0x1c, nExpireFrame);
   }
@@ -2450,7 +2515,10 @@ export function AI_TickSummonedTimedAttacker_6FCC4D10_113c(
     return;
   }
   if (bHasTargetInRange !== 0) {
-    const nRoll = SEED_RollLimitedFast113c(m, pUnit + 0x20, 100);
+    const seed = { lo: m.u32(pUnit + 0x20), hi: m.u32(pUnit + 0x24) };
+    const nRoll = seedRoll(seed, 100) | 0;
+    m.setU32(pUnit + 0x20, seed.lo >>> 0);
+    m.setU32(pUnit + 0x24, seed.hi >>> 0);
     const bDiff = m.u8(pGame + 0x6d);
     const nAttackChance = sx16(m.u16(pMonStats + 0x56 + bDiff * 2));
     if (nRoll < nAttackChance) {
@@ -2663,20 +2731,66 @@ export function AI_TickEmergeQuadrantAttackAndSubmerge_6FCC5580_113c(
   if (pUnit !== 0) {
     m.setU32(pUnit + 0xc4, m.u32(pUnit + 0xc4) | 0x20000);
   }
-  const sp = m.alloc(0x38);
-  const pUnitPos = sp + 0x00;
-  const pTargetPos = sp + 0x08;
-  const pModeStrc = sp + 0x10;
-  PATH_GetTargetTypeAndPosition113c(m, pUnit, pUnitPos);
-  if (pTarget !== 0 && nDist < 5) {
-    if (m.u32(pAiCmd + 0x14) === 0) {
-      m.setU32(pAiCmd + 0x14, 1);
-      m.setU32(pAiCmd + 0x18, m.u32(pGame + 0xa8));
+  withW4B6Stack(0x38, (sp) => {
+    const pUnitPos = sp + 0x00;
+    const pTargetPos = sp + 0x08;
+    const pModeStrc = sp + 0x10;
+    PATH_GetTargetTypeAndPosition113c(m, pUnit, pUnitPos);
+    if (pTarget !== 0 && nDist < 5) {
+      if (m.u32(pAiCmd + 0x14) === 0) {
+        m.setU32(pAiCmd + 0x14, 1);
+        m.setU32(pAiCmd + 0x18, m.u32(pGame + 0xa8));
+        SKILLS_SetUsedSkillMemPort113c(m, pUnit, 0);
+        for (let i = 0; i < 8; i += 1) {
+          m.setU32(pModeStrc + i * 4, 0);
+        }
+        m.setU32(pModeStrc + 0x00, 9);
+        m.setU32(pModeStrc + 0x04, pUnit);
+        let bAnimSpeed = 0x64;
+        if (pUnit !== 0) {
+          const pMonStats2 = MONSTATS2_GetRecordPtr113c(m, m.u32(pUnit + 0x04) | 0);
+          if (pMonStats2 !== 0) {
+            const bFlag = m.u8(pMonStats2 + 0x105);
+            const pBitMasks = m.u32(0x6fd18be0);
+            if ((bFlag & m.u32(pBitMasks + 0x04)) !== 0) {
+              bAnimSpeed = 0x65;
+            }
+          }
+        }
+        m.setU8(pModeStrc + 0x15, bAnimSpeed);
+        m.setU32(pModeStrc + 0x08, pTarget);
+        MONSTER_StartMode113c(m, pGame, pUnit, 9, pTarget, 0, 0);
+        return;
+      }
+      if (bHasTargetInRange !== 0 && (m.u32(pGame + 0xa8) | 0) > (m.u32(pAiCmd + 0x18) | 0)) {
+        PATH_GetTargetTypeAndPosition113c(m, pTarget, pTargetPos);
+        const uX = m.u32(pUnitPos + 0x00);
+        const uY = m.u32(pUnitPos + 0x04);
+        const tX = m.u32(pTargetPos + 0x00);
+        const tY = m.u32(pTargetPos + 0x04);
+        if (uX >= tX && uY <= tY) {
+          AI_StartAttackMode113c(m, 4, pUnit, pGame, pTarget);
+          m.setU32(pAiCmd + 0x18, (m.u32(pGame + 0xa8) + 0x23) | 0);
+          return;
+        }
+        if (uX <= tX && uY >= tY) {
+          AI_StartAttackMode113c(m, 5, pUnit, pGame, pTarget);
+          m.setU32(pAiCmd + 0x18, (m.u32(pGame + 0xa8) + 0x23) | 0);
+          return;
+        }
+        AI_StartAttackMode113c(m, 8, pUnit, pGame, pTarget);
+        m.setU32(pAiCmd + 0x18, (m.u32(pGame + 0xa8) + 0x05) | 0);
+        return;
+      }
+      AI_StartAttackMode113c(m, 8, pUnit, pGame, pTarget);
+      return;
+    }
+    if (m.u32(pAiCmd + 0x14) !== 0) {
       SKILLS_SetUsedSkillMemPort113c(m, pUnit, 0);
       for (let i = 0; i < 8; i += 1) {
         m.setU32(pModeStrc + i * 4, 0);
       }
-      m.setU32(pModeStrc + 0x00, 9);
+      m.setU32(pModeStrc + 0x00, 8);
       m.setU32(pModeStrc + 0x04, pUnit);
       let bAnimSpeed = 0x64;
       if (pUnit !== 0) {
@@ -2684,63 +2798,18 @@ export function AI_TickEmergeQuadrantAttackAndSubmerge_6FCC5580_113c(
         if (pMonStats2 !== 0) {
           const bFlag = m.u8(pMonStats2 + 0x105);
           const pBitMasks = m.u32(0x6fd18be0);
-          if ((bFlag & m.u32(pBitMasks + 0x04)) !== 0) {
+          if ((bFlag & m.u32(pBitMasks)) !== 0) {
             bAnimSpeed = 0x65;
           }
         }
       }
       m.setU8(pModeStrc + 0x15, bAnimSpeed);
       m.setU32(pModeStrc + 0x08, pTarget);
-      MONSTER_StartMode113c(m, pGame, pUnit, 9, pTarget, 0, 0);
+      MONSTER_StartMode113c(m, pGame, pUnit, 8, pTarget, 0, 0);
       return;
     }
-    if (bHasTargetInRange !== 0 && (m.u32(pGame + 0xa8) | 0) > (m.u32(pAiCmd + 0x18) | 0)) {
-      PATH_GetTargetTypeAndPosition113c(m, pTarget, pTargetPos);
-      const uX = m.u32(pUnitPos + 0x00);
-      const uY = m.u32(pUnitPos + 0x04);
-      const tX = m.u32(pTargetPos + 0x00);
-      const tY = m.u32(pTargetPos + 0x04);
-      if (uX >= tX && uY <= tY) {
-        AI_StartAttackMode113c(m, 4, pUnit, pGame, pTarget);
-        m.setU32(pAiCmd + 0x18, (m.u32(pGame + 0xa8) + 0x23) | 0);
-        return;
-      }
-      if (uX <= tX && uY >= tY) {
-        AI_StartAttackMode113c(m, 5, pUnit, pGame, pTarget);
-        m.setU32(pAiCmd + 0x18, (m.u32(pGame + 0xa8) + 0x23) | 0);
-        return;
-      }
-      AI_StartAttackMode113c(m, 8, pUnit, pGame, pTarget);
-      m.setU32(pAiCmd + 0x18, (m.u32(pGame + 0xa8) + 0x05) | 0);
-      return;
-    }
-    AI_StartAttackMode113c(m, 8, pUnit, pGame, pTarget);
-    return;
-  }
-  if (m.u32(pAiCmd + 0x14) !== 0) {
-    SKILLS_SetUsedSkillMemPort113c(m, pUnit, 0);
-    for (let i = 0; i < 8; i += 1) {
-      m.setU32(pModeStrc + i * 4, 0);
-    }
-    m.setU32(pModeStrc + 0x00, 8);
-    m.setU32(pModeStrc + 0x04, pUnit);
-    let bAnimSpeed = 0x64;
-    if (pUnit !== 0) {
-      const pMonStats2 = MONSTATS2_GetRecordPtr113c(m, m.u32(pUnit + 0x04) | 0);
-      if (pMonStats2 !== 0) {
-        const bFlag = m.u8(pMonStats2 + 0x105);
-        const pBitMasks = m.u32(0x6fd18be0);
-        if ((bFlag & m.u32(pBitMasks)) !== 0) {
-          bAnimSpeed = 0x65;
-        }
-      }
-    }
-    m.setU8(pModeStrc + 0x15, bAnimSpeed);
-    m.setU32(pModeStrc + 0x08, pTarget);
-    MONSTER_StartMode113c(m, pGame, pUnit, 8, pTarget, 0, 0);
-    return;
-  }
-  AI_Stall113c(m, pGame, pUnit, 0x0f);
+    AI_Stall113c(m, pGame, pUnit, 0x0f);
+  });
 }
 
 /**
@@ -2758,13 +2827,14 @@ export function AI_TickTimedSkillCasterOrExpire_6FCC57E0_113c(
   const pMonStats = m.u32(pAiArgs + 0x1c);
   if ((m.u32(pAiCmd + 0x14) | 0) < (m.u32(pGame + 0xa8) | 0)) {
     SKILLS_SetUsedSkillMemPort113c(m, pUnit, 0);
-    const sp = m.alloc(0x20);
-    for (let i = 0; i < 8; i += 1) {
-      m.setU32(sp + i * 4, 0);
-    }
-    m.setU32(sp + 0x04, pUnit);
-    m.setU8(sp + 0x15, 0x64);
-    MONSTER_StartMode113c(m, pGame, pUnit, 0, 0, 0, 0);
+    withW4B6Stack(0x20, (sp) => {
+      for (let i = 0; i < 8; i += 1) {
+        m.setU32(sp + i * 4, 0);
+      }
+      m.setU32(sp + 0x04, pUnit);
+      m.setU8(sp + 0x15, 0x64);
+      MONSTER_StartMode113c(m, pGame, pUnit, 0, 0, 0, 0);
+    });
     return;
   }
   const pTarget = m.u32(pAiArgs + 0x08);
@@ -2797,25 +2867,26 @@ export function AI_TickAmbientMode8OrStall30_6FCC58D0_113c(
   m.setU32(pUnit + 0x24, seed.hi >>> 0);
   if (nRoll < 0x14) {
     SKILLS_SetUsedSkillMemPort113c(m, pUnit, 0);
-    const sp = m.alloc(0x20);
-    for (let i = 0; i < 8; i += 1) {
-      m.setU32(sp + i * 4, 0);
-    }
-    m.setU32(sp + 0x00, 8);
-    m.setU32(sp + 0x04, pUnit);
-    let bAnimSpeed = 0x64;
-    if (pUnit !== 0) {
-      const pMonStats2 = MONSTATS2_GetRecordPtr113c(m, m.u32(pUnit + 0x04) | 0);
-      if (pMonStats2 !== 0) {
-        const bFlag = m.u8(pMonStats2 + 0x105);
-        const pBitMasks = m.u32(0x6fd18be0);
-        if ((bFlag & m.u32(pBitMasks)) !== 0) {
-          bAnimSpeed = 0x65;
+    withW4B6Stack(0x20, (sp) => {
+      for (let i = 0; i < 8; i += 1) {
+        m.setU32(sp + i * 4, 0);
+      }
+      m.setU32(sp + 0x00, 8);
+      m.setU32(sp + 0x04, pUnit);
+      let bAnimSpeed = 0x64;
+      if (pUnit !== 0) {
+        const pMonStats2 = MONSTATS2_GetRecordPtr113c(m, m.u32(pUnit + 0x04) | 0);
+        if (pMonStats2 !== 0) {
+          const bFlag = m.u8(pMonStats2 + 0x105);
+          const pBitMasks = m.u32(0x6fd18be0);
+          if ((bFlag & m.u32(pBitMasks)) !== 0) {
+            bAnimSpeed = 0x65;
+          }
         }
       }
-    }
-    m.setU8(sp + 0x15, bAnimSpeed);
-    MONSTER_StartMode113c(m, pGame, pUnit, 8, 0, 0, 0);
+      m.setU8(sp + 0x15, bAnimSpeed);
+      MONSTER_StartMode113c(m, pGame, pUnit, 8, 0, 0, 0);
+    });
     return;
   }
   AI_Stall113c(m, pGame, pUnit, 0x1e);

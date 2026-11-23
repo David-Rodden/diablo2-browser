@@ -13,6 +13,7 @@ import { autoGoldPickupPlugin } from './auto-gold-pickup/index.ts'
 import { automapRevealPlugin } from './automap-reveal/index.ts'
 import { autoPotionPlugin } from './auto-potion/index.ts'
 import { beltRefillPlugin } from './belt-refill/index.ts'
+import { characterSkinsPlugin } from './character-skins/index.ts'
 import { dragInteractPlugin } from './drag-interact/index.ts'
 import { dropTrackerPlugin } from './drop-tracker/index.ts'
 import { experienceBarPlugin } from './experience-bar/index.ts'
@@ -40,6 +41,7 @@ export const BUILTIN_PLUGINS: readonly D2WebPlugin[] = [
   automapRevealPlugin,
   extendedViewportsPlugin,
   hudEnhancementsPlugin,
+  characterSkinsPlugin,
   groundItemBeamPlugin,
   quickCastPlugin,
   nextGamePlugin,
@@ -86,6 +88,7 @@ export const PLUGIN_MENU_LAYOUT: MenuLayout = {
     'run-timer': 'tracking',
     'experience-bar': 'tracking',
     'hud-enhancements': 'interface',
+    'character-skins': 'interface',
     'extended-viewports': 'interface',
     'next-game': 'interface',
     'trade-hall': 'interface',

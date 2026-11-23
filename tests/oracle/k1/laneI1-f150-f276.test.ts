@@ -87,6 +87,8 @@ describe('K1R14 Lane I1: D2Game post-F150 coverage gap closure Part 1 (F150..F27
     expect(m.u32((pList + 0x04) >>> 0)).toBe(303)
     expect(QUESTS_GuidListRemove113c(m, pList, 999)).toBe(0)
 
+    m.setU32(0x6fd31c20, 0)
+
     // 2. QUESTS_TriggerCallback113c (0x6FC53CE0)
     const pGame = m.alloc(0x2000)
     const pQuestCtrl = m.alloc(0x40)
@@ -94,9 +96,10 @@ describe('K1R14 Lane I1: D2Game post-F150 coverage gap closure Part 1 (F150..F27
     const pQuest = m.alloc(0x100)
     m.setU32((pQuest + 0x04) >>> 0, pGame)
     m.setU8((pQuest + 0x08) >>> 0, 0) // act 0
+    m.setU8((pQuest + 0x09) >>> 0, 1) // bNotIntro
     m.setU8((pQuest + 0x0a) >>> 0, 1) // active
-    m.setU32((pQuest + 0xa0 + 3 * 4) >>> 0, 0x6fc83dd0) // callback[3] = ACT1Q1_Callback03_LevelChanged
-    const pQuestData1 = m.alloc(0x80)
+    m.setU32((pQuest + 0xa0 + 3 * 4) >>> 0, 0x6fc83dd0) // callback[3] = ACT1Q1_Callback03_LevelChanged (Act 1 Q6 Andariel)
+    const pQuestData1 = m.alloc(0x100)
     m.setU32((pQuest + 0x18) >>> 0, pQuestData1)
     m.setU32(pQuestCtrl >>> 0, pQuest)
 
@@ -110,21 +113,32 @@ describe('K1R14 Lane I1: D2Game post-F150 coverage gap closure Part 1 (F150..F27
     m.setU32(pArg >>> 0, pGame)
     m.setU32((pArg + 0x04) >>> 0, 3) // callback index 3
     m.setU32((pArg + 0x0c) >>> 0, pPlayer)
-    m.setU32((pArg + 0x14) >>> 0, 2) // Blood Moor
-    m.setU32((pArg + 0x18) >>> 0, 8) // Den of Evil
+    m.setU32((pArg + 0x14) >>> 0, 0x24) // Catacombs Level 3
+    m.setU32((pArg + 0x18) >>> 0, 0x25) // Catacombs Level 4
 
     QUESTS_TriggerCallback113c(m, pArg, 1, 0)
-    expect(m.u8((pQuestData1 + 0x00) >>> 0)).toBe(1)
+    expect(m.u8((pQuest + 0x0c) >>> 0)).toBe(3)
+    expect(m.u8((pQuest + 0x0b) >>> 0)).toBe(2)
 
     // 3. QUESTS_NotifyLevelChange113c (0x6FC54860)
-    m.setU8((pQuestData1 + 0x00) >>> 0, 0)
-    QUESTS_NotifyLevelChange113c(m, pGame, pPlayer, 2, 8)
-    expect(m.u8((pQuestData1 + 0x00) >>> 0)).toBe(1)
+    m.setU8((pQuest + 0x0c) >>> 0, 0)
+    m.setU8((pQuest + 0x0b) >>> 0, 0)
+    QUESTS_NotifyLevelChange113c(m, pGame, pPlayer, 0x24, 0x25)
+    expect(m.u8((pQuest + 0x0c) >>> 0)).toBe(3)
+    expect(m.u8((pQuest + 0x0b) >>> 0)).toBe(2)
   })
 
   it('verifies F150 Act 1, Act 2, Act 3, and Act 4 level-changed quest callbacks (27 VAs)', () => {
     const { m } = createLaneI1Memory()
+    m.setU32(0x6fd31c20, 0)
     const pGame = m.alloc(0x2000)
+    const pQuestCtrl = m.alloc(0x40)
+    const pGlobalQuestFlags = m.alloc(0x100)
+    m.setU32(pGlobalQuestFlags >>> 0, m.alloc(0x80))
+    m.setU32((pQuestCtrl + 0x08) >>> 0, 1)
+    m.setU32((pQuestCtrl + 0x0c) >>> 0, pGlobalQuestFlags)
+    m.setU32((pGame + 0x10f4) >>> 0, pQuestCtrl)
+
     const pPlayer = m.alloc(0x100)
     m.setU32((pPlayer + 0x0c) >>> 0, 77)
     const pPlayerData = m.alloc(0x100)
@@ -136,40 +150,81 @@ describe('K1R14 Lane I1: D2Game post-F150 coverage gap closure Part 1 (F150..F27
     const pQuest = m.alloc(0x100)
     const pQuestData = m.alloc(0x400)
     m.setU32((pQuest + 0x04) >>> 0, pGame)
+    m.setU8((pQuest + 0x09) >>> 0, 1)
     m.setU8((pQuest + 0x0a) >>> 0, 1)
     m.setU32((pQuest + 0x18) >>> 0, pQuestData)
+    m.setU32((pQuest + 0xec) >>> 0, pQuestData)
+
+    const pQuest24 = m.alloc(0x100)
+    m.setU32(pQuest24 >>> 0, 0x24)
+    m.setU32((pQuest24 + 0x04) >>> 0, pGame)
+    m.setU32((pQuest24 + 0xec) >>> 0, m.alloc(0x100))
+    m.setU32(pQuestCtrl >>> 0, pQuest)
+    m.setU32((pQuest + 0xf4) >>> 0, pQuest24)
 
     const pArg = m.alloc(0x28)
     m.setU32(pArg >>> 0, pGame)
     m.setU32((pArg + 0x0c) >>> 0, pPlayer)
 
-    // Act 1 callbacks
-    m.setU32((pArg + 0x14) >>> 0, 1)
-    m.setU32((pArg + 0x18) >>> 0, 8)
+    // Act 1 callbacks (actual D2Game Quest IDs: 0x6FC83DD0=Q6, 0x6FC842D0=Q4, 0x6FC84D30=Q5, 0x6FC84ED0=Q2, 0x6FC85040=Q1, 0x6FC884B0=Q3)
+    m.setU32((pQuest + 0xe0) >>> 0, 6)
+    m.setU8((pQuest + 0x0c) >>> 0, 0)
+    m.setU8((pQuest + 0x0b) >>> 0, 0)
+    m.setU32((pArg + 0x14) >>> 0, 0x24)
+    m.setU32((pArg + 0x18) >>> 0, 0x25)
     ACT1Q1_Callback03_LevelChanged113c(m, pQuest, pArg)
-    expect(m.u8((pQuestData + 0x00) >>> 0)).toBe(1)
+    expect(m.u8((pQuest + 0x0c) >>> 0)).toBe(3)
+    expect(m.u8((pQuest + 0x0b) >>> 0)).toBe(2)
 
-    m.setU8((pQuestData + 0x87) >>> 0, 1)
-    m.setU32((pArg + 0x14) >>> 0, 2)
-    m.setU32((pArg + 0x18) >>> 0, 17)
+    m.setU32((pQuest + 0xe0) >>> 0, 5)
+    m.setU8((pQuest + 0x0c) >>> 0, 0)
+    m.setU8((pQuest + 0x0b) >>> 0, 0)
+    m.setU32((pArg + 0x14) >>> 0, 6)
+    m.setU32((pArg + 0x18) >>> 0, 0x14)
     ACT1Q2_Callback03_LevelChanged113c(m, pQuest, pArg)
-    expect(m.u32((pQuest + 0xb0) >>> 0)).toBe(0x6fc81250)
+    expect(m.u8((pQuest + 0x0c) >>> 0)).toBe(2)
+    expect(m.u8((pQuest + 0x0b) >>> 0)).toBe(3)
 
-    m.setU32((pArg + 0x1c) >>> 0, 1)
-    m.setU32((pArg + 0x20) >>> 0, 4)
+    m.setU32((pQuest + 0xe0) >>> 0, 3)
+    m.setU8((pQuest + 0x0c) >>> 0, 2)
+    m.setU8((pQuest + 0x0b) >>> 0, 0)
+    m.setU32((pQuest + 0xac) >>> 0, 1)
+    m.setU32((pArg + 0x14) >>> 0, 1)
+    m.setU32((pArg + 0x18) >>> 0, 2)
     ACT1Q4_Callback03_LevelChanged113c(m, pQuest, pArg)
+    expect(m.u8((pQuest + 0x0c) >>> 0)).toBe(3)
+    expect(m.u32((pQuest + 0xac) >>> 0)).toBe(0)
 
-    m.setU32((pArg + 0x1c) >>> 0, 27)
-    m.setU32((pArg + 0x20) >>> 0, 28)
+    m.setU32((pQuest + 0xe0) >>> 0, 2)
+    m.setU8((pQuest + 0x0c) >>> 0, 0)
+    m.setU8((pQuest + 0x0b) >>> 0, 0)
+    m.setU32((pArg + 0x14) >>> 0, 3)
+    m.setU32((pArg + 0x18) >>> 0, 0x11)
     ACT1Q5_Callback03_LevelChanged113c(m, pQuest, pArg)
+    expect(m.u8((pQuest + 0x0c) >>> 0)).toBe(3)
+    expect(m.u8((pQuest + 0x0b) >>> 0)).toBe(2)
 
-    m.setU32((pArg + 0x1c) >>> 0, 34)
-    m.setU32((pArg + 0x20) >>> 0, 37)
+    m.setU32((pQuest + 0xe0) >>> 0, 1)
+    m.setU8((pQuest + 0x0c) >>> 0, 1)
+    m.setU8((pQuest + 0x0b) >>> 0, 0)
+    m.setU8((pQuestData + 0x85) >>> 0, 0)
+    m.setU32((pArg + 0x14) >>> 0, 2)
+    m.setU32((pArg + 0x18) >>> 0, 8)
     ACT1Q6_Callback03_LevelChanged113c(m, pQuest, pArg)
+    expect(m.u8((pQuestData + 0x85) >>> 0)).toBe(1)
+    expect(m.u8((pQuest + 0x0c) >>> 0)).toBe(3)
+    expect(m.u8((pQuest + 0x0b) >>> 0)).toBe(2)
 
-    m.setU32((pArg + 0x1c) >>> 0, 5)
-    m.setU32((pArg + 0x20) >>> 0, 6)
+    m.setU32((pQuest + 0xe0) >>> 0, 4)
+    m.setU8((pQuest + 0x0c) >>> 0, 6)
+    m.setU8((pQuest + 0x0b) >>> 0, 0)
+    m.setU8((pQuestData + 0x50) >>> 0, 0)
+    m.setU8((pQuestData + 0x51) >>> 0, 0)
+    m.setU32((pArg + 0x14) >>> 0, 4)
+    m.setU32((pArg + 0x18) >>> 0, 0x26)
     ACT1Q3_Callback03_LevelChanged113c(m, pQuest, pArg)
+    expect(m.u8((pQuest + 0x0c) >>> 0)).toBe(5)
+    expect(m.u8((pQuest + 0x0b) >>> 0)).toBe(4)
 
     // Act 2 callbacks
     m.setU32((pArg + 0x1c) >>> 0, 40)
@@ -209,15 +264,49 @@ describe('K1R14 Lane I1: D2Game post-F150 coverage gap closure Part 1 (F150..F27
     ACT3Q7_Callback03_LevelChanged113c(m, pQuest, pArg)
     ACT3Q8_Callback03_LevelChanged113c(m, pQuest, pArg)
 
-    // Act 4 callbacks
-    m.setU32((pArg + 0x1c) >>> 0, 103)
-    m.setU32((pArg + 0x20) >>> 0, 105)
+    // Act 5 (labelled ACT4* in k1r14 binding) callbacks
+    m.setU8((pQuest + 0x09) >>> 0, 1)
+    m.setU32((pQuest + 0xe0) >>> 0, 0x28)
+    m.setU8((pQuest + 0x0c) >>> 0, 0)
+    m.setU8((pQuest + 0x0b) >>> 0, 0)
+    m.setU32((pArg + 0x14) >>> 0, 0x82)
+    m.setU32((pArg + 0x18) >>> 0, 0x83)
     ACT4Q1_Callback03_LevelChanged113c(m, pQuest, pArg)
-    ACT4Q1_Callback03_AltLevelChanged113c(m, pQuest, pArg)
+
+    m.setU32((pQuest + 0xe0) >>> 0, 0x27)
+    m.setU8((pQuest + 0x0c) >>> 0, 0)
+    m.setU8((pQuest + 0x0b) >>> 0, 0)
+    m.setU32((pArg + 0x14) >>> 0, 0x76)
+    m.setU32((pArg + 0x18) >>> 0, 0x78)
     ACT4Q2_Callback03_LevelChanged113c(m, pQuest, pArg)
-    ACT4Q2_Callback03_AltLevelChanged113c(m, pQuest, pArg)
-    ACT4Q2_Hellforge_Callback03_LevelChanged113c(m, pQuest, pArg)
+
+    m.setU32((pQuest + 0xe0) >>> 0, 0x26)
+    m.setU8((pQuest + 0x0c) >>> 0, 2)
+    m.setU32((pArg + 0x14) >>> 0, 0x6d)
+    m.setU32((pArg + 0x18) >>> 0, 0x79)
     ACT4Q3_Callback03_LevelChanged113c(m, pQuest, pArg)
+
+    m.setU32((pQuest + 0xe0) >>> 0, 0x24)
+    m.setU8((pQuest + 0x0c) >>> 0, 0)
+    m.setU8((pQuest + 0x0b) >>> 0, 0)
+    m.setU32((pArg + 0x14) >>> 0, 0x6d)
+    m.setU32((pArg + 0x18) >>> 0, 0x6f)
+    ACT4Q1_Callback03_AltLevelChanged113c(m, pQuest, pArg)
+
+    m.setU32((pQuest + 0xe0) >>> 0, 0x23)
+    m.setU8((pQuest + 0x0c) >>> 0, 0)
+    m.setU8((pQuest + 0x0b) >>> 0, 0)
+    m.setU32((pArg + 0x14) >>> 0, 0x6d)
+    m.setU32((pArg + 0x18) >>> 0, 0x6e)
+    ACT4Q2_Callback03_AltLevelChanged113c(m, pQuest, pArg)
+
+    m.setU32((pQuest + 0xe0) >>> 0, 0x25)
+    m.setU8((pQuest + 0x0c) >>> 0, 0)
+    m.setU8((pQuest + 0x0b) >>> 0, 0)
+    m.setU8((pQuestData + 0x38) >>> 0, 0)
+    m.setU32((pArg + 0x14) >>> 0, 0x6d)
+    m.setU32((pArg + 0x18) >>> 0, 0x72)
+    ACT4Q2_Hellforge_Callback03_LevelChanged113c(m, pQuest, pArg)
   })
 
   it('verifies F150 arena player counter and NPC vendor/mercenary slot sync (3 VAs)', () => {

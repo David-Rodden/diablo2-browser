@@ -490,7 +490,8 @@ KERN_BINDINGS_113C = [
         "name": "GAME_InitSeed",
         "kernFile": "src/d2kern-113c/game/game-strc.ts",
         "tsSymbol": "GAME_InitSeed113c",
-        "status": "ported",
+        "status": "diff-verified",
+        "diffEvidence": "Wave 17 1:1 PE32 disassembly verification against D2Game.dll@0x6FC4A900 (150B) in tests/oracle/k2/k2-disasm-verified-wave17.test.ts. Implemented 0x6FD2E354 forced/dynamic QPC seed branches calling SEED_InitSeed/SEED_InitLowSeed/SEED_GenerateLoopSeed.",
     },
     {
         "module": "D2Game",
@@ -580,8 +581,8 @@ KERN_BINDINGS_113C = [
         "name": "SUNIT_GetLastAttacker",
         "kernFile": "src/d2kern-113c/game/timer-wheel.ts",
         "tsSymbol": "SUNIT_GetLastAttacker113c",
-        "status": "ported",
-        "diffEvidence": "EVENT_TIMER_SEQ_CALL exercises state 0x5C death attacker lookup; full pet/owner redirect chain pending",
+        "status": "diff-verified",
+        "diffEvidence": "Wave 17 1:1 PE32 disassembly verification against D2Game.dll@0x6FD009D0 (76B) in tests/oracle/k2/k2-disasm-verified-wave17.test.ts (dwFlags2 & 0x20000 -> SUNIT_GetServerUnit([+0x9C], [+0xA0])).",
     },
     {
         "module": "D2Game",
@@ -779,7 +780,8 @@ KERN_BINDINGS_113C = [
         "name": "MONSTER_NullModeEventFallback",
         "kernFile": "src/d2kern-113c/game/monster-events.ts",
         "tsSymbol": "MONSTER_NullModeEventFallback113c",
-        "status": "ported",
+        "status": "diff-verified",
+        "diffEvidence": "Wave 17 1:1 PE32 disassembly verification against D2Game.dll@0x6FC950F0 (106B) in tests/oracle/k2/k2-disasm-verified-wave17.test.ts. Switched to canonical SKILLS_SetUsedSkillMemPort113c (D2Common:0x6FD803E0) and matched pUnit==0 dead check.",
     },
     # --- src/d2kern-113c/game/fallen-ai-113c.ts ---
     {
@@ -902,10 +904,11 @@ KERN_BINDINGS_113C = [
     {
         "module": "D2Game",
         "va": 0x6FC40D50,
-        "name": "AIGENERAL_PromoteNextPackLeader",
+        "name": "AIGENERAL_GetOwnerData",
         "kernFile": "src/d2kern-113c/game/k2-real-s2c-combat-113c.ts",
-        "tsSymbol": "promotePackLeaderOnDeath113c",
-        "status": "ported",
+        "tsSymbol": "AIGENERAL_GetOwnerData_6FC40D50_113c",
+        "status": "diff-verified",
+        "diffEvidence": "Wave 17 1:1 PE32 disassembly verification against D2Game.dll@0x6FC40D50 (58B) in tests/oracle/k2/k2-disasm-verified-wave17.test.ts. Rebound from misbound pack-leader helper to real AIGENERAL_GetOwnerData and wired callers in a1c-post150 and k2-w6b1.",
     },
     {
         "module": "D2Game",
@@ -1502,6 +1505,269 @@ class ModuleAnalyzer:
                 0x6FDD3990: [0x6FD90C20, 0x6FD922A0, 0x6FD922F0, 0x6FD92A70],
                 0x6FDD3B30: [0x6FD90DB0, 0x6FD92270, 0x6FD92370],
             }
+        elif self.mod_name == "D2Game":
+            # PE32-verified static dispatch tables (indirect-audit-batch{A,B,C,D}.json)
+            table_ranges = [
+                (0x6FD1A078, 0x6FD1A3B0),  # c2sPacketTable (103*8B, 91 non-NULL VAs; 0x6FCEC550)
+                (0x6FD1A3B0, 0x6FD1A3D8),  # party relation action table (10 entries; 0x6FD10A70)
+                (0x6FD1A5E8, 0x6FD1A5F8),  # cube special output / trade callbacks (4 entries; 0x6FC92220)
+                (0x6FD1A5F8, 0x6FD1A718),  # shrinesEffectDispatchTable (24*12B; 0x6FC8DA00)
+                (0x6FD1B110, 0x6FD1B14C),  # unitTimerTypeHandlers missile timer table (15 entries; 0x6FCAEDD0)
+                (0x6FD1BB74, 0x6FD1BBB0),  # playerEventFunctionsTable object timer table (15 entries; 0x6FCAECC0)
+                (0x6FD1BC1C, 0x6FD1BC20),  # monsterEventFunctionsTable[2] -> AI_RunMonsterAI (0x6FC96A50/B20/BF0)
+                (0x6FD1BDB8, 0x6FD1BDF4),  # item timer event table (15 entries; 0x6FCAEF20)
+                (0x6FD22CE0, 0x6FD22DD0),  # itemActionPacketSubTable / player mode sync (20*12B; 0x6FCEB8F0)
+                (0x6FD274A8, 0x6FD277A4),  # skillsSrvDoFuncTable (191 entries; 0x6FCBE420)
+                (0x6FD279D0, 0x6FD27A20),  # playerSkillModeHandlersTable[0..19] (20 entries; 0x6FC99A10)
+                (0x6FD27B8C, 0x6FD27BB4),  # object trap/spawn dispatch table (10 entries; 0x6FC89970)
+                (0x6FD27BB8, 0x6FD27D4C),  # objects operate fn table (101 entries; 0x6FC8A330)
+                (0x6FD27D50, 0x6FD27E4C),  # object effect roll table (21*12B; 0x6FC89E50)
+                (0x6FD2D970, 0x6FD2DA44),  # missiles SrvDoFunc table (53 entries; 0x6FC5E3F0)
+                (0x6FD2DA48, 0x6FD2DB64),  # missiles SrvHitFunc table (71 entries; 0x6FC5EDE0)
+                (0x6FD2DB68, 0x6FD2DBE4),  # missiles SrvDmgFunc table (31 entries; 0x6FC5EDE0)
+                (0x6FD2DBF0, 0x6FD2DF68),  # quest descriptor init table (37*24B; 0x6FC548A0)
+                (0x6FD2DF6C, 0x6FD2DF8C),  # intro quest init table (4*8B; 0x6FC548A0)
+                (0x6FD2E050, 0x6FD2E190),  # objectsInitFnTable (80 entries, 76 non-NULL VAs; 0x6FC4F300)
+                (0x6FD2E190, 0x6FD2E1B8),  # object room-spawner table (10 entries, 9 non-NULL VAs; 0x6FC4F0D0)
+                (0x6FD2E1BC, 0x6FD2E1E0),  # preset object spawner sub-table (9 entries; 0x6FC4E830)
+                (0x6FD2E300, 0x6FD2E334),  # level-object hook table (7*8B at 0x6FD2E2FC..0x6FD2E334, pfn at +4; 0x6FC4EAD0)
+                (0x6FD2E550, 0x6FD2E5FC),  # monUModTable (43 entries; 0x6FC41840/32B0/46D0/48A0, 0x6FCB1660)
+                (0x6FD2F850, 0x6FD2F86C),  # npcPathNodeActionTable (7 entries, 5 non-NULL VAs; 0x6FC3BBC0)
+            ]
+            for lo, hi in table_ranges:
+                targets = sorted(
+                    {
+                        val
+                        for slot, val in self.non_text_code_relocs.items()
+                        if lo <= slot < hi and self.tstart <= val < self.tend
+                    }
+                )
+                if targets:
+                    self.fn_ptr_tables[lo] = targets
+            # Paired stride-8 playerModeChangeTable (0x6FD1A3F8..0x6FD1A498, 20*8B):
+            # offset +0 = atCoords (0x6FD1A3F8; 0x6FC98550), offset +4 = onUnit (0x6FD1A3FC; 0x6FC98430).
+            for base_off in (0x6FD1A3F8, 0x6FD1A3FC):
+                targets = sorted(
+                    {
+                        val
+                        for slot, val in self.non_text_code_relocs.items()
+                        if base_off <= slot < 0x6FD1A498
+                        and (slot - base_off) % 8 == 0
+                        and self.tstart <= val < self.tend
+                    }
+                )
+                if targets:
+                    self.fn_ptr_tables[base_off] = targets
+            # Paired stride-8 spell-icon / scroll dispatch table (0x6FD27238..0x6FD27330, 31*8B; 0x6FCCD0F0):
+            # offset +0 = pfnPhase1 (0x6FD27238), offset +4 = pfnPhase2 (0x6FD2723C).
+            for base_off in (0x6FD27238, 0x6FD2723C):
+                targets = sorted(
+                    {
+                        val
+                        for slot, val in self.non_text_code_relocs.items()
+                        if base_off <= slot < 0x6FD27330
+                        and (slot - base_off) % 8 == 0
+                        and self.tstart <= val < self.tend
+                    }
+                )
+                if targets:
+                    self.fn_ptr_tables[base_off] = targets
+            # 43x6 stride-24 monUModCallbackMatrixTable (0x6FD2F448..0x6FD2F850; 0x6FC468E0):
+            # cols 0..4 indexed via [ecx*4+0x6FD2F448] (0x6FC46951), col 5 via [ecx*8+0x6FD2F45C] (0x6FC46987).
+            umod_cols0_4 = sorted(
+                {
+                    val
+                    for slot, val in self.non_text_code_relocs.items()
+                    if 0x6FD2F448 <= slot < 0x6FD2F850
+                    and (slot - 0x6FD2F448) % 24 != 20
+                    and self.tstart <= val < self.tend
+                }
+            )
+            umod_col5 = sorted(
+                {
+                    val
+                    for slot, val in self.non_text_code_relocs.items()
+                    if 0x6FD2F448 <= slot < 0x6FD2F850
+                    and (slot - 0x6FD2F448) % 24 == 20
+                    and self.tstart <= val < self.tend
+                }
+            )
+            if umod_cols0_4:
+                self.fn_ptr_tables[0x6FD2F448] = umod_cols0_4
+            if umod_col5:
+                self.fn_ptr_tables[0x6FD2F45C] = umod_col5
+            # Contiguous stride-16 AI tables (0x6FD2E668..0x6FD2F0C8 = 18 hireling/pet + 148 monster rows):
+            # col +4 (pfnInit, 18 unique VAs) invoked via [edi+4] in AI_InitMonsterAiThinkFn (0x6FCBD230).
+            ai_init_fn_targets = sorted(
+                {
+                    val
+                    for slot, val in self.non_text_code_relocs.items()
+                    if 0x6FD2E668 <= slot < 0x6FD2F0C8
+                    and (slot - 0x6FD2E668) % 16 == 4
+                    and self.tstart <= val < self.tend
+                }
+            )
+            if ai_init_fn_targets:
+                self.fn_ptr_tables[0x6FD2E66C] = ai_init_fn_targets
+
+            # PE32-verified struct-field / inline-immediate dispatch target sets (indirect-audit-batch{A,B,C,D}.json)
+            quest_pf_seq_filter = [
+                0x6FC767A0, 0x6FC76B10, 0x6FC76BD0, 0x6FC76D10, 0x6FC79930, 0x6FC7AFB0,
+                0x6FC801B0, 0x6FC806E0, 0x6FC846D0, 0x6FC84AA0, 0x6FC84E10, 0x6FC85410,
+                0x6FCD8A70, 0x6FCDA270, 0x6FCDA4F0, 0x6FCE21E0, 0x6FCE24A0, 0x6FCE6390,
+                0x6FCE69D0, 0x6FD02A40, 0x6FD02B70, 0x6FD02D40, 0x6FD02E80, 0x6FD02F00,
+                0x6FD07050,
+            ]
+            quest_pf_status_filter = [
+                0x6FC768C0, 0x6FC76E00, 0x6FC76EA0, 0x6FC7B8C0, 0x6FC80170, 0x6FC80800,
+                0x6FC80810, 0x6FC85500, 0x6FCD87D0, 0x6FCD8B80, 0x6FCE1960, 0x6FCE1970,
+                0x6FCE1D30, 0x6FCE25C0, 0x6FCE25E0, 0x6FCE3BD0, 0x6FD028B0, 0x6FD03030,
+                0x6FD03040, 0x6FD03CE0, 0x6FD045B0, 0x6FD04AB0, 0x6FD06E00,
+            ]
+            self.vtable_call_targets = {
+                # Inline 2-way code-immediate dispatches (dwClassId == 0x20F Frozen Anya vs Cain)
+                0x6FC3BDF0: [0x6FC76A00, 0x6FC7CC30, 0x6FC80400, 0x6FC863A0],
+                0x6FC3BF60: [0x6FC76A40, 0x6FC77CB0, 0x6FC7CC30, 0x6FC80450, 0x6FC81340, 0x6FC863A0],
+                # D2QuestTimerStrc.pfCallback (+0x00, 21 handlers)
+                0x6FC53B70: [
+                    0x6FC79CD0, 0x6FC7C480, 0x6FC7E660, 0x6FC83210, 0x6FC83A80, 0x6FC83B50,
+                    0x6FC83D20, 0x6FC87A90, 0x6FC87C60, 0x6FC88250, 0x6FCDA960, 0x6FCDBDC0,
+                    0x6FCE58B0, 0x6FCE5BE0, 0x6FCE5E30, 0x6FCE6010, 0x6FCE6AF0, 0x6FCE94E0,
+                    0x6FD057D0, 0x6FD068B0, 0x6FD08F30,
+                ],
+                # D2QuestDataStrc.pfCallback[8] (+0xC0, 23 monster-kill handlers; Batch D)
+                0x6FC53C70: [
+                    0x6FC7A310, 0x6FC7B690, 0x6FC7BDB0, 0x6FC7EED0, 0x6FC7FE30, 0x6FC80180,
+                    0x6FC85620, 0x6FC85760, 0x6FC85A70, 0x6FC87E00, 0x6FC88B90, 0x6FCDA810,
+                    0x6FCDABF0, 0x6FCDC2C0, 0x6FCE1980, 0x6FCE2450, 0x6FCE66B0, 0x6FCE7540,
+                    0x6FCE97D0, 0x6FD07DB0, 0x6FD08010, 0x6FD08140, 0x6FD09A10,
+                ],
+                # D2QuestDataStrc.pfCallback[0..15] (+0xA0..+0xDC, 208 handlers)
+                0x6FC53CE0: [
+                    0x6FC76EB0, 0x6FC76FC0, 0x6FC77270, 0x6FC77540, 0x6FC775D0, 0x6FC77A20,
+                    0x6FC77DD0, 0x6FC77E80, 0x6FC78040, 0x6FC781A0, 0x6FC78240, 0x6FC782A0,
+                    0x6FC787A0, 0x6FC78930, 0x6FC79450, 0x6FC796B0, 0x6FC797B0, 0x6FC79BE0,
+                    0x6FC7A0A0, 0x6FC7A310, 0x6FC7A530, 0x6FC7A720, 0x6FC7A9B0, 0x6FC7AB60,
+                    0x6FC7AD50, 0x6FC7AE20, 0x6FC7B1E0, 0x6FC7B380, 0x6FC7B4F0, 0x6FC7B690,
+                    0x6FC7B7A0, 0x6FC7BDB0, 0x6FC7C9E0, 0x6FC7D520, 0x6FC7D920, 0x6FC7EED0,
+                    0x6FC7F200, 0x6FC7F3F0, 0x6FC7F5E0, 0x6FC7FE30, 0x6FC80180, 0x6FC808B0,
+                    0x6FC80A30, 0x6FC80E00, 0x6FC811B0, 0x6FC81540, 0x6FC81880, 0x6FC818D0,
+                    0x6FC81A80, 0x6FC81BE0, 0x6FC81C00, 0x6FC81E30, 0x6FC81F30, 0x6FC820E0,
+                    0x6FC82170, 0x6FC82410, 0x6FC82490, 0x6FC82E50, 0x6FC82F00, 0x6FC83190,
+                    0x6FC83570, 0x6FC835D0, 0x6FC836C0, 0x6FC83730, 0x6FC83870, 0x6FC83AD0,
+                    0x6FC83C40, 0x6FC83DD0, 0x6FC83F90, 0x6FC842D0, 0x6FC84430, 0x6FC84D30,
+                    0x6FC84ED0, 0x6FC85040, 0x6FC85260, 0x6FC85440, 0x6FC854A0, 0x6FC855F0,
+                    0x6FC85620, 0x6FC85760, 0x6FC85A70, 0x6FC86CE0, 0x6FC87000, 0x6FC87E00,
+                    0x6FC884B0, 0x6FC88920, 0x6FC88B90, 0x6FCB85D0, 0x6FCD87F0, 0x6FCD8C00,
+                    0x6FCD8CC0, 0x6FCD8E60, 0x6FCD8F20, 0x6FCD8FE0, 0x6FCD9320, 0x6FCD94D0,
+                    0x6FCD9730, 0x6FCD97A0, 0x6FCD9830, 0x6FCD9DE0, 0x6FCDA100, 0x6FCDA1E0,
+                    0x6FCDA330, 0x6FCDA3A0, 0x6FCDA550, 0x6FCDA5E0, 0x6FCDA810, 0x6FCDAA50,
+                    0x6FCDABF0, 0x6FCDB1B0, 0x6FCDB250, 0x6FCDC2C0, 0x6FCE1980, 0x6FCE23C0,
+                    0x6FCE2450, 0x6FCE2720, 0x6FCE27C0, 0x6FCE2900, 0x6FCE29C0, 0x6FCE2AF0,
+                    0x6FCE2DC0, 0x6FCE2E20, 0x6FCE2F00, 0x6FCE3320, 0x6FCE3620, 0x6FCE3970,
+                    0x6FCE39B0, 0x6FCE3A80, 0x6FCE3E10, 0x6FCE3EB0, 0x6FCE3EC0, 0x6FCE41D0,
+                    0x6FCE44D0, 0x6FCE44E0, 0x6FCE4550, 0x6FCE4620, 0x6FCE4690, 0x6FCE4780,
+                    0x6FCE4900, 0x6FCE4A40, 0x6FCE5A60, 0x6FCE5DB0, 0x6FCE5F30, 0x6FCE61C0,
+                    0x6FCE6450, 0x6FCE66B0, 0x6FCE67C0, 0x6FCE6B30, 0x6FCE6E00, 0x6FCE6E90,
+                    0x6FCE72C0, 0x6FCE73A0, 0x6FCE7540, 0x6FCE7DC0, 0x6FCE8050, 0x6FCE85A0,
+                    0x6FCE9190, 0x6FCE97D0, 0x6FD02D00, 0x6FD02EF0, 0x6FD03050, 0x6FD03120,
+                    0x6FD03390, 0x6FD03850, 0x6FD03960, 0x6FD03B30, 0x6FD03B40, 0x6FD03E00,
+                    0x6FD041A0, 0x6FD049E0, 0x6FD050C0, 0x6FD051C0, 0x6FD05220, 0x6FD05270,
+                    0x6FD05450, 0x6FD05540, 0x6FD055F0, 0x6FD056E0, 0x6FD06000, 0x6FD06190,
+                    0x6FD06910, 0x6FD069E0, 0x6FD06A60, 0x6FD06B20, 0x6FD06BD0, 0x6FD06CF0,
+                    0x6FD06D90, 0x6FD06F60, 0x6FD06FE0, 0x6FD07080, 0x6FD071D0, 0x6FD07560,
+                    0x6FD07640, 0x6FD07770, 0x6FD07880, 0x6FD07940, 0x6FD07A10, 0x6FD07A40,
+                    0x6FD07AF0, 0x6FD07BE0, 0x6FD07DB0, 0x6FD08010, 0x6FD08140, 0x6FD089A0,
+                    0x6FD08B60, 0x6FD08FE0, 0x6FD09600, 0x6FD09A10,
+                ],
+                # D2QuestDataStrc.pfCallback[5] (+0xB4, 2 item-drop handlers; Batch D)
+                0x6FC54510: [0x6FCE3E10, 0x6FD07A40],
+                # D2QuestDataStrc.pfCallback[4] (+0xB0, 8 item-pickup handlers; Batch D)
+                0x6FC545A0: [
+                    0x6FC83570, 0x6FC83730, 0x6FCDA330, 0x6FCE5F30, 0x6FD06190, 0x6FD07640,
+                    0x6FD07770, 0x6FD07AF0,
+                ],
+                # D2QuestDataStrc.pfCallback[9] (+0xC4, 7 quest-item refresh handlers)
+                0x6FC54760: [
+                    0x6FC836C0, 0x6FC854A0, 0x6FCD87F0, 0x6FCE23C0, 0x6FD02D00, 0x6FD06B20,
+                    0x6FD06FE0,
+                ],
+                # D2QuestDataStrc.pfActiveFilter (+0xEC, 40 NPC-alert filter handlers)
+                0x6FC54EA0: [
+                    0x6FC76810, 0x6FC76840, 0x6FC76C40, 0x6FC76D80, 0x6FC76EF0, 0x6FC77F50,
+                    0x6FC79680, 0x6FC80660, 0x6FC80750, 0x6FC807D0, 0x6FC80820, 0x6FC80940,
+                    0x6FC80F20, 0x6FC81750, 0x6FC81B70, 0x6FC82DF0, 0x6FCD8810, 0x6FCD8970,
+                    0x6FCD8AE0, 0x6FCD8B50, 0x6FCD8B90, 0x6FCE1C20, 0x6FCE1E10, 0x6FCE2080,
+                    0x6FCE2250, 0x6FCE2520, 0x6FCE2590, 0x6FCE25D0, 0x6FCE25F0, 0x6FCE2750,
+                    0x6FCE5440, 0x6FD028A0, 0x6FD028C0, 0x6FD02AB0, 0x6FD03000, 0x6FD04030,
+                    0x6FD04500, 0x6FD04F60, 0x6FD053F0, 0x6FD055C0,
+                ],
+                # D2QuestDataStrc.pfStatusFilter (+0xE8, 23 status filter handlers)
+                0x6FC554F0: quest_pf_status_filter,
+                0x6FC55640: quest_pf_status_filter,
+                # D2QuestDataStrc.pfCallback[3] (+0xAC) on nQuestNo==6 (Batch C)
+                0x6FC56890: [0x6FC83DD0],
+                # D2ItemEventNode.pfnCallback (+0x14, 32 handlers = 31 from 0x6FD277A8 + 0x6FCCE200; Batch D)
+                0x6FC57030: [
+                    0x6FC61FB0, 0x6FC62B40, 0x6FC62C70, 0x6FC634E0, 0x6FC64600, 0x6FC6DFE0,
+                    0x6FC6E500, 0x6FC6E5F0, 0x6FC6E760, 0x6FC6EF70, 0x6FC6F090, 0x6FCCC910,
+                    0x6FCCCA70, 0x6FCCCB10, 0x6FCCCBA0, 0x6FCCCC30, 0x6FCCCDA0, 0x6FCCCE60,
+                    0x6FCCD2A0, 0x6FCCD410, 0x6FCCD580, 0x6FCCD6C0, 0x6FCCD7B0, 0x6FCCD860,
+                    0x6FCCD910, 0x6FCCDBF0, 0x6FCCDCE0, 0x6FCCDDC0, 0x6FCCE0E0, 0x6FCCE200,
+                    0x6FCCF210, 0x6FCCF2E0,
+                ],
+                # D2MissileStrc.pfnInitFunc (+0x54, 5 missile init callbacks)
+                0x6FC8F930: [0x6FC61F50, 0x6FC6C190, 0x6FCB0EA0, 0x6FCB1040, 0x6FCD31D0],
+                # Generic D2QuestDataStrc.pfSeqFilter (+0xF0, closed set of 25 handlers; Batch A)
+                0x6FC767A0: quest_pf_seq_filter,
+                0x6FC76B10: quest_pf_seq_filter,
+                0x6FC76BD0: quest_pf_seq_filter,
+                0x6FC76D10: quest_pf_seq_filter,
+                0x6FC801B0: quest_pf_seq_filter,
+                0x6FC806E0: quest_pf_seq_filter,
+                0x6FC846D0: quest_pf_seq_filter,
+                0x6FC84AA0: quest_pf_seq_filter,
+                0x6FC84E10: quest_pf_seq_filter,
+                0x6FCD8A70: quest_pf_seq_filter,
+                0x6FCDA270: quest_pf_seq_filter,
+                0x6FCE1FF0: quest_pf_seq_filter,
+                0x6FCE21E0: quest_pf_seq_filter,
+                0x6FCE24A0: quest_pf_seq_filter,
+                0x6FCE6390: quest_pf_seq_filter,
+                0x6FCE6B30: quest_pf_seq_filter,
+                0x6FCE6E90: quest_pf_seq_filter,
+                0x6FD02A40: quest_pf_seq_filter,
+                0x6FD02B70: quest_pf_seq_filter,
+                0x6FD02D40: quest_pf_seq_filter,
+                0x6FD02E80: quest_pf_seq_filter,
+                0x6FD02F00: quest_pf_seq_filter,
+                # Quest-specific D2QuestDataStrc.pfSeqFilter (+0xF0; Batches B, C, D)
+                0x6FC7AFB0: [0x6FC767A0],
+                0x6FC7B4F0: [0x6FC76D10],
+                0x6FC7C9E0: [0x6FC76BD0],
+                0x6FC7EED0: [0x6FC79930],
+                0x6FC84430: [0x6FC801B0],
+                0x6FC85260: [0x6FC806E0],
+                0x6FC86CE0: [0x6FC846D0],
+                0x6FC87000: [0x6FC84AA0, 0x6FC85410],
+                0x6FC88920: [0x6FC84E10],
+                0x6FCDA5E0: [0x6FCD8A70],
+                0x6FCDAA50: [0x6FCDA270],
+                0x6FCE8050: [0x6FCE21E0],
+                0x6FD089A0: [0x6FD02A40],
+                0x6FD08B60: [0x6FD02B70],
+                0x6FD08FE0: [0x6FD02F00],
+                0x6FD09600: [0x6FD02D40],
+                0x6FD0A140: [0x6FD02A40],
+                # D2EventTimerStrc.pfnCallback (+0x2C, sole custom callback 0x6FD00410; Batch D)
+                0x6FCAE9A0: [0x6FD00410],
+                0x6FCAEBC0: [0x6FD00410],
+                0x6FCAECC0: [0x6FD00410],
+                0x6FCAEDD0: [0x6FD00410],
+                0x6FCAEF20: [0x6FD00410],
+                # AI_InitMonsterAiThinkFn [edi+0x04] across 0x6FD2E668..0x6FD2F0C8 (18 handlers; Batch D)
+                0x6FCBD230: ai_init_fn_targets,
+            }
 
     def in_pruned_code_range(self, va: int) -> bool:
         for lo, hi, _ in self.pruned_code_ranges:
@@ -1711,6 +1977,7 @@ class ModuleAnalyzer:
             max_addr = fstart + 1
             reg_iat = {}
             reg_fn_table = {}
+            reg_fn_table_ptr = {}
 
             while bqueue:
                 bva = bqueue.pop()
@@ -1768,11 +2035,15 @@ class ModuleAnalyzer:
                             disp = struct.unpack_from("<I", self.tdata, ioff + 1)[0]
                             if disp in self.iat:
                                 reg_iat[0] = self.iat[disp]
+                            elif disp in self.fn_ptr_tables:
+                                reg_fn_table[0] = disp
                         elif b0 == 0x8B and size == 6 and (self.tdata[ioff + 1] & 0xC7) == 0x05:
                             reg_idx = (self.tdata[ioff + 1] >> 3) & 0x07
                             disp = struct.unpack_from("<I", self.tdata, ioff + 2)[0]
                             if disp in self.iat:
                                 reg_iat[reg_idx] = self.iat[disp]
+                            elif disp in self.fn_ptr_tables:
+                                reg_fn_table[reg_idx] = disp
                         elif (
                             b0 == 0x8B
                             and size == 7
@@ -1783,6 +2054,22 @@ class ModuleAnalyzer:
                             disp = struct.unpack_from("<I", self.tdata, ioff + 3)[0]
                             if disp in self.fn_ptr_tables:
                                 reg_fn_table[reg_idx] = disp
+                        elif 0xB8 <= b0 <= 0xBF and size == 5:
+                            imm = struct.unpack_from("<I", self.tdata, ioff + 1)[0]
+                            if imm in self.fn_ptr_tables:
+                                reg_fn_table_ptr[b0 - 0xB8] = imm
+                    elif (
+                        mnem == "lea"
+                        and not skip_site
+                        and b0 == 0x8D
+                        and size == 7
+                        and (self.tdata[ioff + 1] & 0xC7) == 0x04
+                        and (self.tdata[ioff + 2] & 0x07) == 0x05
+                    ):
+                        reg_idx = (self.tdata[ioff + 1] >> 3) & 0x07
+                        disp = struct.unpack_from("<I", self.tdata, ioff + 3)[0]
+                        if disp in self.fn_ptr_tables:
+                            reg_fn_table_ptr[reg_idx] = disp
                     elif mnem == "call":
                         if not skip_site:
                             if b0 == 0xE8 and size == 5:
@@ -1805,6 +2092,26 @@ class ModuleAnalyzer:
                                         edges.add(("call", t))
                                 else:
                                     edges.add(("indirect_unknown", iva))
+                            elif (
+                                size == 6
+                                and b0 == 0xFF
+                                and (self.tdata[ioff + 1] & 0xF8) == 0x90
+                                and self.tdata[ioff + 1] != 0x94
+                                and struct.unpack_from("<I", self.tdata, ioff + 2)[0] in self.fn_ptr_tables
+                            ):
+                                disp = struct.unpack_from("<I", self.tdata, ioff + 2)[0]
+                                for t in self.fn_ptr_tables[disp]:
+                                    edges.add(("call", t))
+                            elif (
+                                size == 2
+                                and b0 == 0xFF
+                                and (self.tdata[ioff + 1] & 0xF8) == 0x10
+                                and self.tdata[ioff + 1] not in (0x14, 0x15)
+                                and (self.tdata[ioff + 1] & 0x07) in reg_fn_table_ptr
+                            ):
+                                reg_idx = self.tdata[ioff + 1] & 0x07
+                                for t in self.fn_ptr_tables[reg_fn_table_ptr[reg_idx]]:
+                                    edges.add(("call", t))
                             elif size == 2 and b0 == 0xFF and (self.tdata[ioff + 1] & 0xF8) == 0xD0:
                                 reg_idx = self.tdata[ioff + 1] & 0x07
                                 if reg_idx in reg_iat:

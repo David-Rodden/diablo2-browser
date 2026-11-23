@@ -732,6 +732,61 @@ export class SpriteRenderer {
 
   pixelScale = 1
 
+  /** Device pixels covered by one scene pixel in the pass currently being drawn. */
+  getSceneTexelScale(): number {
+    const scale = this.camera.zoom * this.pixelScale
+    return Number.isFinite(scale) && scale > 0 ? scale : 1
+  }
+
+  /**
+   * Run a caller-owned WebGL pass (own program, framebuffer and state) in the middle of a frame.
+   *
+   * Pending quads are flushed first, so anything the pass renders into a texture is safe to sample
+   * from quads queued afterwards. The framebuffer binding, viewport, scissor/depth/cull toggles and
+   * the blend function of the sprite batch are restored when the pass returns.
+   */
+  runExternalPass(pass: (gl: WebGL2RenderingContext) => void): void {
+    if (this.disposed) return
+    this.flush()
+    const gl = this.gl
+    const prevFramebuffer = gl.getParameter(gl.FRAMEBUFFER_BINDING) as WebGLFramebuffer | null
+    const prevViewport = gl.getParameter(gl.VIEWPORT) as Int32Array
+    const prevScissor = gl.isEnabled(gl.SCISSOR_TEST)
+    gl.disable(gl.SCISSOR_TEST)
+    try {
+      pass(gl)
+    } finally {
+      gl.bindVertexArray(null)
+      gl.bindFramebuffer(gl.FRAMEBUFFER, prevFramebuffer)
+      gl.viewport(prevViewport[0]!, prevViewport[1]!, prevViewport[2]!, prevViewport[3]!)
+      gl.disable(gl.DEPTH_TEST)
+      gl.disable(gl.CULL_FACE)
+      gl.depthMask(true)
+      gl.colorMask(true, true, true, true)
+      if (prevScissor) gl.enable(gl.SCISSOR_TEST)
+      else gl.disable(gl.SCISSOR_TEST)
+      gl.enable(gl.BLEND)
+      const one = gl.ONE ?? 1
+      const zero = gl.ZERO ?? 0
+      switch (getGpuBlendGroup(this.currentBlendMode)) {
+        case 1:
+          applyGlBlendFunc(gl, gl.SRC_ALPHA, one, zero, one)
+          break
+        case 2:
+          applyGlBlendFunc(gl, gl.DST_COLOR, zero, zero, one)
+          break
+        case 3:
+          applyGlBlendFunc(gl, zero, gl.SRC_COLOR, zero, one)
+          break
+        case 0:
+        default:
+          applyGlBlendFunc(gl, one, gl.ONE_MINUS_SRC_ALPHA, one, gl.ONE_MINUS_SRC_ALPHA)
+          break
+      }
+      gl.activeTexture(gl.TEXTURE0)
+    }
+  }
+
   /**
    * Configure the logical game viewport dimensions (e.g. `1068x600`) rendered into the offscreen scene FBO
    * before `D2GlPostProcessPass` upscales to the physical output canvas (`gl.drawingBufferWidth x Height`).

@@ -135,10 +135,14 @@ describe('Issue #2025 — Shift+Click +5 Stat & Skill Allocation (no +all)', () 
 
   describe('OnlineSession E2E (desktop Shift+Click, touch [+5], and paced 0x3B queue)', () => {
     async function createLocalSorceressSession() {
-      const lobby = new LocalLobbyProvider()
+      const lobby = new LocalLobbyProvider({ backend: 'legacy' })
       await lobby.createCharacter({ name: 'ShiftHero', classId: 1 }) // Sorceress
       const session = new OnlineSession()
-      const adapter = await lobby.enterGame({ charName: 'ShiftHero', difficulty: 0 })
+      const adapter = await lobby.enterGame({
+        charName: 'ShiftHero',
+        difficulty: 0,
+        backend: 'legacy',
+      })
       const characters = await lobby.listCharacters()
       session.attachGameServer(adapter, {
         localCharacter: {

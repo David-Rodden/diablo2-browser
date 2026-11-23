@@ -101,7 +101,9 @@ describe('K2 Wave 5 Batch 3 (w5b3): D2Game 0x6FCB9620..0x6FCDC6B0', () => {
     expect(SKILLS_CanSpawnObjectAtTargetCoords_6FCC0630_113c(m, -1, pGame, pPlayer)).toBe(0);
 
     // [8/45] 0x6FCC06F0, [9/45] 0x6FCC09A0, [10/45] 0x6FCC0AD0, [11/45] 0x6FCC1000
-    SKILLS_ForEachUnitNearTargetCoords_6FCC06F0_113c(m, 5, pGame, pPlayer, 0, 0, 0);
+    expect(() =>
+      SKILLS_ForEachUnitNearTargetCoords_6FCC06F0_113c(m, 5, pGame, pPlayer, 0, 0, 0),
+    ).toThrow(/4167|0x1047/)
     SKILLS_EvalAndApplySkillDelayOnPlayer_6FCC09A0_113c(m, pPlayer, -1, pGame, 1);
     expect(AURA_ForEachUnitInTargetRadius_6FCC0AD0_113c(m, pGame, 0, pPlayer, 5, 0, 0)).toBe(0);
     expect(AURA_FindClosestUnitInRadius_6FCC1000_113c(m, pPlayer, pGame, 5, 0)).toBe(0);

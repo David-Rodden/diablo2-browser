@@ -5,8 +5,8 @@
     "name": "ACT2Q4_CompleteJerhynIntroAndActivateArcane_6FCE6CA0",
     "kernFile": "src/d2kern-113c/game/k2-w9b2-113c.ts",
     "tsSymbol": "ACT2Q4_CompleteJerhynIntroAndActivateArcane_6FCE6CA0_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w9b2.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Wave 17 1:1 PE32 disassembly verification against D2Game.dll@0x6FCE6CA0 (117B) in tests/oracle/k2/k2-disasm-verified-wave17.test.ts."
   },
   {
     "module": "D2Game",
@@ -14,8 +14,8 @@
     "name": "ACT2Q3_ScheduleTaintedSunTimer_6FCE7250",
     "kernFile": "src/d2kern-113c/game/k2-w9b2-113c.ts",
     "tsSymbol": "ACT2Q3_ScheduleTaintedSunTimer_6FCE7250_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w9b2.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Wave 17 1:1 PE32 disassembly verification against D2Game.dll@0x6FCE7250 (104B) in tests/oracle/k2/k2-disasm-verified-wave17.test.ts."
   },
   {
     "module": "D2Game",
@@ -50,8 +50,8 @@
     "name": "C2S_PacketUseQuestScrollItem_6FCED8D0",
     "kernFile": "src/d2kern-113c/game/k2-w9b2-113c.ts",
     "tsSymbol": "C2S_PacketUseQuestScrollItem_6FCED8D0_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w9b2.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Wave 17 1:1 PE32 disassembly verification against D2Game.dll@0x6FCED8D0 (323B) in tests/oracle/k2/k2-disasm-verified-wave17.test.ts."
   },
   {
     "module": "D2Game",
@@ -68,8 +68,8 @@
     "name": "ITEMS_UseOrEquipCursorItemOnMerc_6FCF05B0",
     "kernFile": "src/d2kern-113c/game/k2-w9b2-113c.ts",
     "tsSymbol": "ITEMS_UseOrEquipCursorItemOnMerc_6FCF05B0_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w9b2.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Wave 17 1:1 PE32 disassembly verification against D2Game.dll@0x6FCF05B0 (480B) in tests/oracle/k2/k2-disasm-verified-wave17.test.ts."
   },
   {
     "module": "D2Game",
@@ -77,8 +77,8 @@
     "name": "ITEMS_PickupGroundItemToInventoryOrEquip_6FCF6E30",
     "kernFile": "src/d2kern-113c/game/k2-w9b2-113c.ts",
     "tsSymbol": "ITEMS_PickupGroundItemToInventoryOrEquip_6FCF6E30_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w9b2.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Wave 17 1:1 PE32 disassembly verification against D2Game.dll@0x6FCF6E30 (804B) in tests/oracle/k2/k2-disasm-verified-wave17.test.ts. Fixed swapped call order in auto-equip & auto-belt paths: UNITS_SetTargetUnitForDynamicUnitEx before UNITROOM_RemoveUnitFromRoom."
   },
   {
     "module": "D2Game",
@@ -104,8 +104,8 @@
     "name": "ACT3Q1_AttachGoldenBirdBossMonster_6FD08200",
     "kernFile": "src/d2kern-113c/game/k2-w9b2-113c.ts",
     "tsSymbol": "ACT3Q1_AttachGoldenBirdBossMonster_6FD08200_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w9b2.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Wave 17 1:1 PE32 disassembly verification against D2Game.dll@0x6FD08200 (143B) in tests/oracle/k2/k2-disasm-verified-wave17.test.ts."
   },
   {
     "module": "D2Game",
@@ -122,8 +122,8 @@
     "name": "SKILLS_EquipSummonedPetItems_6FD0E6F0",
     "kernFile": "src/d2kern-113c/game/k2-w9b2-113c.ts",
     "tsSymbol": "SKILLS_EquipSummonedPetItems_6FD0E6F0_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w9b2.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Wave 17 1:1 PE32 disassembly verification against D2Game.dll@0x6FD0E6F0 (183B) in tests/oracle/k2/k2-disasm-verified-wave17.test.ts. Seeded real 1.13c .rdata 4x3 Ancients equip table at 0x6FD1C2F8..0x6FD1C357 (index 0x6FD1B218 + classId*8, stride 0x18)."
   },
   {
     "module": "D2Game",
@@ -131,7 +131,7 @@
     "name": "PARTY_NotifySubPartyAndLeaveParty_6FD110F0",
     "kernFile": "src/d2kern-113c/game/k2-w9b2-113c.ts",
     "tsSymbol": "PARTY_NotifySubPartyAndLeaveParty_6FD110F0_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w9b2.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Wave 17 1:1 PE32 disassembly verification against D2Game.dll@0x6FD110F0 (64B) in tests/oracle/k2/k2-disasm-verified-wave17.test.ts."
   }
 ]

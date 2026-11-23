@@ -1071,6 +1071,24 @@ describe('K3 replay purity & suite roster', () => {
     expect(K3_COVERAGE_BASELINES_113C.map((b) => b.name)).toEqual([...K3_REPLAY_SCENARIOS_113C])
   })
 
+  it('locks full-horizon closure for p52-amazon-defense (F1800/F1800)', () => {
+    const horizons = loadK3Horizons113c()
+    expect(horizons['p52-amazon-defense']).toEqual({
+      bootFrame: 2,
+      strict: 1800,
+      pos: 1800,
+    })
+  })
+
+  it('locks full-horizon closure for p52-paladin-auras (F1700/F1700)', () => {
+    const horizons = loadK3Horizons113c()
+    expect(horizons['p52-paladin-auras']).toEqual({
+      bootFrame: 2,
+      strict: 1700,
+      pos: 1700,
+    })
+  })
+
   it('locks full-horizon closure for p52-barbarian-warcries (F1600/F1600)', () => {
     const horizons = loadK3Horizons113c()
     expect(horizons['p52-barbarian-warcries']).toEqual({
@@ -1349,7 +1367,7 @@ for (const spec of K3_COVERAGE_BASELINES_113C) {
       expect(byKey.get('D2Game:0x6FCEC550')).toBe(firstInput)
 
       expect(spec.initialD2GameGapVas.length).toBe(spec.initialD2GameGapCount)
-      const s = computeK3Gaps113c(name)
+      const s = computeK3Gaps113c(name, { tsExecutedVas: r.tsExecutedVas })
       const manifest = loadManifest113c()
       const hitKeySet = new Set(cov.hits.map((h) => manifestKey113c(h.module, h.va)))
 
@@ -1381,28 +1399,36 @@ for (const spec of K3_COVERAGE_BASELINES_113C) {
       expect(s.executed.D2Game!.done).toBe(spec.d2GameExecuted - expectedRemainingD2GameVas.length)
       expect(actualD2GameGapVas).toEqual(expectedRemainingD2GameVas)
 
-      // Monotonic runtimeExecGap ratchet (`dllExecuted - tsExecuted` on D2Game and D2Common)
+      // Monotonic runtimeExecGap ratchet (`dllExecuted - tsExecuted` on D2Game and D2Common via computeK3Gaps113c)
       expect(r.tsExecutedVas.length).toBeGreaterThan(0)
       expect(r.tsExecutedVas).toContain('D2Game:0x6FC4E050')
-      const tsSet = new Set(r.tsExecutedVas)
-      let d2GameTsExec = 0
-      let d2CommonTsExec = 0
-      for (const h of cov.hits) {
-        const k = manifestKey113c(h.module, h.va)
-        if (h.module === 'D2Game' && tsSet.has(k)) d2GameTsExec++
-        if (h.module === 'D2Common' && tsSet.has(k)) d2CommonTsExec++
-      }
-      const d2GameRuntimeGap = spec.d2GameExecuted - d2GameTsExec
-      const d2CommonRuntimeGap = spec.d2CommonExecuted - d2CommonTsExec
-      expect(d2GameTsExec).toBeGreaterThan(0)
+      expect(s.dllExecutedVas.length).toBe(spec.totalHits)
+      expect(s.tsExecutedVas).toEqual(r.tsExecutedVas)
+      expect(s.runtimeExecGap).toEqual([])
+
+      const rg = s.runtimeExecuted.D2Game!
+      const rc = s.runtimeExecuted.D2Common!
+      expect(rc).toEqual({
+        dllExecuted: spec.d2CommonExecuted,
+        tsExecuted: spec.d2CommonExecuted,
+        tsTotalExecuted: s.tsExecutedVas.filter((k) => k.startsWith('D2Common:')).length,
+        runtimeGap: 0,
+        runtimeGapBytes: 0,
+      })
+      expect(rg).toEqual({
+        dllExecuted: spec.d2GameExecuted,
+        tsExecuted: spec.d2GameExecuted,
+        tsTotalExecuted: s.tsExecutedVas.filter((k) => k.startsWith('D2Game:')).length,
+        runtimeGap: 0,
+        runtimeGapBytes: 0,
+      })
       expect(
-        d2GameRuntimeGap,
-        `${name} D2Game runtimeExecGap (${d2GameRuntimeGap}) exceeded monotonic ratchet ceiling (${spec.maxD2GameRuntimeExecGap})`,
+        rg.runtimeGap,
+        `${name} D2Game runtimeExecGap (${rg.runtimeGap}) exceeded monotonic ratchet ceiling (${spec.maxD2GameRuntimeExecGap})`,
       ).toBeLessThanOrEqual(spec.maxD2GameRuntimeExecGap)
-      expect(d2CommonTsExec).toBeGreaterThan(0)
       expect(
-        d2CommonRuntimeGap,
-        `${name} D2Common runtimeExecGap (${d2CommonRuntimeGap}) exceeded monotonic ratchet ceiling (${spec.maxD2CommonRuntimeExecGap})`,
+        rc.runtimeGap,
+        `${name} D2Common runtimeExecGap (${rc.runtimeGap}) exceeded monotonic ratchet ceiling (${spec.maxD2CommonRuntimeExecGap})`,
       ).toBeLessThanOrEqual(spec.maxD2CommonRuntimeExecGap)
     })
 

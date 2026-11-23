@@ -88,6 +88,11 @@ import {
   reportMissingArt,
 } from './scene/world-renderer.ts'
 import {
+  closeCharacterSkinManagerModal,
+  getGlobalCharacterSkinService,
+  openCharacterSkinManagerModal,
+} from './render/character-skin-cache.ts'
+import {
   BootProgressTracker,
   type BootProgressSnapshot,
 } from './ui/boot-progress.ts'
@@ -929,6 +934,39 @@ export async function startPlayApp(options?: {
       getThresholds: () => session.commandMapper.assists.autoPotionThresholds,
       setThresholds: (thresholds) => void (session.commandMapper.assists.autoPotionThresholds = thresholds),
     },
+    characterSkins: (() => {
+      const skinService = getGlobalCharacterSkinService()
+      bootDisposers.push(
+        skinService.subscribe(() => {
+          if (inGameView) {
+            session.hudModel.syncFromWorld()
+          }
+        }),
+      )
+      return {
+        getConfig: () => skinService.getConfig(),
+        setConfig: (patch) => skinService.setConfig(patch),
+        resetToVanilla: () => skinService.resetToVanilla(),
+        getCatalog: () => skinService.getCatalog(),
+        ensureCatalogLoaded: () => skinService.ensureCatalogLoaded(),
+        importSkinZip: (zipBytes, opts) => skinService.importSkinZip(zipBytes, opts),
+        removeCustomSkin: (skinId) => skinService.removeCustomSkin(skinId),
+        subscribe: (fn) => skinService.subscribe(fn),
+        openManagerModal: () => {
+          pluginMenuRef?.close()
+          openCharacterSkinManagerModal(skinService, (msg, isErr) => {
+            const lang = settingsStore.get().lang
+            hudManager.toasts.push(
+              {
+                title: lang === 'en' ? msg.en : msg.zh,
+                color: isErr ? 'red' : 'gold',
+              },
+              performance.now(),
+            )
+          })
+        },
+      }
+    })(),
   })
   const pluginMenu = new ModMenu({
     host: plugins,
@@ -960,6 +998,7 @@ export async function startPlayApp(options?: {
   ]
 
   const closeAllModals = (): void => {
+    closeCharacterSkinManagerModal()
     pluginMenu.close()
     toolbar.closeModals()
     if (!isChildSlot) {
@@ -2114,9 +2153,7 @@ export async function startPlayApp(options?: {
     if (capturedLocalServerFactory) {
       registerLocalServerFactory(capturedLocalServerFactory)
     }
-    if (siteConfig.singlePlayerBackend !== undefined) {
-      getLocalLobbyProvider()?.setBackend?.(siteConfig.singlePlayerBackend)
-    }
+    getLocalLobbyProvider()?.setBackend?.(siteConfig.singlePlayerBackend ?? 'd2kern-113c')
     frontendRenderer.setAsyncHandlers({
       ...baseAsyncHandlers,
       onSinglePlayer: handleSinglePlayerEntry,
@@ -2835,6 +2872,8 @@ export async function startPlayApp(options?: {
       lightingTargets: { lightGrid, renderer, lightQuality: graphics.lightQuality, nowMs },
       renderer,
       tileGpuCache,
+      characterSkinService: getGlobalCharacterSkinService(),
+      activePlayerUnitId: session.world.selfId || undefined,
       entityArtCache,
       characterArtByToken,
       ensureCharacterArt,
@@ -2980,7 +3019,7 @@ export async function startPlayApp(options?: {
     },
     renderFrame,
     getSinglePlayerBackend: (): SinglePlayerBackendMode =>
-      getLocalLobbyProvider()?.getBackend?.() ?? 'legacy',
+      getLocalLobbyProvider()?.getBackend?.() ?? 'd2kern-113c',
     setSinglePlayerBackend: (mode: SinglePlayerBackendMode): void => {
       getLocalLobbyProvider()?.setBackend?.(mode)
     },

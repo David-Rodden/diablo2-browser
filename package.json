@@ -60,6 +60,7 @@
     "pack:animdata": "tsx src/baker/packers/pack-animdata.ts",
     "pack:entities": "tsx src/baker/packers/pack-entity-assets.ts",
     "pack:char-so": "tsx src/baker/packers/pack-char-so-layers.ts",
+    "pack:skins": "tsx tools/skin-baker/gen-war3-skins.ts",
     "pack:missiles": "tsx src/baker/packers/pack-missiles.ts",
     "pack:overlays": "tsx src/baker/packers/pack-overlays.ts",
     "pack:weather": "tsx src/baker/packers/pack-weather.ts",

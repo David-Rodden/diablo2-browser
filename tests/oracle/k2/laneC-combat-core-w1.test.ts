@@ -677,9 +677,9 @@ describe('[K2-W1 Lane C] D2Game.dll combat-core / PlrTrade / Modes / Packet / It
         0x01,
       ])
 
-      // 3. NET_SendEventMessage5A_Type0E_113c (40 bytes)
+      // 3. NET_SendEventMessage5A_Type0E_113c (40 bytes; D2Game.dll@0x6FCAA3E0 returns nPacketSize)
       m.setU32(pQueue >>> 0, 0)
-      expect(NET_SendEventMessage5A_Type0E_113c(m, pPlayer)).toBe(1)
+      expect(NET_SendEventMessage5A_Type0E_113c(m, pPlayer)).toBe(40)
       const pkt5A = readQueuedBytes(m, pQueue)
       expect(pkt5A.length).toBe(40)
       expect(pkt5A.slice(0, 4)).toEqual([0x5a, 0x0e, 0x01, 0x00])

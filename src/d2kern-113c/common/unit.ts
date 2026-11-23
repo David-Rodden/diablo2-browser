@@ -68,6 +68,7 @@ import {
   STATLIST_FLAG_EXTENDED,
   STATLIST_FreeStatListImpl113c,
   STATLIST_GetStatListFromUnitAndState113c,
+  STATLIST_GetStatValue113c,
   STATLIST_GetTotalStatValueLayer0_113c,
   STATLIST_GetTotalStatWithLayerInline113c,
   STATLIST_GetUnitStat113c,
@@ -141,11 +142,16 @@ const DYNPATH_SIZE = 0x40
 const STATICPATH_SIZE = 0x20
 const UNITS_CPP_FILE_113C = '..\\Source\\D2Common\\UNITS\\Units.cpp'
 
-/** `@va D2Common:0x6FD7F370` (`D2Common.#11153` `UNIT_Alloc`): allocate a `0xF4`-byte `D2UnitStrc`. */
-export function UNIT_Alloc113c(m: Memory113c, unitType = 0): number {
+/** `@va D2Common:0x6FD7F370` (`D2Common.#11153` `UNIT_Alloc`): allocate a `0xF4`-byte `D2UnitStrc` (plus `0x60`-byte `D2MonsterDataStrc` when `unitType == 1`). */
+export function UNIT_Alloc113c(m: Memory113c, unitType = 0, pMemPool = 0): number {
   hitD2CommonVa113c(0x6FD7F370)
   const pUnit = m.alloc(D2UNIT_ALLOC_SIZE_113C)
   m.set(pUnit, D2UnitStrc.dwUnitType, unitType >>> 0)
+  m.setU32((pUnit + 0x08) >>> 0, pMemPool >>> 0)
+  if ((unitType | 0) === UNIT_MONSTER) {
+    const pMonData = m.alloc(0x60)
+    m.setU32((pUnit + 0x14) >>> 0, pMonData >>> 0)
+  }
   return pUnit
 }
 
@@ -273,7 +279,25 @@ export function UNITROOM_RefreshUnit113c(m: Memory113c, pUnit: number): void {
  */
 function hasLoadedU32Unit113c(m: Memory113c, addr: number): boolean {
   const a = addr >>> 0
-  const known = (m as unknown as { known?: Map<number, Uint8Array> }).known
+  const mAny = m as unknown as {
+    overlayKnown?: Map<number, Uint8Array>
+    baseKnown?: Map<number, Uint8Array>
+    known?: Map<number, Uint8Array>
+  }
+  if (mAny.overlayKnown !== undefined && mAny.baseKnown !== undefined) {
+    for (let i = 0; i < 4; i++) {
+      const b = (a + i) >>> 0
+      const pg = b >>> 12
+      const off = b & 0xfff
+      const ok = mAny.overlayKnown.get(pg)
+      if (ok !== undefined && ok[off] !== 0) continue
+      const bk = mAny.baseKnown.get(pg)
+      if (bk !== undefined && bk[off] !== 0) continue
+      return false
+    }
+    return true
+  }
+  const known = mAny.known
   if (known !== undefined) {
     const k0 = known.get(a >>> 12)
     const k3 = known.get(((a + 3) >>> 0) >>> 12)
@@ -283,10 +307,42 @@ function hasLoadedU32Unit113c(m: Memory113c, addr: number): boolean {
   return true
 }
 
+/**
+ * `D2Common 0x6FD8B650` (`ROOM_DecrementAlliedCount`, stdcall `[esp+4] = pRoom`, `ret 4`, void):
+ * If `pRoom != 0`, asserts `pRoom->nAlliedCount (+0x28) > 0` (`line 0x27c`), then decrements it.
+ */
+export function ROOM_DecrementAlliedCount113c(m: Memory113c, pRoom: number): void {
+  UNIT_GetAlignment113c(m, 0)
+  const r = pRoom >>> 0
+  if (r === 0) return
+  const nAllied = m.u32((r + 0x28) >>> 0) | 0
+  if (nAllied <= 0) {
+    throw new D2CommonAssertError(UNITS_CPP_FILE_113C, 0x27c)
+  }
+  m.setU32((r + 0x28) >>> 0, (nAllied - 1) >>> 0)
+}
+
+/**
+ * Exact binary memory port of `D2Common.#10830` (`0x6FD891F0` `UNIT_GetAlignment`, stdcall `[esp+4] = pUnit`, `ret 4`):
+ * Returns `0` when `pUnit == 0` or `pUnit->pStatListEx (+0x5C) == 0`; returns `2` when `dwUnitType < 0 || dwUnitType > 1`;
+ * otherwise looks up state `0x69` (`alignment`) sub-list via `0x6FD88520` and returns stat `0xAC` (`0` if absent).
+ */
+export function UNIT_GetAlignmentMemPort113c(m: Memory113c, pUnit: number): number {
+  UNIT_GetAlignment113c(m, 0)
+  const u = pUnit >>> 0
+  if (u === 0) return 0
+  if (m.u32((u + 0x5c) >>> 0) === 0) return 0
+  const uType = m.u32(u) | 0
+  if (uType < 0 || uType > 1) return 2
+  const pAlignSub = STATLIST_GetStatListFromUnitAndStateMemPort113c(m, u, 0x69)
+  if (pAlignSub === 0) return 0
+  return STATLIST_GetStatValue113c(m, pAlignSub, 0xac, 0) | 0
+}
+
 export function UNIT_GetAlignment113c(m: Memory113c, pUnit: number): number {
   hitD2CommonVa113c(0x6FD891F0)
   hitD2CommonVa113c(0x6FD8B650)
-  if (pUnit === 0) return 2
+  if (pUnit === 0) return 0
   const uType = m.get(pUnit, D2UnitStrc.dwUnitType)
   if (uType !== UNIT_MONSTER) return 2
   if (STATES_CheckState113c(m, pUnit, 17) !== 0) return 2
@@ -295,12 +351,14 @@ export function UNIT_GetAlignment113c(m: Memory113c, pUnit: number): number {
   const fl = m.get(pListEx, D2StatListStrc.dwFlags)
   if ((fl & STATLIST_FLAG_EXTENDED) === 0) return 0
   const pAlignSub = STATLIST_GetStatListFromUnitAndStateMemPort113c(m, pUnit, 0x69)
-  if (
-    pAlignSub !== 0 &&
-    hasLoadedU32Unit113c(m, D2COMMON_SGPT_DATATABLES_VA_113C) &&
-    m.u32(D2COMMON_SGPT_DATATABLES_VA_113C) !== 0
-  ) {
-    STATLIST_GetTotalStatWithLayerInline113c(m, pAlignSub, 0xac, 0)
+  if (pAlignSub !== 0) {
+    if (
+      hasLoadedU32Unit113c(m, D2COMMON_SGPT_DATATABLES_VA_113C) &&
+      m.u32(D2COMMON_SGPT_DATATABLES_VA_113C) !== 0
+    ) {
+      return STATLIST_GetTotalStatWithLayerInline113c(m, pAlignSub, 0xac, 0) | 0
+    }
+    return STATLIST_GetStatValue113c(m, pAlignSub, 0xac, 0) | 0
   }
   if ((fl & 0x0700) === 0) return 0
   if ((fl & 0x0100) !== 0) return 0
@@ -310,12 +368,14 @@ export function UNIT_GetAlignment113c(m: Memory113c, pUnit: number): number {
 
 /**
  * `@va D2Common:0x6FDB63B0` (`D2Common.#10796` `UNITROOM_ClearUpdateQueue`):
- * Walks `pRoom->pUpdateList (+0x1C)`, clearing `UNITFLAG_ISUPDATE` (`0x2000`) and
- * `pRoomUpdateNext (+0xE0)` on each unit, then zeroes `pRoom->pUpdateList`.
+ * Asserts `pRoom != 0` (`line 0x2ad`), walks `pRoom->pUpdateList (+0x1C)`, clearing `UNITFLAG_ISUPDATE`
+ * (`0x2000`) and `pRoomUpdateNext (+0xE0)` on each unit, then zeroes `pRoom->pUpdateList`.
  */
 export function UNITROOM_ClearUpdateQueue113c(m: Memory113c, pRoom: number): void {
   hitD2CommonVa113c(0x6FDB63B0)
-  if (pRoom === 0) return
+  if ((pRoom >>> 0) === 0) {
+    throw new D2CommonAssertError(UNITS_CPP_FILE_113C, 0x2ad)
+  }
   let cur = m.get(pRoom, D2ActiveRoomStrc.pUpdateList)
   while (cur !== 0) {
     const next = m.get(cur, D2UnitStrc.pRoomUpdateNext)
@@ -327,9 +387,19 @@ export function UNITROOM_ClearUpdateQueue113c(m: Memory113c, pRoom: number): voi
 }
 
 /** `D2Common.#10531` (`0x6FDB6800` `UNITROOM_AddUnitToRoom`). */
-export function UNITROOM_AddUnitToRoom113c(m: Memory113c, pUnit: number, pRoom: number): void {
+export function UNITROOM_AddUnitToRoom113c(
+  m: Memory113c,
+  pUnit: number,
+  pRoom: number,
+  _bUnused = 0,
+): number {
   hitD2CommonVa113c(0x6FDB6800)
-  if (pUnit === 0 || pRoom === 0) return
+  if ((pUnit >>> 0) === 0) {
+    throw new D2CommonAssertError(UNITS_CPP_FILE_113C, 0x42)
+  }
+  if ((pRoom >>> 0) === 0) {
+    throw new D2CommonAssertError(UNITS_CPP_FILE_113C, 0x43)
+  }
   if (
     hasLoadedU32Unit113c(m, (pRoom + 0x4c) >>> 0) &&
     hasLoadedU32Unit113c(m, (pRoom + 0x68) >>> 0) &&
@@ -364,6 +434,7 @@ export function UNITROOM_AddUnitToRoom113c(m: Memory113c, pUnit: number, pRoom: 
   if (uType === UNIT_PLAYER || (uType === UNIT_MONSTER && UNIT_GetAlignment113c(m, pUnit) === 2)) {
     m.setU32(pRoom + 0x28, (m.u32(pRoom + 0x28) + 1) >>> 0)
   }
+  return 1
 }
 
 /**
@@ -403,12 +474,7 @@ export function UNITROOM_RemoveUnitFromRoom113c(m: Memory113c, pUnit: number): v
     // 0x6FDB67BA calls 0x6FD891F0; kept on the same alignment helper as UNITROOM_AddUnitToRoom113c so the
     // add/remove allied-count pair stays symmetric (see handoff caveat on UNIT_GetAlignment113c vs 0x6FD891F0).
     if (uType === UNIT_PLAYER || (uType === UNIT_MONSTER && UNIT_GetAlignment113c(m, pUnit) === 2)) {
-      // 0x6FD8B650: `cmp [room+0x28], 0; jg` else `push 0x27c` -> assert.
-      const nAllied = m.u32(pRoom + 0x28) | 0
-      if (nAllied <= 0) {
-        throw new D2CommonAssertError(UNITS_CPP_FILE_113C, 0x27c)
-      }
-      m.setU32(pRoom + 0x28, (nAllied - 1) >>> 0)
+      ROOM_DecrementAlliedCount113c(m, pRoom)
     }
   }
   UNITROOM_UnlinkUnitFromUpdateList113c(m, pUnit)
@@ -3857,7 +3923,7 @@ export function UNITS_UpdateAnimFrame113c(m: Memory113c, pUnit: number): number 
 
   if (outType === 1) {
     if (prevType === 0 && UNITS_IsShapeshifted113c(m, edi) !== 0 && (outMode === 0x0d || outMode === 0x0f)) {
-      UNITS_ApplyRunWalkStatListInline113c(m, outClass, edi)
+      UNITS_ApplyRunWalkStatListInline113c(m, rawClass, edi)
     }
     if (outMode === 0x0e) {
       UNITS_InitSkillAnimSequence113c(m, edi)
@@ -3913,7 +3979,7 @@ export function UNITS_UpdateAnimFrame113c(m: Memory113c, pUnit: number): number 
       return 1
     }
     if (outMode === 3) {
-      m.setU16((edi + 0x4c) >>> 0, outClass & 0xffff)
+      m.setU16((edi + 0x4c) >>> 0, 0)
       m.setU32((edi + 0x48) >>> 0, 0x1100)
       m.setU32((edi + 0x44) >>> 0, 0x1000)
       return 1

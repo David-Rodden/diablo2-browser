@@ -243,8 +243,12 @@ import {
   UNIT_GetPosX113c,
   UNIT_GetPosY113c,
 } from './regpop-spawn-113c'
+import {
+  ITEMS_ScheduleReplenishDurabilityEvent_6FC2EA70_113c,
+  ITEMS_ScheduleReplenishQuantityEvent_6FC2EA10_113c,
+} from './k2-real-itemdrop-113c'
 import { SUNIT_FreeUnit113c } from './replay-final11-113c'
-import { EVENT_GetNextEventFrame113c, EVENT_SetEventFull113c } from './timer-wheel'
+import { EVENT_SetEventFull113c } from './timer-wheel'
 import { hitD2GameVa113c } from '../va-trace-113c'
 
 export type { D2KernMemory113c }
@@ -1202,20 +1206,6 @@ export function ITEMS_ResetAndRecountInventoryScrollAndTomeCharges_6FCF4570_113c
   }
 }
 
-function scheduleItemReplenishEventIfStatPresent113c(
-  m: D2KernMemory113c,
-  pGame: number,
-  pItem: number,
-  nStatId: number,
-): void {
-  const nVal = STATLIST_GetUnitStat113c(m, pItem, nStatId, 0) | 0
-  if (nVal !== 0 && EVENT_GetNextEventFrame113c(m, pItem, 3) === 0) {
-    const nDelay = (0x9c4 / nVal) | 0
-    const dwFrame = (m.u32((pGame + 0xa8) >>> 0) + nDelay + 1) >>> 0
-    EVENT_SetEventFull113c(m, pGame, pItem, 3, dwFrame, 0, 0, 0)
-  }
-}
-
 /**
  * [15/45] Sockets cursor filler item `dwFillerItemGuid` into `dwTargetItemGuid`, activating socket stats
  * and applying matching `Runes.txt` runeword properties when completed.
@@ -1301,8 +1291,8 @@ export function ITEMS_InsertFillerIntoSocketedItem_6FCF4A70_113c(
   }
   if (bCompletedRuneword !== 0) {
     ITEMS_ApplyRunewordProps113c(m, pTarget, pFiller, 0)
-    scheduleItemReplenishEventIfStatPresent113c(m, pGame, pTarget, 0xfc)
-    scheduleItemReplenishEventIfStatPresent113c(m, pGame, pTarget, 0xfd)
+    ITEMS_ScheduleReplenishDurabilityEvent_6FC2EA70_113c(m, pGame, pTarget)
+    ITEMS_ScheduleReplenishQuantityEvent_6FC2EA10_113c(m, pGame, pTarget)
     if (bRechargeChargedSkills !== 0) {
       ITEMS_RechargeAllChargedSkillStatsOnItem_6FCF2380_113c(m, pGame, pUnit, pTarget)
     }
@@ -1368,9 +1358,9 @@ export function ITEMS_RemoveBeltItemToCursor_6FCF4D30_113c(
   }
   ITEMS_ClearInventoryCmdFlag4AndSync3F113c(m, pUnit)
   const nBeltSlot = UNIT_GetPosX113c(m, pItem)
-  INVENTORY_SetCursorItem113c(m, pInventory, pItem)
-  INVENTORY_NoOpRet8A113c(m, pInventory, nBeltSlot)
   INVENTORY_RemoveItemFromInventory113c(m, pInventory, pItem)
+  INVENTORY_NoOpRet8A113c(m, pInventory, nBeltSlot)
+  INVENTORY_SetCursorItem113c(m, pInventory, pItem)
   ITEMS_OnUnequipScrollOrTome113c(m, pItem, pUnit)
   m.setU32((pItem + 0xc4) >>> 0, (m.u32((pItem + 0xc4) >>> 0) & ~2) >>> 0)
   ITEMS_DeactivateEquippedItemStats113c(m, pUnit, pItem, pGame, 0, 1)
@@ -1697,11 +1687,7 @@ export function ACT3Q0_InitHratliIntroQuestTable_6FD06660_113c(
   m.setU32((pQuestData + 0xd4) >>> 0, 0x6fd05450)
   m.setU32((pQuestData + 0xdc) >>> 0, 0x6fd1fe38)
   m.setU8((pQuestData + 0x0a) >>> 0, 1)
-  let pExt = m.u32((pQuestData + 0x18) >>> 0) >>> 0
-  if (pExt === 0) {
-    pExt = k2W6B6QuestHeapPtr >>> 0
-    k2W6B6QuestHeapPtr = (pExt + 0x20) >>> 0
-  }
+  const pExt = m.alloc(0x1c) >>> 0
   m.setU32((pQuestData + 0x18) >>> 0, pExt)
   for (let i = 0; i < 7; i = (i + 1) | 0) {
     m.setU32((pExt + i * 4) >>> 0, 0)
@@ -2701,6 +2687,14 @@ export function PLAYER_LevelUp_6FD0B090_113c(
   m: D2KernMemory113c,
   pPlayerUnit: number,
   pGame: number,
+  onLevelUpCallback?: (
+    m: D2KernMemory113c,
+    pfnCallback: number,
+    wGameId: number,
+    pPlayerName: number,
+    nClass: number,
+    nNewLevel: number,
+  ) => void,
 ): void {
   hitD2GameVa113c(0x6FD0B090)
   const nClass = pPlayerUnit !== 0 ? (m.u32((pPlayerUnit + 0x04) >>> 0) | 0) : -1
@@ -2757,10 +2751,21 @@ export function PLAYER_LevelUp_6FD0B090_113c(
   ITEMS_RefreshAllInventoryItemStatListsAndSkills_6FCF24B0_113c(m, pPlayerUnit)
   D2GAME_ITEMS_UpdateAllInventoryAndEquipmentStats113c(m, pGame, pPlayerUnit, 0)
   UNITS_SetUnitUpdateFlags113c(m, pPlayerUnit, 1)
-  const pCallbackTable = m.u32(0x6fd31c3c) >>> 0
-  if (pCallbackTable !== 0 && m.u32((pCallbackTable + 0x2c) >>> 0) !== 0) {
-    UNITS_GetPlayerName113c(m, pPlayerUnit)
-    m.u16((pGame + 0x28) >>> 0)
+  let pCallbackTable = 0
+  try {
+    pCallbackTable = m.u32(0x6fd31c3c) >>> 0
+  } catch {
+    pCallbackTable = 0
+  }
+  if (pCallbackTable !== 0) {
+    const pfnCallback = m.u32((pCallbackTable + 0x2c) >>> 0) >>> 0
+    if (pfnCallback !== 0) {
+      const pPlayerName = UNITS_GetPlayerName113c(m, pPlayerUnit) >>> 0
+      const wGameId = m.u16((pGame + 0x28) >>> 0)
+      if (onLevelUpCallback !== undefined) {
+        onLevelUpCallback(m, pfnCallback, wGameId, pPlayerName, nClass, nNewLevel)
+      }
+    }
   }
 }
 
@@ -2974,14 +2979,14 @@ export function PLAYERSAVE_WriteSaveHeader335_6FD0C470_113c(
       (hdr + 0x7e) >>> 0,
       PLAYERSAVE_FindInventoryItemSaveIndex_6FD0BD10_113c(m, pPlayerUnit, dwRightOwner) & 0xffff,
     )
-    UNITS_GetPlayerSubtargetLeft113c(m, pPlayerUnit, pSubType, pSubGuid)
+    UNITS_GetPlayerSubtargetRight113c(m, pPlayerUnit, pSubType, pSubGuid)
     m.setU16((hdr + 0x80) >>> 0, m.u16(pSubType))
     m.setU16(
       (hdr + 0x82) >>> 0,
       PLAYERSAVE_FindInventoryItemSaveIndex_6FD0BD10_113c(m, pPlayerUnit, m.u32(pSubGuid)) &
         0xffff,
     )
-    UNITS_GetPlayerSubtargetRight113c(m, pPlayerUnit, pSubType, pSubGuid)
+    UNITS_GetPlayerSubtargetLeft113c(m, pPlayerUnit, pSubType, pSubGuid)
     m.setU16((hdr + 0x84) >>> 0, m.u16(pSubType))
     m.setU16(
       (hdr + 0x86) >>> 0,
@@ -3057,7 +3062,6 @@ export function MONSTER_SpawnPresetPackTable_6FD0F940_113c(
             -1,
             dwSpawnFlags,
           ) >>> 0
-        pLastLeader = pSpawned
         if (pSpawned !== 0) {
           bSpawnedAny = 1
         }
@@ -3118,7 +3122,6 @@ export function MONSTER_SpawnPresetPackTable_6FD0F940_113c(
               -1,
               0,
             ) >>> 0
-          pLastLeader = pSpawned
           if (pSpawned !== 0) {
             bSpawnedAny = 1
           }

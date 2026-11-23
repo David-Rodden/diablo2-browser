@@ -15,6 +15,7 @@
  */
 
 import { getGameLang, onLangChange, type GameLang } from '../i18n/lang.ts'
+import { DEFAULT_CHARACTER_SKIN_CONFIG } from '../../common/units/character-skin.ts'
 import {
   VALID_AUTOMAP_REVEAL_MODES,
   VALID_LIGHTING_PRESETS,
@@ -39,6 +40,7 @@ import {
   validatePluginRegistry,
   type D2WebPlugin,
   type LocalizedText,
+  type PluginCharacterSkinPort,
   type PluginClientCapabilities,
   type PluginContext,
   type PluginInstance,
@@ -128,7 +130,7 @@ export interface PluginHostOptions {
 
 const TOGGLE_PORT_NAMES = ['dragInteract', 'stashDepositAll', 'xpBar', 'autoGoldPickup', 'beltRefill', 'upgradeHints', 'monsterResists', 'monsterLevel', 'lowLifeWarning', 'smartSkills', 'spendPoints'] as const
 type TogglePortName = (typeof TOGGLE_PORT_NAMES)[number]
-type SettingPortName = 'autoCombat' | 'townPortal' | 'autopilot' | 'autoPotion' | 'autoLoot' | 'inventoryCare' | 'itemInfo' | 'pathGuide'
+type SettingPortName = 'autoCombat' | 'townPortal' | 'autopilot' | 'autoPotion' | 'autoLoot' | 'inventoryCare' | 'itemInfo' | 'pathGuide' | 'characterSkins'
 type WiredPortOptions = { readonly [K in TogglePortName | SettingPortName]?: PluginContext[K] | null | undefined }
 
 export interface PluginHostOptions extends WiredPortOptions {}
@@ -173,6 +175,7 @@ export class PluginHost {
   private readonly notifyPort: PluginNotifyPort | null
   /** Plugins currently claiming Quick Cast (Issue #952); empty set = vanilla behavior. */
   private readonly quickCastClaims = new Set<string>()
+  private readonly characterSkinClaims = new Set<string>()
   private readonly settingPorts: Pick<WiredPortOptions, SettingPortName>
   private readonly togglePorts: ReadonlyMap<TogglePortName, { readonly port: PluginTogglePort | null; readonly claims: Set<string> }>
   private ready = false
@@ -185,7 +188,7 @@ export class PluginHost {
     this.toolbar = options.toolbar ?? null
     this.quickCastPort = options.quickCast ?? null
     this.notifyPort = options.notify ?? null
-    this.settingPorts = { autoCombat: options.autoCombat, townPortal: options.townPortal, autopilot: options.autopilot, autoPotion: options.autoPotion, autoLoot: options.autoLoot, inventoryCare: options.inventoryCare, itemInfo: options.itemInfo, pathGuide: options.pathGuide }
+    this.settingPorts = { autoCombat: options.autoCombat, townPortal: options.townPortal, autopilot: options.autopilot, autoPotion: options.autoPotion, autoLoot: options.autoLoot, inventoryCare: options.inventoryCare, itemInfo: options.itemInfo, pathGuide: options.pathGuide, characterSkins: options.characterSkins }
     this.togglePorts = new Map(TOGGLE_PORT_NAMES.map((name) => [name, { port: options[name] ?? null, claims: new Set<string>() }]))
     this.settingsStore = options.settingsStore ?? getGlobalSettingsStore()
     this.enforceClientDefaults = options.enforceClientDefaults ?? false
@@ -570,6 +573,72 @@ export class PluginHost {
     }
   }
 
+  private createCharacterSkinPort(
+    record: InternalPluginRecord,
+    isDisposed: () => boolean,
+  ): PluginCharacterSkinPort {
+    const pluginId = record.plugin.id
+    const rawPort = this.settingPorts.characterSkins ?? null
+    const claim = (): PluginCharacterSkinPort => {
+      const wiredPort = requireWiredPort(rawPort, 'characterSkins', pluginId)
+      if (!this.characterSkinClaims.has(pluginId)) {
+        this.characterSkinClaims.add(pluginId)
+        const release = (): void => {
+          record.disposers.delete(release)
+          this.characterSkinClaims.delete(pluginId)
+          if (this.characterSkinClaims.size === 0) {
+            wiredPort.resetToVanilla()
+          }
+        }
+        record.disposers.add(release)
+      }
+      return wiredPort
+    }
+    return {
+      getConfig: () => rawPort?.getConfig() ?? DEFAULT_CHARACTER_SKIN_CONFIG,
+      setConfig: (patch) => {
+        if (isDisposed()) return
+        claim().setConfig(patch)
+      },
+      resetToVanilla: () => {
+        if (!rawPort) return
+        rawPort.resetToVanilla()
+      },
+      getCatalog: () => rawPort?.getCatalog() ?? [],
+      ensureCatalogLoaded: () => {
+        if (isDisposed()) return Promise.resolve([])
+        return claim().ensureCatalogLoaded()
+      },
+      importSkinZip: (zipBytes, opts) => claim().importSkinZip(zipBytes, opts),
+      removeCustomSkin: (skinId) => claim().removeCustomSkin(skinId),
+      subscribe: (fn) => {
+        if (isDisposed() || !rawPort) return () => {}
+        const unsub = rawPort.subscribe(() => {
+          try {
+            fn()
+          } catch (err) {
+            this.recordPluginError(record, 'characterSkins subscriber', err)
+            this.syncToolbarState()
+            this.notifyListeners()
+          }
+        })
+        let removed = false
+        const dispose = (): void => {
+          if (removed) return
+          removed = true
+          record.disposers.delete(dispose)
+          unsub()
+        }
+        record.disposers.add(dispose)
+        return dispose
+      },
+      openManagerModal: () => {
+        if (isDisposed()) return
+        claim().openManagerModal()
+      },
+    }
+  }
+
   private createWiredPorts(record: InternalPluginRecord, isDisposed: () => boolean): Pick<PluginContext, TogglePortName | SettingPortName> {
     const pluginId = record.plugin.id
     const { autoCombat, townPortal, autopilot, autoPotion, autoLoot, inventoryCare, itemInfo, pathGuide } = this.settingPorts
@@ -584,6 +653,7 @@ export class PluginHost {
       inventoryCare: { getConfig: () => inventoryCare?.getConfig() ?? null, setConfig: (config) => wired('inventoryCare').setConfig(config) },
       itemInfo: { getConfig: () => itemInfo?.getConfig() ?? null, setConfig: (config) => wired('itemInfo').setConfig(config) },
       pathGuide: { getMode: () => pathGuide?.getMode() ?? null, setMode: (mode) => wired('pathGuide').setMode(mode) },
+      characterSkins: this.createCharacterSkinPort(record, isDisposed),
     }
   }
 

@@ -201,7 +201,8 @@ function monsterStartModeFromArgs113c(
   const pTarget = mem.u32((pModeArgs + 0x08) >>> 0) >>> 0;
   const tx = mem.u32((pModeArgs + 0x0c) >>> 0) | 0;
   const ty = mem.u32((pModeArgs + 0x10) >>> 0) | 0;
-  return MONSTER_StartMode113c(mem, pGame >>> 0, pUnit, mode, pTarget, tx, ty) | 0;
+  const pathTypeArg = mem.u8((pModeArgs + 0x15) >>> 0);
+  return MONSTER_StartMode113c(mem, pGame >>> 0, pUnit, mode, pTarget, tx, ty, pathTypeArg) | 0;
 }
 
 function setMonsterAiParamState113c(m: Memory113c, pUnit: number, nState: number): void {
@@ -485,7 +486,7 @@ export function AI_FindNearestPlayerTarget113c(
 
     const bestPlayer = mem.u32(sp) >>> 0;
     if (bestPlayer === 0) {
-      return 0;
+      return pUnit >>> 0;
     }
     const bestDist = mem.u32((sp + 0x04) >>> 0) | 0;
     if (bestDist < 4 && pOutClose !== 0) {
@@ -1149,7 +1150,7 @@ export function AI_WarrivGreetMem113c(
     if (soundCooldown === 0) {
       mem.setU32((pAiGeneral + 0x18) >>> 0, 0x3c);
       if (mem.get(pTarget, D2UnitStrc.dwUnitType) === UNIT_PLAYER) {
-        SUNIT_SetUnitEventSound113c(mem, pTarget, 0x12, pTarget);
+        SUNIT_SetUnitEventSound113c(mem, pUnit >>> 0, 0x12, pTarget);
         AI_Stall113c(mem, pGame >>> 0, pUnit >>> 0, 0x14);
         return 1;
       }
@@ -1217,13 +1218,13 @@ export function AI_TownNpcMem113c(
         mem as SparseMemory113c,
         pGame >>> 0,
         pUnit >>> 0,
-        (sp + 0x04) >>> 0,
         sp,
+        (sp + 0x04) >>> 0,
       );
-      if (mem.u32(sp) !== 0) {
+      if (mem.u32((sp + 0x04) >>> 0) !== 0) {
         AI_Stall113c(mem, pGame >>> 0, pUnit >>> 0, 0x14);
       }
-      if (mem.u32((sp + 0x04) >>> 0) === 0) {
+      if (mem.u32(sp) === 0) {
         return;
       }
       if (ACT2Q4_ActivateHorazonJournal_6FCE1F90_113c(mem, pGame >>> 0) !== 0) {

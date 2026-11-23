@@ -73,6 +73,13 @@ import {
 import {
   PluginConfigStore,
 } from './plugin-config-store.ts'
+import type { PlayerClassToken } from '../../common/units/char-appearance.ts'
+import type {
+  CharacterSkinCatalogEntry,
+  CharacterSkinMorphPolicy,
+  CharacterSkinRuntimeConfig,
+  CharacterSkinScope,
+} from '../../common/units/character-skin.ts'
 
 export {
   CLIENT_LIGHTING_PRESET_ORDER,
@@ -322,6 +329,29 @@ export interface PluginAutoPotionPort {
   setThresholds(thresholds: AutoPotionThresholds | null): void
 }
 
+export type {
+  CharacterSkinCatalogEntry,
+  CharacterSkinMorphPolicy,
+  CharacterSkinRuntimeConfig,
+  CharacterSkinScope,
+  PlayerClassToken,
+}
+
+export interface PluginCharacterSkinPort {
+  getConfig(): CharacterSkinRuntimeConfig
+  setConfig(patch: Partial<CharacterSkinRuntimeConfig>): void
+  resetToVanilla(): void
+  getCatalog(): readonly CharacterSkinCatalogEntry[]
+  ensureCatalogLoaded(): Promise<readonly CharacterSkinCatalogEntry[]>
+  importSkinZip(
+    zipBytes: Uint8Array,
+    options?: { readonly activateForClass?: boolean },
+  ): Promise<CharacterSkinCatalogEntry>
+  removeCustomSkin(skinId: string): Promise<boolean>
+  subscribe(fn: () => void): () => void
+  openManagerModal(): void
+}
+
 const ACTIVE_STATUS: PluginStatus = { level: 'ok', text: { zh: '已开启', en: 'Active' } }
 const INACTIVE_STATUS: PluginStatus = { level: 'warn', text: { zh: '未开启', en: 'Inactive' } }
 
@@ -428,6 +458,7 @@ export interface PluginContext {
   readonly autoPotion: PluginAutoPotionPort
   readonly autoLoot: PluginAutoLootPort
   readonly inventoryCare: PluginInventoryCarePort
+  readonly characterSkins: PluginCharacterSkinPort
   readonly lang: {
     get(): GameLang
     subscribe(fn: (lang: GameLang) => void): () => void

@@ -383,8 +383,8 @@
     "name": "SKILLS_DispatchSrvDoFunc_6FCBE420",
     "kernFile": "src/d2kern-113c/game/k2-w2b4-113c.ts",
     "tsSymbol": "SKILLS_DispatchSrvDoFunc_6FCBE420_113c",
-    "status": "ported",
-    "diffEvidence": "Unit verification in tests/oracle/k2/w2b4.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit verification in tests/oracle/k2/w2b4.test.ts; Wave 19 1:1 PE32 indirect-call audit (static_table; tools/oracle/callgraph/indirect-audit-batchA.json) verified in tests/oracle/k2/k2-disasm-verified-wave19-indA.test.ts"
   },
   {
     "module": "D2Game",

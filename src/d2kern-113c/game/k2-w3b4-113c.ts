@@ -107,9 +107,9 @@ import {
   SUNITDMG_AllocCombat113c,
   SUNITDMG_ApplyDamage113c,
   SUNITDMG_ApplySideEffectsAndKill113c,
-  SUNITDMG_CalcMonsterExperience113c,
   SUNITDMG_ExecuteEvents113c,
 } from './combat-a1c-113c.ts'
+import { SUNITDMG_RollMeleeToHitAndBlock_6FCFE5A0_113c } from './k2-real-s2c-combat-113c.ts'
 import { SUNIT_GetServerUnit113c } from './game-strc.ts'
 import {
   AURA_ForEachUnitInRadius113c,
@@ -1119,48 +1119,6 @@ export function SKILLS_AbsorbDamageByManaShield_6FC61FB0_113c(
 }
 
 
-function rollToHitFlags6FCFE5A0(
-  m: D2KernMemory113c,
-  pAttacker: number,
-  pDefender: number,
-  pGame: number,
-  nToHitBonus: number,
-  _nWeaponRangePenalty: number,
-): number {
-  void SUNITDMG_CalcMonsterExperience113c
-  if (pAttacker === 0 || pDefender === 0) {
-    return 0
-  }
-  const attType = i32(m, pAttacker >>> 0)
-  if (attType !== 0 && attType !== 1) {
-    return 0
-  }
-  const defType = i32(m, pDefender >>> 0)
-  if (defType !== 0 && defType !== 1) {
-    return 0
-  }
-  if (SUNIT_AreUnitsHostileOrUnaligned113c(m, pDefender, pAttacker, pGame) === 0) {
-    return 0
-  }
-  let wFlags = 0
-  if (defType === 0 && i32(m, (pDefender + 0x10) >>> 0) === 3) {
-    wFlags = 1
-  }
-  if ((wFlags & 1) === 0) {
-    const ar = (STATLIST_GetUnitStat113c(m, pAttacker, 19, 0) | 0) + (nToHitBonus | 0)
-    const def = STATLIST_GetUnitStat113c(m, pDefender, 31, 0) | 0
-    const roll = SEED_RollLimitedRandomNumber113c(m, (pAttacker + 0x20) >>> 0, 100) | 0
-    const hitChance = ar > def ? 95 : 50
-    if (roll < hitChance) {
-      wFlags |= 1
-    }
-  }
-  if ((wFlags & 1) !== 0 && STATES_CheckState113c(m, pDefender, 0x36) === 0) {
-    wFlags |= 4
-  }
-  return wFlags & 0xffff
-}
-
 /**
  * Validates that `pUnit->pPath` has a valid target within `dwCalc1^2` squared subtile distance
  * and (if target is player/monster) that both units are hostile and outside town.
@@ -1677,7 +1635,7 @@ export function SKILLS_RollAuraStateToHitAndAllocCombat_6FC64AC0_113c(
   k2W3B4StackPtr = pDmg
   try {
     zeroWords113c(m, pDmg, 0x1c)
-    const wFlags = rollToHitFlags6FCFE5A0(m, pUnit, pTarget, pGame, toHitBonus, 0)
+    const wFlags = SUNITDMG_RollMeleeToHitAndBlock_6FCFE5A0_113c(m, pUnit, pTarget, pGame, toHitBonus, 0)
     m.setU16((pDmg + 0x04) >>> 0, wFlags & 0xffff)
     m.setU32((pDmg + 0x60) >>> 0, 1)
     SUNITDMG_AllocCombat113c(m, pGame, pUnit, pTarget, pDmg, srcDam)
@@ -1728,7 +1686,7 @@ export function SKILLS_SrvSt_DruidChargeUpMelee_6FC64C20_113c(
   }
   SKILLS_SetParam1113c(m, pSkill, 0)
   const toHitBonus = SKILLS_GetSkillToHitBonus113c(m, pUnit, nSkillId, nSkillLevel) | 0
-  const wFlags = rollToHitFlags6FCFE5A0(m, pUnit, pTarget, pGame, toHitBonus, 0)
+  const wFlags = SUNITDMG_RollMeleeToHitAndBlock_6FCFE5A0_113c(m, pUnit, pTarget, pGame, toHitBonus, 0)
   if ((wFlags & 1) === 0) {
     return 0
   }
@@ -1785,7 +1743,7 @@ export function SKILLS_SrvSt_MeleeWithElemConversion_6FC64D70_113c(
   try {
     zeroWords113c(m, pDmg, 0x1c)
     const toHitBonus = SKILLS_GetSkillToHitBonus113c(m, pUnit, nSkillId, nSkillLevel) | 0
-    const wFlags = rollToHitFlags6FCFE5A0(m, pUnit, pTarget, pGame, toHitBonus, 0)
+    const wFlags = SUNITDMG_RollMeleeToHitAndBlock_6FCFE5A0_113c(m, pUnit, pTarget, pGame, toHitBonus, 0)
     m.setU16((pDmg + 0x04) >>> 0, wFlags & 0xffff)
     if ((wFlags & 1) !== 0) {
       if (m.u8((pSkillsTxt + 0x1dc) >>> 0) > 0) {
@@ -1930,10 +1888,11 @@ export function SKILLS_SrvDo_DruidShapeShift_6FC65CE0_113c(
     const ownerId = pUnit !== 0 ? m.u32((pUnit + 0x0c) >>> 0) : 0xffffffff
     const ownerType = pUnit !== 0 ? m.u32(pUnit >>> 0) : 6
     const pMemPool = m.u32((pGame + 0x1c) >>> 0) >>> 0
-    pStatList = STATLIST_AllocList113c(m, pMemPool, 2, expireFrame, ownerType, ownerId) >>> 0
+    pStatList = STATLIST_AllocList113c(m, 2, ownerType, ownerId, 0, expireFrame) >>> 0
     if (pStatList === 0) {
       return 0
     }
+    m.setU32(pStatList, pMemPool)
     STATLIST_SetState113c(m, pStatList, sx16(m.u16((pSkillsTxt + 0x80) >>> 0)))
     STATLIST_SetStatRemoveProc113c(m, pStatList, 0x6fcbf7a0)
     STATLIST_MergeStatLists113c(m, pUnit, pStatList, 1)
@@ -1973,6 +1932,7 @@ export function SKILLS_ApplySecondaryAuraStateStats_6FC65EE0_113c(
   nSkillId: number,
   nSkillLevel: number,
   nChargeLevel: number,
+  pCaster = pUnit,
 ): number {
   hitD2GameVa113c(0x6FC65EE0)
   const pSkillsTxt = SKILLS_GetRecordPtrFast113c(m, nSkillId)
@@ -1985,26 +1945,27 @@ export function SKILLS_ApplySecondaryAuraStateStats_6FC65EE0_113c(
     return 0
   }
   const expireFrame = ((m.u32((pGame + 0xa8) >>> 0) | 0) + (nDuration | 0)) >>> 0
-  let pStatList = STATLIST_GetStatListFromUnitAndStateMemPort113c(m, pUnit, wAuraState2) >>> 0
-  if (pStatList === 0) {
-    const ownerId = pUnit !== 0 ? m.u32((pUnit + 0x0c) >>> 0) : 0xffffffff
-    const ownerType = pUnit !== 0 ? m.u32(pUnit >>> 0) : 6
-    const pMemPool = m.u32((pGame + 0x1c) >>> 0) >>> 0
-    pStatList = STATLIST_AllocList113c(m, pMemPool, 2, expireFrame, ownerType, ownerId) >>> 0
-    if (pStatList === 0) {
-      return 0
-    }
-    STATLIST_SetState113c(m, pStatList, sx16(m.u16((pSkillsTxt + 0x82) >>> 0)))
-    STATLIST_SetStatRemoveProc113c(m, pStatList, 0x6fcbf7a0)
-    STATLIST_MergeStatLists113c(m, pUnit, pStatList, 1)
-    STATES_ToggleGfxStateFlag113c(m, pUnit, sx16(m.u16((pSkillsTxt + 0x82) >>> 0)), 1)
+  if (STATLIST_GetStatListFromUnitAndStateMemPort113c(m, pUnit, wAuraState2) !== 0) {
+    return 0
   }
+  const ownerId = pUnit !== 0 ? m.u32((pUnit + 0x0c) >>> 0) : 0xffffffff
+  const ownerType = pUnit !== 0 ? m.u32(pUnit >>> 0) : 6
+  const pMemPool = m.u32((pGame + 0x1c) >>> 0) >>> 0
+  const pStatList = STATLIST_AllocList113c(m, 2, ownerType, ownerId, 0, expireFrame) >>> 0
+  if (pStatList === 0) {
+    return 0
+  }
+  m.setU32(pStatList, pMemPool)
+  STATLIST_SetState113c(m, pStatList, sx16(m.u16((pSkillsTxt + 0x82) >>> 0)))
+  STATLIST_SetStatRemoveProc113c(m, pStatList, 0x6fcbf7a0)
+  STATLIST_MergeStatLists113c(m, pUnit, pStatList, 1)
+  STATES_ToggleGfxStateFlag113c(m, pUnit, sx16(m.u16((pSkillsTxt + 0x82) >>> 0)), 1)
   STATLIST_SetExpireFrameEx113c(m, pStatList, expireFrame)
   EVENT_SetEventFull113c(m, pGame, pUnit, 0x0c, expireFrame, 0, 0, 0)
   SKILLS_ApplySkillAuraStatCalcs_6FC648E0_113c(
     m,
     pSkillsTxt,
-    pUnit,
+    pCaster,
     pStatList,
     nSkillId,
     nChargeLevel,
@@ -2069,10 +2030,11 @@ export function SKILLS_SrvDo_DruidChargeUpHit_6FC66000_113c(
       const ownerId = pUnit !== 0 ? m.u32((pUnit + 0x0c) >>> 0) : 0xffffffff
       const ownerType = pUnit !== 0 ? m.u32(pUnit >>> 0) : 6
       const pMemPool = m.u32((pGame + 0x1c) >>> 0) >>> 0
-      pStatList = STATLIST_AllocList113c(m, pMemPool, 2, expireFrame, ownerType, ownerId) >>> 0
+      pStatList = STATLIST_AllocList113c(m, 2, ownerType, ownerId, 0, expireFrame) >>> 0
       if (pStatList === 0) {
         return 1
       }
+      m.setU32(pStatList, pMemPool)
       STATLIST_SetState113c(m, pStatList, sx16(m.u16((pSkillsTxt + 0x80) >>> 0)))
       STATLIST_SetStatRemoveProc113c(m, pStatList, 0x6fcbf7a0)
       STATLIST_MergeStatLists113c(m, pUnit, pStatList, 1)
@@ -2593,7 +2555,7 @@ export function SKILLS_SrvSt_MeleeWithSkillElemDamage_6FC6C3A0_113c(
   k2W3B4StackPtr = pDmg
   try {
     zeroWords113c(m, pDmg, 0x1c)
-    const wFlags = rollToHitFlags6FCFE5A0(m, pUnit, pTarget, pGame, 0, 0)
+    const wFlags = SUNITDMG_RollMeleeToHitAndBlock_6FCFE5A0_113c(m, pUnit, pTarget, pGame, 0, 0)
     m.setU16((pDmg + 0x04) >>> 0, wFlags & 0xffff)
     if ((wFlags & 1) !== 0) {
       const minElem = SKILLS_GetSkillElemMinDamage113c(m, pUnit, nSkillId, nSkillLevel, 1) | 0
@@ -2656,7 +2618,7 @@ export function SKILLS_SrvDo_LightningStrikeBounce_6FC6CE10_113c(
   if (pTarget === pUnit >>> 0 || pTarget === 0) {
     return 0
   }
-  SUNITDMG_ExecuteEvents113c(m, pGame, pUnit, pTarget, 0, 0)
+  SUNITDMG_ExecuteEvents113c(m, pGame, pUnit, pTarget, 1, 0)
   const nRadius = SKILLS_EvalCalcByOffset113c(
     m,
     pUnit,
@@ -2757,7 +2719,7 @@ export function SKILLS_SrvDo_ChargedStrikeBolts_6FC6D040_113c(
   if (pTarget === pUnit >>> 0 || pTarget === 0) {
     return 0
   }
-  SUNITDMG_ExecuteEvents113c(m, pGame, pUnit, pTarget, 0, 0)
+  SUNITDMG_ExecuteEvents113c(m, pGame, pUnit, pTarget, 1, 0)
   const nBolts = SKILLS_EvalCalcByOffset113c(
     m,
     pUnit,
@@ -3347,8 +3309,8 @@ export function SKILLS_IronMaidenThornsReflectDamage_6FC6F090_113c(
     m.setU16((pReflectedDmg + 0x04) >>> 0, (m.u16((pReflectedDmg + 0x04) >>> 0) | wResFlags) & 0xffff)
     m.setU32(pReflectedDmg, (m.u32(pReflectedDmg) | m.u32((pSkillsTxt + 0x130) >>> 0)) >>> 0)
     m.setU32((pReflectedDmg + 0x60) >>> 0, m.u32((pSkillsTxt + 0x134) >>> 0))
-    SUNITDMG_ApplyDamage113c(m, pGame, pUnit, pTarget, pReflectedDmg)
-    SUNITDMG_ApplySideEffectsAndKill113c(m, pGame, pUnit, pTarget, pReflectedDmg)
+    SUNITDMG_ApplyDamage113c(m, pGame, pTarget, pUnit, pReflectedDmg, 1)
+    SUNITDMG_ApplySideEffectsAndKill113c(m, pGame, pTarget, pUnit, pReflectedDmg)
 
     if (i32(m, pTarget >>> 0) === 1 && i32(m, (pTarget + 0x04) >>> 0) === 0x122) {
       const pMonStatsTxt = MONSTER_GetMonStatsTxtFromUnit_6FC21540_113c(m, pTarget) >>> 0

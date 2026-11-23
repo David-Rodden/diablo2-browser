@@ -27,6 +27,7 @@ describe('Tier 4 — Real-World Application Scenarios (RW1–RW6, 6 tests)', () 
   it('RW1: Single Player Campaign Loopback Session (LocalLobbyProvider + LocalLoopbackAdapter full lifecycle)', async () => {
     const lobby = new Server.LocalLobbyProvider({
       registry: getSharedDataRegistry(),
+      backend: 'legacy',
     })
     Netproto.registerLocalLobbyProvider(lobby)
 

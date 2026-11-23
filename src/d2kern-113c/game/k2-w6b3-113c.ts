@@ -409,7 +409,7 @@ function transitionMonsterSpecialAiState6FCBD230(
   m.setU32(((pAiGeneral >>> 0) + 0x1c) >>> 0, 0)
   AIGENERAL_FlushAllAiCommands113c(m, pGame >>> 0, pMonster >>> 0)
   m.setU32(pAiGeneral >>> 0, effSpecAi >>> 0)
-  AI_InitMonsterAiThinkFn113c(m, pMonster >>> 0)
+  AI_InitMonsterAiThinkFn113c(m, pMonster >>> 0, pGame >>> 0, pAiGeneral >>> 0, effSpecAi)
 }
 
 function dispatchMonsterStartMode6FC95E10(
@@ -430,7 +430,8 @@ function dispatchMonsterStartMode6FC95E10(
   if (hooks !== undefined && hooks.world !== undefined) {
     return MONSTER_StartMode113c(hooks.world, pUnit, mode, pTarget, targetX, targetY) ? 1 : 0
   }
-  return MONSTER_StartModeMem113c(m, pGame >>> 0, pUnit, mode, pTarget, targetX, targetY) | 0
+  const pathTypeArg = m.u8((pModeArgs + 0x15) >>> 0)
+  return MONSTER_StartModeMem113c(m, pGame >>> 0, pUnit, mode, pTarget, targetX, targetY, pathTypeArg, bUpdateAnim | 0) | 0
 }
 
 function aiStall6FD122C0(
@@ -1841,6 +1842,10 @@ export function AI_ThinkAct2SewerTownNpc_6FC3B950_113c(
 
   const pCmd10 = findAiCmdNodeInCircularList113c(m, u, 0x0a)
   if (ACT2Q1_IsSewerTrapDoorOpen_6FCE1F40_113c(m, game) === 0) {
+    if (pCmd10 === 0) {
+      aiStall6FD122C0(m, game, u, 0x14, hooks)
+      return
+    }
     const sp = (k2W6B3StackPtr - 0x08) >>> 0
     k2W6B3StackPtr = sp
     let tx = 0
@@ -1881,7 +1886,7 @@ export function AI_ThinkAct2SewerTownNpc_6FC3B950_113c(
   }
 
   const pNearTarget = AI_FindNearestPlayerTarget113c(m, game, u) >>> 0
-  const nearDist = AI_CalcApproxUnitDistSubtiles113c(m, u, pNearTarget) | 0
+  const nearDist = pNearTarget !== 0 ? (AI_CalcApproxUnitDistSubtiles113c(m, u, pNearTarget) | 0) : 0
 
   if (ACT2Q4_IsPortalOpen_6FCE2040_113c(m, game) !== 0) {
     const tx = m.u32((pCmd10 + 0x0c) >>> 0) | 0

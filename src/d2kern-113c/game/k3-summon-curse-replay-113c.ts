@@ -63,10 +63,19 @@ import {
 import { D2Game_6FCC3610_113c } from './k2-w13b1-113c.ts'
 import {
   ITEMS_EvaluateMonsterDropTableEntry_6FC3E900_113c,
+  SKILLS_SrvDo_BoneWall_6FC70FE0_113c,
   SKILLS_SrvDo_ClayBloodFireGolem_6FC71750_113c,
+  SKILLS_SrvDo_IronGolem_6FC71540_113c,
   SKILLS_SrvDo_RaiseSkeletonOrMage_6FC718B0_113c,
+  SKILLS_SrvDo_Summon3TrapsInTriangle_6FC63D40_113c,
   SKILLS_SrvDo_SummonDecoy_6FC6D710_113c,
+  SKILLS_SrvDo_SummonDruidSpirit_6FC66720_113c,
+  SKILLS_SrvDo_SummonPetAtTarget_6FC66560_113c,
+  SKILLS_SrvDo_SummonShadowWarriorOrMaster_6FC6D8C0_113c,
+  SKILLS_SrvDo_SummonVineOrCreeper_6FC668A0_113c,
+  SKILLS_SrvDo_Valkyrie_6FCB5980_113c,
 } from './k2-w14b1-113c.ts'
+import { SKILLS_SrvDo_SummonPetWithAiInit_6FCB6310_113c } from './k2-w15b1-113c.ts'
 import {
   ITEMS_ClearAllDupeAndCommandFlags_6FCBB340_113c,
   SUMMON_GetPetTypeBucketPtr_6FCB6540_113c,
@@ -408,8 +417,8 @@ function ensureSummonRegisteredInPetSlotK3_113c(
     ) {
       return
     }
-    m.setU32(pAssignCtx, m.u32((pOwner + 0x0c) >>> 0))
-    m.setU32((pAssignCtx + 0x04) >>> 0, dwPetGuid)
+    m.setU32(pAssignCtx, dwPetGuid)
+    m.setU32((pAssignCtx + 0x04) >>> 0, m.u32((pOwner + 0x0c) >>> 0))
     m.setU16((pAssignCtx + 0x08) >>> 0, m.u16((pPetUnit + 0x04) >>> 0))
     m.setU32((pAssignCtx + 0x0c) >>> 0, nPetType >>> 0)
     D2GAME_SUNIT_IterateAllLivingPlayers113c(
@@ -616,6 +625,37 @@ export function dispatchSummonOrCurseDoFuncK3_113c(
       fixSummonStatsAfter6FC6F970_K3(m, pGame, pUnit, spawnedPet, skId, effLvl, initBase)
     }
     return rc
+  }
+
+  const spawnSafeCb = (mem: SparseMemory113c, pg: number, pSummonArg: number): number =>
+    spawnSummonPetWithSafePetInfoK3_113c(mem, pg, pSummonArg)
+
+  if (doIdx === 15) {
+    return SKILLS_SrvDo_SummonShadowWarriorOrMaster_6FC6D8C0_113c(sm, pGame, pUnit, skId, effLvl, spawnSafeCb)
+  }
+  if (doIdx === 44) {
+    return SKILLS_SrvDo_SummonPetWithAiInit_6FCB6310_113c(sm, pGame, pUnit, skId, effLvl)
+  }
+  if (doIdx === 49) {
+    return SKILLS_SrvDo_Valkyrie_6FCB5980_113c(sm, pGame, pUnit, skId, effLvl, spawnSafeCb)
+  }
+  if (doIdx === 57) {
+    return SKILLS_SrvDo_IronGolem_6FC71540_113c(sm, pGame, pUnit, skId, effLvl, spawnSafeCb)
+  }
+  if (doIdx === 60) {
+    return SKILLS_SrvDo_BoneWall_6FC70FE0_113c(sm, pGame, pUnit, skId, effLvl, spawnSafeCb)
+  }
+  if (doIdx === 114) {
+    return SKILLS_SrvDo_SummonVineOrCreeper_6FC668A0_113c(sm, pGame, pUnit, skId, effLvl, spawnSafeCb)
+  }
+  if (doIdx === 115) {
+    return SKILLS_SrvDo_SummonDruidSpirit_6FC66720_113c(sm, pGame, pUnit, skId, effLvl, spawnSafeCb)
+  }
+  if (doIdx === 119) {
+    return SKILLS_SrvDo_SummonPetAtTarget_6FC66560_113c(sm, pGame, pUnit, skId, effLvl, spawnSafeCb)
+  }
+  if (doIdx === 144) {
+    return SKILLS_SrvDo_Summon3TrapsInTriangle_6FC63D40_113c(sm, pGame, pUnit, skId, effLvl, spawnSafeCb)
   }
 
   return 1

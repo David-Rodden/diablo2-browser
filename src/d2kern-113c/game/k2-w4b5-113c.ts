@@ -119,12 +119,12 @@ import {
   SUNITDMG_AllocCombat113c,
   SUNITDMG_ApplyDamage113c,
   SUNITDMG_ApplySideEffectsAndKill113c,
-  SUNITDMG_CalcMonsterExperience113c,
   SUNITDMG_ExecuteEvents113c,
   SUNITDMG_FillDamageValues113c,
   SUNITDMG_FindCombatDamageData113c,
 } from './combat-a1c-113c.js'
-import { PLAYER_GetEquippedWeapon113c } from './replay-kernel-113c.ts'
+import { SUNITDMG_RollMeleeToHitAndBlock_6FCFE5A0_113c } from './k2-real-s2c-combat-113c.js'
+import { PLAYER_GetEquippedWeapon113c } from './replay-kernel-113c.js'
 import { SUNIT_GetServerUnit113c } from './game-strc.js'
 import {
   AURAS_ApplyRadialStatBuffCallback113c,
@@ -135,7 +135,10 @@ import {
   MISSILE_SpawnNova64Directions113c,
   SKILLS_ResolveChargedSrvMissileId113c,
 } from './k2-gap-melee-dot-113c.js'
-import { MONUMOD_MarkBossAndIncrementUniqueCount113c } from './k2-items-tc-w1-113c.js'
+import {
+  MONUMOD_MarkBossAndIncrementUniqueCount113c,
+  MONUMOD_RollBossOrMinionNameSeed113c,
+} from './k2-items-tc-w1-113c.js'
 import {
   SKILLS_EvalLinearParam12_6FC21B10_113c,
   STATLIST_AddUnitStatGoldGuarded_6FC21670_113c,
@@ -166,6 +169,8 @@ import { SUNIT_FreeUnit113c } from './replay-final11-113c.js'
 import { EVENT_SetEventFull113c } from './timer-wheel.js'
 import { SUNIT_UpdateUnitPositionAndRoom113c } from './town-runtime-gap-113c.js'
 import { hitD2GameVa113c } from '../va-trace-113c.js'
+
+let k2W4B5StackPtr = 0x7e100000
 
 function i32(m: D2KernMemory113c, addr: number): number {
   return m.u32(addr >>> 0) | 0
@@ -206,17 +211,24 @@ export function NET_SendPacket82_PortalOwnerInfo_6FCAD040_113c(
   if (pPlayer === 0) return
 
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer) >>> 0
-  const pPkt = m.alloc(0x20) >>> 0
-  m.setU8(pPkt, 0x82)
-  m.setU32((pPkt + 0x01) >>> 0, m.u32((pPlayer + 0x0c) >>> 0) >>> 0)
-  for (let i = 0; i < 0x10; i = (i + 1) | 0) {
-    const ch = i < 0x0f && pPlayerData !== 0 ? m.u8((pPlayerData + i) >>> 0) : 0
-    m.setU8((pPkt + 0x05 + i) >>> 0, ch)
-    if (ch === 0) break
+  const pPkt = k2W4B5StackPtr
+  k2W4B5StackPtr = (pPkt + 0x20) >>> 0
+  m.fill(pPkt, 0x20, 0)
+  try {
+    m.fill(pPkt, 0x20, 0)
+    m.setU8(pPkt, 0x82)
+    m.setU32((pPkt + 0x01) >>> 0, m.u32((pPlayer + 0x0c) >>> 0) >>> 0)
+    for (let i = 0; i < 0x10; i = (i + 1) | 0) {
+      const ch = i < 0x0f && pPlayerData !== 0 ? m.u8((pPlayerData + i) >>> 0) : 0
+      m.setU8((pPkt + 0x05 + i) >>> 0, ch)
+      if (ch === 0) break
+    }
+    m.setU32((pPkt + 0x15) >>> 0, dwPortalGuid >>> 0)
+    m.setU32((pPkt + 0x19) >>> 0, dwTargetGuid >>> 0)
+    NET_QueuePacketToClientBuffer113c(m, pClient >>> 0, 1, pPkt, 0x1d)
+  } finally {
+    k2W4B5StackPtr = pPkt
   }
-  m.setU32((pPkt + 0x15) >>> 0, dwPortalGuid >>> 0)
-  m.setU32((pPkt + 0x19) >>> 0, dwTargetGuid >>> 0)
-  NET_QueuePacketToClientBuffer113c(m, pClient >>> 0, 1, pPkt, 0x1d)
 }
 
 /**
@@ -238,47 +250,54 @@ export function NET_SendPacket75_PartyUnitRosterUpdate_6FCAD120_113c(
     pClient = m.u32((pRecipData0 + 0x9c) >>> 0) >>> 0
   }
 
-  const pPkt = m.alloc(0x10) >>> 0
-  m.setU8(pPkt, 0x75)
-  const dwTargetGuid =
-    pTargetPlayer !== 0 ? m.u32((pTargetPlayer + 0x0c) >>> 0) >>> 0 : 0xffffffff
-  m.setU32((pPkt + 0x01) >>> 0, dwTargetGuid)
+  const pPkt = k2W4B5StackPtr
+  k2W4B5StackPtr = (pPkt + 0x10) >>> 0
+  m.fill(pPkt, 0x10, 0)
+  try {
+    m.fill(pPkt, 0x10, 0)
+    m.setU8(pPkt, 0x75)
+    const dwTargetGuid =
+      pTargetPlayer !== 0 ? m.u32((pTargetPlayer + 0x0c) >>> 0) >>> 0 : 0xffffffff
+    m.setU32((pPkt + 0x01) >>> 0, dwTargetGuid)
 
-  const wLevel = STATLIST_GetUnitStat113c(m, pTargetPlayer >>> 0, 0x0c, 0) & 0xffff
-  m.setU16((pPkt + 0x07) >>> 0, wLevel)
+    const wLevel = STATLIST_GetUnitStat113c(m, pTargetPlayer >>> 0, 0x0c, 0) & 0xffff
+    m.setU16((pPkt + 0x07) >>> 0, wLevel)
 
-  let wPartyId = 0xffff
-  if (pTargetPlayer !== 0) {
-    const pGame = m.u32((pTargetPlayer + 0x80) >>> 0) >>> 0
-    if (pGame !== 0 && m.u32(pTargetPlayer >>> 0) === 0) {
-      wPartyId = D2GAME_PARTY_GetPartyIdForUnit113c(m, pTargetPlayer >>> 0, pGame) & 0xffff
-    }
-  }
-  m.setU16((pPkt + 0x05) >>> 0, wPartyId)
-
-  const pRecipData = UNITS_GetPlayerData113c(m, pRecipientPlayer >>> 0) >>> 0
-  let pRelNode = 0
-  if ((pRecipientPlayer >>> 0) !== (pTargetPlayer >>> 0) && pRecipData !== 0) {
-    let pCur = m.u32((pRecipData + 0x38) >>> 0) >>> 0
-    while (pCur !== 0) {
-      if (m.u32(pCur) === dwTargetGuid) {
-        pRelNode = pCur
-        break
+    let wPartyId = 0xffff
+    if (pTargetPlayer !== 0) {
+      const pGame = m.u32((pTargetPlayer + 0x80) >>> 0) >>> 0
+      if (pGame !== 0 && m.u32(pTargetPlayer >>> 0) === 0) {
+        wPartyId = D2GAME_PARTY_GetPartyIdForUnit113c(m, pTargetPlayer >>> 0, pGame) & 0xffff
       }
-      pCur = m.u32((pCur + 0x10) >>> 0) >>> 0
     }
+    m.setU16((pPkt + 0x05) >>> 0, wPartyId)
+
+    const pRecipData = UNITS_GetPlayerData113c(m, pRecipientPlayer >>> 0) >>> 0
+    let pRelNode = 0
+    if ((pRecipientPlayer >>> 0) !== (pTargetPlayer >>> 0) && pRecipData !== 0) {
+      let pCur = m.u32((pRecipData + 0x38) >>> 0) >>> 0
+      while (pCur !== 0) {
+        if (m.u32(pCur) === dwTargetGuid) {
+          pRelNode = pCur
+          break
+        }
+        pCur = m.u32((pCur + 0x10) >>> 0) >>> 0
+      }
+    }
+    const wRelFlags =
+      (pRecipientPlayer >>> 0) !== (pTargetPlayer >>> 0) && pRelNode !== 0
+        ? m.u16((pRelNode + 0x04) >>> 0)
+        : 0
+    m.setU16((pPkt + 0x09) >>> 0, wRelFlags)
+
+    const wRelState =
+      PARTY_GetPlayerRelationState113c(m, pRecipientPlayer >>> 0, pTargetPlayer >>> 0) & 0xffff
+    m.setU16((pPkt + 0x0b) >>> 0, wRelState)
+
+    return NET_QueuePacketToClientBuffer113c(m, pClient, 1, pPkt, 0x0d) | 0
+  } finally {
+    k2W4B5StackPtr = pPkt
   }
-  const wRelFlags =
-    (pRecipientPlayer >>> 0) !== (pTargetPlayer >>> 0) && pRelNode !== 0
-      ? m.u16((pRelNode + 0x04) >>> 0)
-      : 0
-  m.setU16((pPkt + 0x09) >>> 0, wRelFlags)
-
-  const wRelState =
-    PARTY_GetPlayerRelationState113c(m, pRecipientPlayer >>> 0, pTargetPlayer >>> 0) & 0xffff
-  m.setU16((pPkt + 0x0b) >>> 0, wRelState)
-
-  return NET_QueuePacketToClientBuffer113c(m, pClient, 1, pPkt, 0x0d) | 0
 }
 
 /**
@@ -337,19 +356,26 @@ export function NET_SendPacket22_UnitSkillAmmoCount_6FCAD570_113c(
   if (pClient === 0) {
     throw new D2CommonAssertError('SUnitMsg.cpp', 0x996)
   }
-  const pPkt = m.alloc(0x0c) >>> 0
-  m.setU8(pPkt, 0x22)
-  m.setU8((pPkt + 0x01) >>> 0, bUnitType & 0xff)
-  m.setU32((pPkt + 0x03) >>> 0, dwUnitGuid >>> 0)
-  m.setU16((pPkt + 0x07) >>> 0, wSkillId & 0xffff)
-  m.setU8((pPkt + 0x09) >>> 0, bCount & 0xff)
+  const pPkt = k2W4B5StackPtr
+  k2W4B5StackPtr = (pPkt + 0x10) >>> 0
+  m.fill(pPkt, 0x10, 0)
+  try {
+    m.fill(pPkt, 0x0c, 0)
+    m.setU8(pPkt, 0x22)
+    m.setU8((pPkt + 0x01) >>> 0, bUnitType & 0xff)
+    m.setU32((pPkt + 0x03) >>> 0, dwUnitGuid >>> 0)
+    m.setU16((pPkt + 0x07) >>> 0, wSkillId & 0xffff)
+    m.setU8((pPkt + 0x09) >>> 0, bCount & 0xff)
 
-  const pGame = m.u32((pClient + 0x1a8) >>> 0) >>> 0
-  const pUnit = SUNIT_GetServerUnit113c(m, pGame, bUnitType & 0xff, dwUnitGuid >>> 0) >>> 0
-  const bHasState7 = pUnit !== 0 && (STATES_CheckState113c(m, pUnit, 7) | 0) !== 0 ? 1 : 0
-  m.setU8((pPkt + 0x0b) >>> 0, bHasState7)
+    const pGame = m.u32((pClient + 0x1a8) >>> 0) >>> 0
+    const pUnit = SUNIT_GetServerUnit113c(m, pGame, bUnitType & 0xff, dwUnitGuid >>> 0) >>> 0
+    const bHasState7 = pUnit !== 0 && (STATES_CheckState113c(m, pUnit, 7) | 0) !== 0 ? 1 : 0
+    m.setU8((pPkt + 0x0b) >>> 0, bHasState7)
 
-  return NET_QueuePacketToClientBuffer113c(m, pClient >>> 0, 1, pPkt, 0x0c) | 0
+    return NET_QueuePacketToClientBuffer113c(m, pClient >>> 0, 1, pPkt, 0x0c) | 0
+  } finally {
+    k2W4B5StackPtr = pPkt
+  }
 }
 
 /**
@@ -379,17 +405,23 @@ export function NET_SendPacket21_UpdateUnitSkill_6FCAD5F0_113c(
     if (pTargetClient === 0) return
   }
 
-  const pPkt = m.alloc(0x0c) >>> 0
-  m.setU8(pPkt, 0x21)
-  m.setU8((pPkt + 0x01) >>> 0, m.u32(pUnit >>> 0) & 0xff)
-  m.setU8((pPkt + 0x02) >>> 0, bArg2 & 0xff)
-  m.setU32((pPkt + 0x03) >>> 0, m.u32((pUnit + 0x0c) >>> 0) >>> 0)
-  m.setU16((pPkt + 0x07) >>> 0, wSkillId & 0xffff)
-  m.setU8((pPkt + 0x09) >>> 0, bBaseLevel & 0xff)
-  const bBonus = SKILLS_GetUnitSkillBonusBySkillId113c(m, pUnit >>> 0, wSkillId & 0xffff) & 0xff
-  m.setU8((pPkt + 0x0a) >>> 0, bBonus)
+  const pPkt = k2W4B5StackPtr >>> 0
+  k2W4B5StackPtr = (pPkt + 0x10) >>> 0
+  m.fill(pPkt, 0x10, 0)
+  try {
+    m.setU8(pPkt, 0x21)
+    m.setU8((pPkt + 0x01) >>> 0, m.u32(pUnit >>> 0) & 0xff)
+    m.setU8((pPkt + 0x02) >>> 0, bArg2 & 0xff)
+    m.setU32((pPkt + 0x03) >>> 0, m.u32((pUnit + 0x0c) >>> 0) >>> 0)
+    m.setU16((pPkt + 0x07) >>> 0, wSkillId & 0xffff)
+    m.setU8((pPkt + 0x09) >>> 0, bBaseLevel & 0xff)
+    const bBonus = SKILLS_GetUnitSkillBonusBySkillId113c(m, pUnit >>> 0, wSkillId & 0xffff) & 0xff
+    m.setU8((pPkt + 0x0a) >>> 0, bBonus)
 
-  NET_QueuePacketToClientBuffer113c(m, pTargetClient, 1, pPkt, 0x0c)
+    NET_QueuePacketToClientBuffer113c(m, pTargetClient, 1, pPkt, 0x0c)
+  } finally {
+    k2W4B5StackPtr = pPkt
+  }
 }
 
 /**
@@ -427,40 +459,46 @@ export function NET_SendPacketMonsterMoveCoord_6FCAD860_113c(
   }
   if (pMonster === 0) return
 
-  const pPkt = m.alloc(0x10) >>> 0
-  m.setU8(pPkt, bPacketHeader & 0xff)
-  m.setU32((pPkt + 0x01) >>> 0, dwMonsterGuid >>> 0)
-  m.setU8((pPkt + 0x05) >>> 0, bMoveType & 0xff)
-  m.setU16((pPkt + 0x06) >>> 0, wTargetX & 0xffff)
-  m.setU16((pPkt + 0x08) >>> 0, wTargetY & 0xffff)
-  m.setU8((pPkt + 0x0a) >>> 0, bByteA & 0xff)
-  m.setU8((pPkt + 0x0b) >>> 0, bByteB & 0xff)
+  const pPkt = k2W4B5StackPtr >>> 0
+  k2W4B5StackPtr = (pPkt + 0x10) >>> 0
+  m.fill(pPkt, 0x10, 0)
+  try {
+    m.setU8(pPkt, bPacketHeader & 0xff)
+    m.setU32((pPkt + 0x01) >>> 0, dwMonsterGuid >>> 0)
+    m.setU8((pPkt + 0x05) >>> 0, bMoveType & 0xff)
+    m.setU16((pPkt + 0x06) >>> 0, wTargetX & 0xffff)
+    m.setU16((pPkt + 0x08) >>> 0, wTargetY & 0xffff)
+    m.setU8((pPkt + 0x0a) >>> 0, bByteA & 0xff)
+    m.setU8((pPkt + 0x0b) >>> 0, bByteB & 0xff)
 
-  const pPath = m.u32((pMonster + 0x2c) >>> 0) >>> 0
-  const bPathType = PATH_GetType113c(m, pPath) & 0xff
-  m.setU8((pPkt + 0x0c) >>> 0, bPathType)
-  if (bPathType >= 5) {
-    if (bPathType <= 6) {
-      m.setU8((pPkt + 0x0c) >>> 0, 1)
-      const wLastX = PATH_GetLastPointX113c(m, pPath) & 0xffff
-      m.setU16((pPkt + 0x06) >>> 0, wLastX)
-      const wLastY = PATH_GetLastPointY113c(m, pPath) & 0xffff
-      m.setU16((pPkt + 0x08) >>> 0, wLastY)
-    } else if (bPathType === 8) {
-      m.setU8((pPkt + 0x0c) >>> 0, 0x0b)
+    const pPath = m.u32((pMonster + 0x2c) >>> 0) >>> 0
+    const bPathType = PATH_GetType113c(m, pPath) & 0xff
+    m.setU8((pPkt + 0x0c) >>> 0, bPathType)
+    if (bPathType >= 5) {
+      if (bPathType <= 6) {
+        m.setU8((pPkt + 0x0c) >>> 0, 1)
+        const wLastX = PATH_GetLastPointX113c(m, pPath) & 0xffff
+        m.setU16((pPkt + 0x06) >>> 0, wLastX)
+        const wLastY = PATH_GetLastPointY113c(m, pPath) & 0xffff
+        m.setU16((pPkt + 0x08) >>> 0, wLastY)
+      } else if (bPathType === 8) {
+        m.setU8((pPkt + 0x0c) >>> 0, 0x0b)
+      }
     }
-  }
 
-  let nVelPct = STATLIST_GetUnitStat113c(m, pMonster, 0x43, 0) | 0
-  if (nVelPct <= -0x8000) {
-    nVelPct = -0x8000
-  } else if (nVelPct >= 0x7fff) {
-    nVelPct = 0x7fff
-  }
-  m.setU16((pPkt + 0x0d) >>> 0, nVelPct & 0xffff)
-  m.setU8((pPkt + 0x0f) >>> 0, bByteF & 0xff)
+    let nVelPct = STATLIST_GetUnitStat113c(m, pMonster, 0x43, 0) | 0
+    if (nVelPct <= -0x8000) {
+      nVelPct = -0x8000
+    } else if (nVelPct >= 0x7fff) {
+      nVelPct = 0x7fff
+    }
+    m.setU16((pPkt + 0x0d) >>> 0, nVelPct & 0xffff)
+    m.setU8((pPkt + 0x0f) >>> 0, bByteF & 0xff)
 
-  NET_QueuePacketToClientBuffer113c(m, pClient >>> 0, 1, pPkt, 0x10)
+    NET_QueuePacketToClientBuffer113c(m, pClient >>> 0, 1, pPkt, 0x10)
+  } finally {
+    k2W4B5StackPtr = pPkt
+  }
 }
 
 /**
@@ -497,48 +535,54 @@ export function NET_SendPacketMonsterTargetUnit_6FCAD990_113c(
   }
   if (pMonster === 0) return
 
-  const pPkt = m.alloc(0x18) >>> 0
-  m.setU8(pPkt, bPacketHeader & 0xff)
-  m.setU32((pPkt + 0x01) >>> 0, dwMonsterGuid >>> 0)
-  m.setU8((pPkt + 0x05) >>> 0, bMoveType & 0xff)
-  m.setU8((pPkt + 0x0a) >>> 0, bTargetUnitType & 0xff)
-  m.setU32((pPkt + 0x0b) >>> 0, dwTargetUnitGuid >>> 0)
+  const pPkt = k2W4B5StackPtr >>> 0
+  k2W4B5StackPtr = (pPkt + 0x18) >>> 0
+  m.fill(pPkt, 0x18, 0)
+  try {
+    m.setU8(pPkt, bPacketHeader & 0xff)
+    m.setU32((pPkt + 0x01) >>> 0, dwMonsterGuid >>> 0)
+    m.setU8((pPkt + 0x05) >>> 0, bMoveType & 0xff)
+    m.setU8((pPkt + 0x0a) >>> 0, bTargetUnitType & 0xff)
+    m.setU32((pPkt + 0x0b) >>> 0, dwTargetUnitGuid >>> 0)
 
-  const uTypeX = m.u32(pMonster) | 0
-  const pPath = m.u32((pMonster + 0x2c) >>> 0) >>> 0
-  let wPosX: number
-  if (uTypeX === 2 || (uTypeX > 3 && uTypeX <= 5)) {
-    wPosX = m.u32((pPath + 0x0c) >>> 0) & 0xffff
-  } else {
-    wPosX = pPath !== 0 ? PATH_GetPosX113c(m, pPath) & 0xffff : 0
+    const uTypeX = m.u32(pMonster) | 0
+    const pPath = m.u32((pMonster + 0x2c) >>> 0) >>> 0
+    let wPosX: number
+    if (uTypeX === 2 || (uTypeX > 3 && uTypeX <= 5)) {
+      wPosX = m.u32((pPath + 0x0c) >>> 0) & 0xffff
+    } else {
+      wPosX = pPath !== 0 ? PATH_GetPosX113c(m, pPath) & 0xffff : 0
+    }
+    m.setU16((pPkt + 0x06) >>> 0, wPosX)
+
+    const uTypeY = m.u32(pMonster) | 0
+    const pPathY = m.u32((pMonster + 0x2c) >>> 0) >>> 0
+    let wPosY: number
+    if (uTypeY === 2 || (uTypeY > 3 && uTypeY <= 5)) {
+      wPosY = m.u32((pPathY + 0x10) >>> 0) & 0xffff
+    } else {
+      wPosY = pPathY !== 0 ? PATH_GetPosY113c(m, pPathY) & 0xffff : 0
+    }
+    m.setU16((pPkt + 0x08) >>> 0, wPosY)
+    m.setU8((pPkt + 0x0f) >>> 0, bByteF & 0xff)
+    m.setU8((pPkt + 0x10) >>> 0, bByte10 & 0xff)
+
+    const bPathType = PATH_GetType113c(m, pPath) & 0xff
+    m.setU8((pPkt + 0x11) >>> 0, bPathType === 8 ? 0x0b : bPathType)
+
+    let nVelPct = STATLIST_GetUnitStat113c(m, pMonster, 0x43, 0) | 0
+    if (nVelPct <= -0x8000) {
+      nVelPct = -0x8000
+    } else if (nVelPct >= 0x7fff) {
+      nVelPct = 0x7fff
+    }
+    m.setU16((pPkt + 0x12) >>> 0, nVelPct & 0xffff)
+    m.setU8((pPkt + 0x14) >>> 0, bByte14 & 0xff)
+
+    NET_QueuePacketToClientBuffer113c(m, pClient >>> 0, 1, pPkt, 0x15)
+  } finally {
+    k2W4B5StackPtr = pPkt
   }
-  m.setU16((pPkt + 0x06) >>> 0, wPosX)
-
-  const uTypeY = m.u32(pMonster) | 0
-  const pPathY = m.u32((pMonster + 0x2c) >>> 0) >>> 0
-  let wPosY: number
-  if (uTypeY === 2 || (uTypeY > 3 && uTypeY <= 5)) {
-    wPosY = m.u32((pPathY + 0x10) >>> 0) & 0xffff
-  } else {
-    wPosY = pPathY !== 0 ? PATH_GetPosY113c(m, pPathY) & 0xffff : 0
-  }
-  m.setU16((pPkt + 0x08) >>> 0, wPosY)
-  m.setU8((pPkt + 0x0f) >>> 0, bByteF & 0xff)
-  m.setU8((pPkt + 0x10) >>> 0, bByte10 & 0xff)
-
-  const bPathType = PATH_GetType113c(m, pPath) & 0xff
-  m.setU8((pPkt + 0x11) >>> 0, bPathType === 8 ? 0x0b : bPathType)
-
-  let nVelPct = STATLIST_GetUnitStat113c(m, pMonster, 0x43, 0) | 0
-  if (nVelPct <= -0x8000) {
-    nVelPct = -0x8000
-  } else if (nVelPct >= 0x7fff) {
-    nVelPct = 0x7fff
-  }
-  m.setU16((pPkt + 0x12) >>> 0, nVelPct & 0xffff)
-  m.setU8((pPkt + 0x14) >>> 0, bByte14 & 0xff)
-
-  NET_QueuePacketToClientBuffer113c(m, pClient >>> 0, 1, pPkt, 0x15)
 }
 
 /**
@@ -700,8 +744,15 @@ export function NPCS_QueueOrFreeVendorItem_6FCB0260_113c(
   void m.u32((pGame + 0x1c) >>> 0)
   const pNode = m.alloc(0x14) >>> 0
   const dwNpcClassId = pNpcUnit !== 0 ? m.u32((pNpcUnit + 0x04) >>> 0) >>> 0 : 0xffffffff
-  const pOutIdx = m.alloc(4) >>> 0
-  const pSlot = D2GAME_ARENA_FindPlayerSlotByUnit113c(m, pOutIdx, pGame >>> 0, dwNpcClassId) >>> 0
+  const pOutIdx = k2W4B5StackPtr >>> 0
+  k2W4B5StackPtr = (pOutIdx + 0x08) >>> 0
+  m.fill(pOutIdx, 0x08, 0)
+  let pSlot = 0
+  try {
+    pSlot = D2GAME_ARENA_FindPlayerSlotByUnit113c(m, pOutIdx, pGame >>> 0, dwNpcClassId) >>> 0
+  } finally {
+    k2W4B5StackPtr = pOutIdx
+  }
   if (pSlot !== 0) {
     m.setU32((pNode + 0x10) >>> 0, m.u32((pSlot + 0x14) >>> 0) >>> 0)
     m.setU32((pSlot + 0x14) >>> 0, pNode)
@@ -753,17 +804,24 @@ export function NPCS_UpdateTownVendorSlotsOnPlayerLeave_6FCB0560_113c(
     return
   }
 
-  const pCtx = m.alloc(8) >>> 0
-  m.setU32(pCtx, nLevelId >>> 0)
-  m.setU32((pCtx + 0x04) >>> 0, 0)
-  D2GAME_SUNIT_IterateAllLivingPlayers113c(
-    m,
-    pGame >>> 0,
-    ARENA_CountPlayersInLevelCallback113c,
-    pCtx,
-  )
-  const nRemaining = (i32(m, (pCtx + 0x04) >>> 0) - 1) | 0
-  m.setU32((pCtx + 0x04) >>> 0, nRemaining >>> 0)
+  const pCtx = k2W4B5StackPtr >>> 0
+  k2W4B5StackPtr = (pCtx + 0x10) >>> 0
+  m.fill(pCtx, 0x10, 0)
+  let nRemaining = 0
+  try {
+    m.setU32(pCtx, nLevelId >>> 0)
+    m.setU32((pCtx + 0x04) >>> 0, 0)
+    D2GAME_SUNIT_IterateAllLivingPlayers113c(
+      m,
+      pGame >>> 0,
+      ARENA_CountPlayersInLevelCallback113c,
+      pCtx,
+    )
+    nRemaining = (i32(m, (pCtx + 0x04) >>> 0) - 1) | 0
+    m.setU32((pCtx + 0x04) >>> 0, nRemaining >>> 0)
+  } finally {
+    k2W4B5StackPtr = pCtx
+  }
   const bTownEmpty = nRemaining === 0 ? 1 : 0
   NPCS_UpdateMercenaryOrVendorSlots113c(m, pGame >>> 0, nAct, bTownEmpty)
 }
@@ -799,9 +857,16 @@ export function MISSILES_BuildRandomizedSpiralPath_6FCB1040_113c(
   PATH_SetType113c(m, pPath, 0x0a)
   PATH_SetNewDistance113c(m, pPath, nFrames)
 
-  const ppPathPoints = m.alloc(4) >>> 0
-  PATH_GetPathPoints113c(m, pPath, ppPathPoints)
-  const pPathPoints = m.u32(ppPathPoints) >>> 0
+  const ppPathPoints = k2W4B5StackPtr >>> 0
+  k2W4B5StackPtr = (ppPathPoints + 0x08) >>> 0
+  m.fill(ppPathPoints, 0x08, 0)
+  let pPathPoints = 0
+  try {
+    PATH_GetPathPoints113c(m, pPath, ppPathPoints)
+    pPathPoints = m.u32(ppPathPoints) >>> 0
+  } finally {
+    k2W4B5StackPtr = ppPathPoints
+  }
 
   const uType0 = m.u32(pMissile >>> 0) | 0
   let nCurX: number
@@ -1006,7 +1071,9 @@ export function SKILLS_RestoreConvertedMonsterAlignmentAndStats_6FCB14F0_113c(
   hitD2GameVa113c(0x6FCB14F0)
   SUNIT_SetMonsterAlignmentState113c(m, pUnit >>> 0, 0, 1)
   STATES_ToggleGfxStateFlag113c(m, pUnit >>> 0, nState | 0, 0)
-  if (pUnit === 0) return
+  if (pUnit === 0) {
+    throw new D2CommonAssertError('SUnit.cpp', 0xa2a)
+  }
 
   const pGame = m.u32((pUnit + 0x80) >>> 0) >>> 0
   SUNIT_UnlinkFromRoomUpdateList113c(m, pGame, pUnit >>> 0)
@@ -1047,6 +1114,15 @@ export function SKILLS_RestoreConvertedMonsterAlignmentAndStats_6FCB14F0_113c(
  *
  * @va D2Game:0x6FCB1660
  */
+const DEFAULT_MONUMOD_TABLE_W4B5_6FD2E550: readonly number[] = [
+  0, 0x6fc43020, 0x6fc42fa0, 0, 0x6fc41e80, 0x6fc42bc0, 0x6fc42880, 0,
+  0x6fc41be0, 0x6fc42740, 0, 0, 0, 0, 0, 0,
+  0x6fc42da0, 0x6fc42600, 0x6fc42490, 0, 0, 0, 0, 0x6fc42320,
+  0, 0x6fc421d0, 0x6fc441b0, 0x6fc41be0, 0x6fc41be0, 0, 0x6fc44cd0, 0,
+  0, 0, 0, 0, 0x6fc43850, 0x6fc43810, 0x6fc437c0, 0x6fc42d00,
+  0, 0x6fc469f0, 0,
+]
+
 export function SKILLS_ApplyMonsterSkillBuffAndUMod_6FCB1660_113c(
   m: D2KernMemory113c,
   pSkillsTxt: number,
@@ -1054,6 +1130,13 @@ export function SKILLS_ApplyMonsterSkillBuffAndUMod_6FCB1660_113c(
   pMonster: number,
   nSkillId: number,
   nLevel: number,
+  onMonUMod?: (
+    m: D2KernMemory113c,
+    pfn: number,
+    pMonster: number,
+    nMonUMod: number,
+    bBoss: number,
+  ) => void,
 ): void {
   hitD2GameVa113c(0x6FCB1660)
   const lvl = nLevel | 0
@@ -1134,7 +1217,22 @@ export function SKILLS_ApplyMonsterSkillBuffAndUMod_6FCB1660_113c(
         for (let slot = 0; slot < 9; slot = (slot + 1) | 0) {
           if (m.u8((pUModArr + slot) >>> 0) === 0) {
             m.setU8((pUModArr + slot) >>> 0, nMonUMod & 0xff)
-            void m.u32((0x6fd2e550 + nMonUMod * 4) >>> 0)
+            let pfnUMod = 0
+            try {
+              pfnUMod = m.u32((0x6fd2e550 + nMonUMod * 4) >>> 0) >>> 0
+            } catch {
+              pfnUMod = 0
+            }
+            if (pfnUMod === 0 && nMonUMod < DEFAULT_MONUMOD_TABLE_W4B5_6FD2E550.length) {
+              pfnUMod = DEFAULT_MONUMOD_TABLE_W4B5_6FD2E550[nMonUMod]! >>> 0
+            }
+            if (pfnUMod !== 0) {
+              if (onMonUMod !== undefined) {
+                onMonUMod(m, pfnUMod, pMonster >>> 0, nMonUMod, 1)
+              } else if (pfnUMod === 0x6fc43020) {
+                MONUMOD_RollBossOrMinionNameSeed113c(m, pMonster >>> 0, nMonUMod, 1)
+              }
+            }
             break
           }
         }
@@ -1214,51 +1312,62 @@ export function SKILLS_ApplyRadialDamageCallback_6FCB3040_113c(
   pTargetUnit: number,
 ): number {
   hitD2GameVa113c(0x6FCB3040)
-  void SUNITDMG_CalcMonsterExperience113c
   const pSub = m.u32((pAuraCtx + 0x0c) >>> 0) >>> 0
   const pSrcDmg = m.u32(pSub) >>> 0
-  const pDmg = m.alloc(0x70) >>> 0
-  for (let i = 0; i < 0x70; i += 4) {
-    m.setU32((pDmg + i) >>> 0, m.u32((pSrcDmg + i) >>> 0) >>> 0)
-  }
-
-  const pGame = m.u32(pAuraCtx >>> 0) >>> 0
-  const pAttacker = m.u32((pAuraCtx + 0x04) >>> 0) >>> 0
-  const nToHitBonus = i32(m, (pSub + 0x04) >>> 0)
-  const wPresetResult = m.u16((pSub + 0x08) >>> 0)
-
-  if ((wPresetResult & 1) === 0) {
-    let wRolled = 0x21
-    if (pAttacker !== 0 && pTargetUnit !== 0) {
-      void nToHitBonus
-      wRolled = (0x21 | wPresetResult) & 0xffff
+  const pDmg = k2W4B5StackPtr >>> 0
+  k2W4B5StackPtr = (pDmg + 0x78) >>> 0
+  m.fill(pDmg, 0x78, 0)
+  try {
+    for (let i = 0; i < 0x70; i += 4) {
+      m.setU32((pDmg + i) >>> 0, m.u32((pSrcDmg + i) >>> 0) >>> 0)
     }
-    m.setU16((pDmg + 0x04) >>> 0, wRolled)
-    if ((wRolled & 1) === 0) {
-      return 1
-    }
-  } else {
-    m.setU16((pDmg + 0x04) >>> 0, wPresetResult)
-  }
 
-  if ((m.u8((pDmg + 0x04) >>> 0) & 1) !== 0) {
-    m.setU32(pDmg, (m.u32(pDmg) | m.u32((pSub + 0x0c) >>> 0)) >>> 0)
-    const bSrcDam = m.u8((pSub + 0x10) >>> 0)
-    if (bSrcDam !== 0) {
-      SUNITDMG_FillDamageValues113c(
-        m,
-        pGame,
-        pAttacker,
-        pTargetUnit >>> 0,
-        pDmg,
-        0,
-        bSrcDam,
-      )
+    const pGame = m.u32(pAuraCtx >>> 0) >>> 0
+    const pAttacker = m.u32((pAuraCtx + 0x04) >>> 0) >>> 0
+    const nToHitBonus = i32(m, (pSub + 0x04) >>> 0)
+    const wPresetResult = m.u16((pSub + 0x08) >>> 0)
+
+    if ((wPresetResult & 1) === 0) {
+      const wRolled =
+        SUNITDMG_RollMeleeToHitAndBlock_6FCFE5A0_113c(
+          m,
+          pAttacker,
+          pTargetUnit >>> 0,
+          pGame,
+          nToHitBonus,
+          1,
+          0,
+        ) & 0xffff
+      m.setU16((pDmg + 0x04) >>> 0, wRolled)
+      if ((wRolled & 1) === 0) {
+        return 1
+      }
+      m.setU16((pDmg + 0x04) >>> 0, (wRolled | wPresetResult) & 0xffff)
+    } else {
+      m.setU16((pDmg + 0x04) >>> 0, wPresetResult)
     }
-    SUNITDMG_AllocCombat113c(m, pGame, pAttacker, pTargetUnit >>> 0, pDmg, 0x80)
-    SUNITDMG_ExecuteEvents113c(m, pGame, pAttacker, pTargetUnit >>> 0, 1, pDmg)
+
+    if ((m.u8((pDmg + 0x04) >>> 0) & 1) !== 0) {
+      m.setU32(pDmg, (m.u32(pDmg) | m.u32((pSub + 0x0c) >>> 0)) >>> 0)
+      const bSrcDam = m.u8((pSub + 0x10) >>> 0)
+      if (bSrcDam !== 0) {
+        SUNITDMG_FillDamageValues113c(
+          m,
+          pGame,
+          pAttacker,
+          pTargetUnit >>> 0,
+          pDmg,
+          0,
+          bSrcDam,
+        )
+      }
+      SUNITDMG_AllocCombat113c(m, pGame, pAttacker, pTargetUnit >>> 0, pDmg, 0x80)
+      SUNITDMG_ExecuteEvents113c(m, pGame, pAttacker, pTargetUnit >>> 0, 1, 0)
+    }
+    return 1
+  } finally {
+    k2W4B5StackPtr = pDmg
   }
-  return 1
 }
 
 
@@ -1461,7 +1570,9 @@ export function PETS_FindPetTypeByGuid_6FCB6600_113c(
 ): number {
   hitD2GameVa113c(0x6FCB6600)
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer >>> 0) >>> 0
-  if (pPlayerData === 0) return 0
+  if (pPlayerData === 0) {
+    throw new D2CommonAssertError('SUnitProxy.cpp', 0x3dc)
+  }
   const pPlayerPets = m.u32((pPlayerData + 0x44) >>> 0) >>> 0
   if (pPlayerPets === 0) return 0
 
@@ -1525,10 +1636,10 @@ export function PETS_SendPetOrMercAssignPacket_6FCB66E0_113c(
 
   return NET_SendPacket81_AssignMerc_6FCAB220_113c(
     m,
-    m.u32((pPetNode + 0x04) >>> 0) >>> 0,
+    m.u32(pPetNode >>> 0) >>> 0,
     pClient,
     m.u32((pPetNode + 0x0c) >>> 0) & 0xff,
-    m.u32(pPetNode >>> 0) >>> 0,
+    m.u32((pPetNode + 0x04) >>> 0) >>> 0,
     m.u16((pPetNode + 0x08) >>> 0),
     dwSeed,
     dwWParam,
@@ -1554,18 +1665,24 @@ export function PETS_SendPacket7A_UnsummonPet_6FCB6810_113c(
     pClient = m.u32((pPlayerData + 0x9c) >>> 0) >>> 0
   }
 
-  const pPkt = m.alloc(0x10) >>> 0
-  m.setU32(pPkt, 0)
-  m.setU32((pPkt + 0x04) >>> 0, 0)
-  m.setU32((pPkt + 0x08) >>> 0, 0)
-  m.setU8((pPkt + 0x0c) >>> 0, 0)
-  m.setU8(pPkt, 0x7a)
-  m.setU8((pPkt + 0x01) >>> 0, 0)
-  m.setU8((pPkt + 0x02) >>> 0, m.u8((pPetNode + 0x0c) >>> 0))
-  m.setU16((pPkt + 0x03) >>> 0, m.u16((pPetNode + 0x08) >>> 0))
-  m.setU32((pPkt + 0x05) >>> 0, m.u32((pPetNode + 0x04) >>> 0) >>> 0)
-  m.setU32((pPkt + 0x09) >>> 0, m.u32(pPetNode >>> 0) >>> 0)
-  return NET_QueuePacketToClientBuffer113c(m, pClient, 4, pPkt, 0x0d)
+  const pPkt = k2W4B5StackPtr >>> 0
+  k2W4B5StackPtr = (pPkt + 0x10) >>> 0
+  m.fill(pPkt, 0x10, 0)
+  try {
+    m.setU32(pPkt, 0)
+    m.setU32((pPkt + 0x04) >>> 0, 0)
+    m.setU32((pPkt + 0x08) >>> 0, 0)
+    m.setU8((pPkt + 0x0c) >>> 0, 0)
+    m.setU8(pPkt, 0x7a)
+    m.setU8((pPkt + 0x01) >>> 0, 0)
+    m.setU8((pPkt + 0x02) >>> 0, m.u8((pPetNode + 0x0c) >>> 0))
+    m.setU16((pPkt + 0x03) >>> 0, m.u16((pPetNode + 0x08) >>> 0))
+    m.setU32((pPkt + 0x05) >>> 0, m.u32((pPetNode + 0x04) >>> 0) >>> 0)
+    m.setU32((pPkt + 0x09) >>> 0, m.u32(pPetNode >>> 0) >>> 0)
+    return NET_QueuePacketToClientBuffer113c(m, pClient, 1, pPkt, 0x0d) | 0
+  } finally {
+    k2W4B5StackPtr = pPkt
+  }
 }
 
 /**
@@ -1606,7 +1723,10 @@ export function PETS_GetFirstPetUnitByType_6FCB6A40_113c(
     if (pNode === 0) return 0
   }
 
-  if (pNode === 0 || pGame === 0) return 0
+  if (pNode === 0) return 0
+  if (pGame === 0) {
+    throw new D2CommonAssertError('SUnit.cpp', 0x2d3)
+  }
   const dwPetGuid = m.u32((pNode + 0x04) >>> 0) >>> 0
   let pUnit = m.u32((pGame + (dwPetGuid & 0x7f) * 4 + 0x1320) >>> 0) >>> 0
   while (pUnit !== 0) {
@@ -1760,7 +1880,6 @@ export function SKILLS_TryRedeemCorpseHealLifeAndMana_6FCB8490_113c(
   bSkipRoll: number,
 ): number {
   hitD2GameVa113c(0x6FCB8490)
-  void seedRoll
   const skillId = nSkillId | 0
   if (skillId < 0) return 0
   const pDataTablesPtr = m.u32(0x6fd1829c) >>> 0
@@ -1786,13 +1905,10 @@ export function SKILLS_TryRedeemCorpseHealLifeAndMana_6FCB8490_113c(
         lvl,
       ) | 0
     const pSeed = (pCasterUnit + 0x20) >>> 0
-    const prod =
-      BigInt(m.u32(pSeed) >>> 0) * 0x6ac690c5n + BigInt(m.u32((pSeed + 0x04) >>> 0) >>> 0)
-    const lo = Number(prod & 0xffffffffn) >>> 0
-    const hi = Number((prod >> 32n) & 0xffffffffn) >>> 0
-    m.setU32(pSeed, lo)
-    m.setU32((pSeed + 0x04) >>> 0, hi)
-    const nRoll = (lo % 100) | 0
+    const seed = { lo: m.u32(pSeed) >>> 0, hi: m.u32((pSeed + 0x04) >>> 0) >>> 0 }
+    const nRoll = seedRoll(seed, 0x64) | 0
+    m.setU32(pSeed, seed.lo >>> 0)
+    m.setU32((pSeed + 0x04) >>> 0, seed.hi >>> 0)
     if (nRoll >= nChance) return 0
   }
 
@@ -1899,7 +2015,6 @@ export function AURAS_RedemptionCorpseCallback_6FCB8680_113c(
   pCorpseUnit: number,
 ): number {
   hitD2GameVa113c(0x6FCB8680)
-  void seedRoll
   const pSub = m.u32((pAuraCtx + 0x0c) >>> 0) >>> 0
   const nSkillId = i32(m, pSub)
   const nLevel = i32(m, (pSub + 0x04) >>> 0)
@@ -1927,13 +2042,10 @@ export function AURAS_RedemptionCorpseCallback_6FCB8680_113c(
       nLevel,
     ) | 0
   const pSeed = (pCasterUnit + 0x20) >>> 0
-  const prod =
-    BigInt(m.u32(pSeed) >>> 0) * 0x6ac690c5n + BigInt(m.u32((pSeed + 0x04) >>> 0) >>> 0)
-  const lo = Number(prod & 0xffffffffn) >>> 0
-  const hi = Number((prod >> 32n) & 0xffffffffn) >>> 0
-  m.setU32(pSeed, lo)
-  m.setU32((pSeed + 0x04) >>> 0, hi)
-  const nRoll = (lo % 100) | 0
+  const seed = { lo: m.u32(pSeed) >>> 0, hi: m.u32((pSeed + 0x04) >>> 0) >>> 0 }
+  const nRoll = seedRoll(seed, 0x64) | 0
+  m.setU32(pSeed, seed.lo >>> 0)
+  m.setU32((pSeed + 0x04) >>> 0, seed.hi >>> 0)
   if (nRoll >= nChance) return 0
 
   const nLifeGain =
@@ -2058,7 +2170,9 @@ export function SKILLS_RestoreMindBlastConvertedMonster_6FCB8950_113c(
   hitD2GameVa113c(0x6FCB8950)
   STATES_ToggleGfxStateFlag113c(m, pUnit >>> 0, nState | 0, 0)
   SUNIT_SetMonsterAlignmentState113c(m, pUnit >>> 0, 0, 1)
-  if (pUnit === 0) return
+  if (pUnit === 0) {
+    throw new D2CommonAssertError('SUnit.cpp', 0xa2a)
+  }
 
   const pGame = m.u32((pUnit + 0x80) >>> 0) >>> 0
   SUNIT_UnlinkFromRoomUpdateList113c(m, pGame, pUnit >>> 0)
@@ -2078,18 +2192,18 @@ export function SKILLS_RestoreMindBlastConvertedMonster_6FCB8950_113c(
     STATLIST_SetUnitStat113c(m, pUnit >>> 0, 0x07, nSavedMaxHp, 0)
     STATLIST_UnlinkSubList113c(m, pUnit >>> 0, pSaveList)
     STATLIST_FreeStatListIfNonExtended113c(m, pSaveList)
-  }
 
-  let pFlag8List = STATLIST_GetStatListFromUnitAndFlag113c(m, pUnit >>> 0, 0x08) >>> 0
-  while (pFlag8List !== 0) {
-    STATLIST_UnlinkSubList113c(m, pUnit >>> 0, pFlag8List)
-    STATLIST_FreeStatListIfNonExtended113c(m, pFlag8List)
-    pFlag8List = STATLIST_GetStatListFromUnitAndFlag113c(m, pUnit >>> 0, 0x08) >>> 0
+    let pFlag8List = STATLIST_GetStatListFromUnitAndFlag113c(m, pUnit >>> 0, 0x08) >>> 0
+    while (pFlag8List !== 0) {
+      STATLIST_UnlinkSubList113c(m, pUnit >>> 0, pFlag8List)
+      STATLIST_FreeStatListIfNonExtended113c(m, pFlag8List)
+      pFlag8List = STATLIST_GetStatListFromUnitAndFlag113c(m, pUnit >>> 0, 0x08) >>> 0
+    }
   }
 }
 
 /**
- * [35/45] Scans a radius of `3` around `pCenterUnit` (`[esp+4]`) in `pGame` (`ecx`) with filter `0xA783`
+ * [35/45] Scans a radius of `3` around `pCenterUnit` (`ecx`) in `pGame` (`[esp+4]`) with filter `0xA783`
  * and `SKILLS_TargetRingScanCallback_6FCBED70_113c`, returning the closest primary target (`+0x00`) or fallback (`+0x08`).
  *
  * @va D2Game:0x6FCB8E30
@@ -2101,31 +2215,37 @@ export function SKILLS_FindClosestTargetInRadius3_6FCB8E30_113c(
   pCenterUnit: number,
 ): number {
   hitD2GameVa113c(0x6FCB8E30)
-  const pCtx = m.alloc(0x18) >>> 0
-  m.setU32(pCtx, 0)
-  m.setU32((pCtx + 0x04) >>> 0, 0xffffffff)
-  m.setU32((pCtx + 0x08) >>> 0, 0)
-  m.setU32((pCtx + 0x0c) >>> 0, nFilterUnitId >>> 0)
-  m.setU32((pCtx + 0x10) >>> 0, nFilterUnitId >>> 0)
-  m.setU32((pCtx + 0x14) >>> 0, 0)
+  const pCtx = k2W4B5StackPtr >>> 0
+  k2W4B5StackPtr = (pCtx + 0x20) >>> 0
+  m.fill(pCtx, 0x20, 0)
+  try {
+    m.setU32(pCtx, 0)
+    m.setU32((pCtx + 0x04) >>> 0, 0xffffffff)
+    m.setU32((pCtx + 0x08) >>> 0, 0)
+    m.setU32((pCtx + 0x0c) >>> 0, nFilterUnitId >>> 0)
+    m.setU32((pCtx + 0x10) >>> 0, nFilterUnitId >>> 0)
+    m.setU32((pCtx + 0x14) >>> 0, 0)
 
-  AURA_ForEachUnitInRadius113c(
-    m,
-    pGame >>> 0,
-    pCenterUnit >>> 0,
-    0,
-    0,
-    3,
-    0xa783,
-    0x6fcbed70,
-    pCtx,
-    0,
-    SKILLS_TargetRingScanCallback_6FCBED70_113c,
-  )
+    AURA_ForEachUnitInRadius113c(
+      m,
+      pGame >>> 0,
+      pCenterUnit >>> 0,
+      0,
+      0,
+      3,
+      0xa783,
+      0x6fcbed70,
+      pCtx,
+      0,
+      SKILLS_TargetRingScanCallback_6FCBED70_113c,
+    )
 
-  const pPrimary = m.u32(pCtx) >>> 0
-  if (pPrimary !== 0) return pPrimary
-  return m.u32((pCtx + 0x08) >>> 0) >>> 0
+    const pPrimary = m.u32(pCtx) >>> 0
+    if (pPrimary !== 0) return pPrimary
+    return m.u32((pCtx + 0x08) >>> 0) >>> 0
+  } finally {
+    k2W4B5StackPtr = pCtx
+  }
 }
 
 
@@ -2160,33 +2280,45 @@ export function SKILLS_SrvDo_ApplySacrificeSelfDamage_6FCB9290_113c(
 
   const pCombatDmg = SUNITDMG_FindCombatDamageData113c(m, pUnit >>> 0, pTarget) >>> 0
   if (pCombatDmg !== 0) {
-    const pSelfDmg = m.alloc(0x70) >>> 0
-    for (let i = 0; i < 0x70; i += 4) {
-      m.setU32((pSelfDmg + i) >>> 0, 0)
+    const pSelfDmg = k2W4B5StackPtr >>> 0
+    k2W4B5StackPtr = (pSelfDmg + 0x78) >>> 0
+    m.fill(pSelfDmg, 0x78, 0)
+    try {
+      for (let i = 0; i < 0x70; i += 4) {
+        m.setU32((pSelfDmg + i) >>> 0, 0)
+      }
+      m.setU32(pSelfDmg, (m.u32(pSelfDmg) | 0x1000) >>> 0)
+
+      let nBaseDmg = i32(m, (pCombatDmg + 0x08) >>> 0)
+      const nTargetHp = STATLIST_GetUnitStat113c(m, pTarget, 6, 0) | 0
+      if (nTargetHp < nBaseDmg) {
+        nBaseDmg = nTargetHp
+      }
+
+      const nSelfPct =
+        SKILLS_EvalCalcByOffset113c(
+          m,
+          pUnit >>> 0,
+          m.u32((pSkillsTxt + 0x13c) >>> 0),
+          skillId,
+          nLevel | 0,
+        ) | 0
+      const nSelfAmount = mulDiv113c(nSelfPct, nBaseDmg, 100) | 0
+      m.setU32((pSelfDmg + 0x08) >>> 0, nSelfAmount >>> 0)
+      m.setU32((pSelfDmg + 0x4c) >>> 0, nSelfAmount >>> 0)
+
+      SUNITDMG_ApplyDamage113c(m, pGame >>> 0, pUnit >>> 0, pUnit >>> 0, pSelfDmg, 0, undefined, 1)
+      if (m.u16((pSelfDmg + 0x04) >>> 0) === 0) {
+        // SUNITDMG_ApplyDamage113c already subtracted nSelfAmount and did not set RESULTFLAG_DEATH (0x02);
+        // clear dwDmgTotal so SUNITDMG_ApplySideEffectsAndKill113c's legacy (flags==0 && dmgTotal>0) shim
+        // does not subtract HP a second time (real D2Game:0x6FCFCF20 never subtracts HP).
+        m.setU32((pSelfDmg + 0x4c) >>> 0, 0)
+      }
+      SUNITDMG_ApplySideEffectsAndKill113c(m, pGame >>> 0, pUnit >>> 0, pUnit >>> 0, pSelfDmg)
+      SUNITDMG_ExecuteEvents113c(m, pGame >>> 0, pUnit >>> 0, pTarget, 1, 0)
+    } finally {
+      k2W4B5StackPtr = pSelfDmg
     }
-    m.setU32(pSelfDmg, (m.u32(pSelfDmg) | 0x1000) >>> 0)
-
-    let nBaseDmg = i32(m, (pCombatDmg + 0x08) >>> 0)
-    const nTargetHp = STATLIST_GetUnitStat113c(m, pTarget, 6, 0) | 0
-    if (nTargetHp < nBaseDmg) {
-      nBaseDmg = nTargetHp
-    }
-
-    const nSelfPct =
-      SKILLS_EvalCalcByOffset113c(
-        m,
-        pUnit >>> 0,
-        m.u32((pSkillsTxt + 0x13c) >>> 0),
-        skillId,
-        nLevel | 0,
-      ) | 0
-    const nSelfAmount = mulDiv113c(nSelfPct, nBaseDmg, 100) | 0
-    m.setU32((pSelfDmg + 0x08) >>> 0, nSelfAmount >>> 0)
-    m.setU32((pSelfDmg + 0x4c) >>> 0, nSelfAmount >>> 0)
-
-    SUNITDMG_ApplyDamage113c(m, pGame >>> 0, pUnit >>> 0, pUnit >>> 0, pSelfDmg)
-    SUNITDMG_ApplySideEffectsAndKill113c(m, pGame >>> 0, pUnit >>> 0, pUnit >>> 0, pSelfDmg)
-    SUNITDMG_ExecuteEvents113c(m, pGame >>> 0, pUnit >>> 0, pTarget, 1, 0)
   }
   return 1
 }
@@ -2223,19 +2355,26 @@ export function SKILLS_SrvDo_SpawnChargedMissileAtTargetUnit_6FCB93A0_113c(
   const pTarget = PATH_GetTargetUnit113c(m, m.u32((pUnit + 0x2c) >>> 0)) >>> 0
   if (pTarget === (pUnit >>> 0) || pTarget === 0) return 0
 
-  const pParams = m.alloc(0x5c) >>> 0
-  for (let i = 0; i < 0x5c; i += 4) {
-    m.setU32((pParams + i) >>> 0, 0)
-  }
-  m.setU32(pParams, 1)
-  m.setU32((pParams + 0x04) >>> 0, pUnit >>> 0)
-  m.setU32((pParams + 0x10) >>> 0, nMissileId >>> 0)
-  m.setU32((pParams + 0x14) >>> 0, UNIT_GetPosX113c(m, pTarget) >>> 0)
-  m.setU32((pParams + 0x18) >>> 0, UNIT_GetPosY113c(m, pTarget) >>> 0)
-  m.setU32((pParams + 0x2c) >>> 0, skillId >>> 0)
-  m.setU32((pParams + 0x30) >>> 0, nLevel >>> 0)
+  const pParams = k2W4B5StackPtr >>> 0
+  k2W4B5StackPtr = (pParams + 0x60) >>> 0
+  m.fill(pParams, 0x60, 0)
+  let pMissile = 0
+  try {
+    for (let i = 0; i < 0x5c; i += 4) {
+      m.setU32((pParams + i) >>> 0, 0)
+    }
+    m.setU32(pParams, 1)
+    m.setU32((pParams + 0x04) >>> 0, pUnit >>> 0)
+    m.setU32((pParams + 0x10) >>> 0, nMissileId >>> 0)
+    m.setU32((pParams + 0x14) >>> 0, UNIT_GetPosX113c(m, pTarget) >>> 0)
+    m.setU32((pParams + 0x18) >>> 0, UNIT_GetPosY113c(m, pTarget) >>> 0)
+    m.setU32((pParams + 0x2c) >>> 0, skillId >>> 0)
+    m.setU32((pParams + 0x30) >>> 0, nLevel >>> 0)
 
-  const pMissile = MISSILE_CreateServerProjectile113c(m, pGame >>> 0, pParams) >>> 0
+    pMissile = MISSILE_CreateServerProjectile113c(m, pGame >>> 0, pParams) >>> 0
+  } finally {
+    k2W4B5StackPtr = pParams
+  }
   if (pMissile === 0) return 0
 
   MISSILE_SetTargetX113c(m, pMissile, m.u32(pTarget) | 0)
@@ -2289,21 +2428,23 @@ export function SKILLS_ScalePoisonAndCurseDurations_6FCB9B60_113c(
     if (STATES_CheckState113c(m, pUnit >>> 0, nState) !== 0) {
       const pStateList =
         STATLIST_GetStatListFromUnitAndStateMemPort113c(m, pUnit >>> 0, nState) >>> 0
-      if (pStateList !== 0 && UNITS_CheckStateMaskExp113c(m, nState) !== 0) {
-        const nCurFrame = i32(m, (pGame + 0xa8) >>> 0)
-        const nExpire = STATLIST_GetExpireFrameEx113c(m, pStateList) | 0
-        const nRem = (nExpire - nCurFrame) | 0
-        let nScaledRem: number
-        if (nRem > 0x100000) {
-          nScaledRem = Math.imul((nRem / 100) | 0, nPct) | 0
-        } else if (nPct > 0x10000) {
-          nScaledRem = Math.imul((nPct / 100) | 0, nRem) | 0
-        } else {
-          nScaledRem = (Math.imul(nRem, nPct) / 100) | 0
+      if (pStateList !== 0) {
+        if (UNITS_CheckStateMaskExp113c(m, nState) !== 0) {
+          const nCurFrame = i32(m, (pGame + 0xa8) >>> 0)
+          const nExpire = STATLIST_GetExpireFrameEx113c(m, pStateList) | 0
+          const nRem = (nExpire - nCurFrame) | 0
+          let nScaledRem: number
+          if (nRem > 0x100000) {
+            nScaledRem = Math.imul((nRem / 100) | 0, nPct) | 0
+          } else if (nPct > 0x10000) {
+            nScaledRem = Math.imul((nPct / 100) | 0, nRem) | 0
+          } else {
+            nScaledRem = (Math.imul(nRem, nPct) / 100) | 0
+          }
+          const nNewExpire = (nCurFrame + nScaledRem) | 0
+          STATLIST_SetExpireFrameEx113c(m, pStateList, nNewExpire)
+          EVENT_SetEventFull113c(m, pGame >>> 0, pUnit >>> 0, 0x0c, nNewExpire, 0, 0, 0)
         }
-        const nNewExpire = (nCurFrame + nScaledRem) | 0
-        STATLIST_SetExpireFrameEx113c(m, pStateList, nNewExpire)
-        EVENT_SetEventFull113c(m, pGame >>> 0, pUnit >>> 0, 0x0c, nNewExpire, 0, 0, 0)
         bModified = 1
       }
     }
@@ -2346,29 +2487,41 @@ export function AURAS_ApplyUndeadPulseBuffAndDamageCallback_6FCBA630_113c(
   }
 
   if (m.u32((pSub + 0x48) >>> 0) !== 0) {
-    const pBuffCtx = m.alloc(0x10) >>> 0
-    const pBuffSub = m.alloc(0x50) >>> 0
-    for (let i = 0; i < 0x40; i += 4) {
-      m.setU32((pBuffSub + i) >>> 0, m.u32((pSub + i) >>> 0) >>> 0)
+    const pBuffCtx = k2W4B5StackPtr >>> 0
+    const pBuffSub = (pBuffCtx + 0x10) >>> 0
+    k2W4B5StackPtr = (pBuffSub + 0x50) >>> 0
+    m.fill(pBuffSub, 0x50, 0)
+    try {
+      for (let i = 0; i < 0x40; i += 4) {
+        m.setU32((pBuffSub + i) >>> 0, m.u32((pSub + i) >>> 0) >>> 0)
+      }
+      for (let i = 0x40; i < 0x50; i += 4) {
+        m.setU32((pBuffSub + i) >>> 0, 0)
+      }
+      m.setU32(pBuffCtx, pGame)
+      m.setU32((pBuffCtx + 0x04) >>> 0, pAttacker)
+      m.setU32((pBuffCtx + 0x08) >>> 0, 0)
+      m.setU32((pBuffCtx + 0x0c) >>> 0, pBuffSub)
+      AURAS_ApplyRadialStatBuffCallback113c(m, pBuffCtx, pTargetUnit >>> 0)
+    } finally {
+      k2W4B5StackPtr = pBuffCtx
     }
-    for (let i = 0x40; i < 0x50; i += 4) {
-      m.setU32((pBuffSub + i) >>> 0, 0)
-    }
-    m.setU32(pBuffCtx, pGame)
-    m.setU32((pBuffCtx + 0x04) >>> 0, pAttacker)
-    m.setU32((pBuffCtx + 0x08) >>> 0, 0)
-    m.setU32((pBuffCtx + 0x0c) >>> 0, pBuffSub)
-    AURAS_ApplyRadialStatBuffCallback113c(m, pBuffCtx, pTargetUnit >>> 0)
   }
 
   const pSrcDmg = m.u32((pSub + 0x4c) >>> 0) >>> 0
   if (pSrcDmg !== 0) {
-    const pDmg = m.alloc(0x70) >>> 0
-    for (let i = 0; i < 0x70; i += 4) {
-      m.setU32((pDmg + i) >>> 0, m.u32((pSrcDmg + i) >>> 0) >>> 0)
+    const pDmg = k2W4B5StackPtr >>> 0
+    k2W4B5StackPtr = (pDmg + 0x78) >>> 0
+    m.fill(pDmg, 0x78, 0)
+    try {
+      for (let i = 0; i < 0x70; i += 4) {
+        m.setU32((pDmg + i) >>> 0, m.u32((pSrcDmg + i) >>> 0) >>> 0)
+      }
+      SUNITDMG_ApplyDamage113c(m, pGame, pAttacker, pTargetUnit >>> 0, pDmg, 1, undefined, 1)
+      SUNITDMG_ApplySideEffectsAndKill113c(m, pGame, pAttacker, pTargetUnit >>> 0, pDmg)
+    } finally {
+      k2W4B5StackPtr = pDmg
     }
-    SUNITDMG_ApplyDamage113c(m, pGame, pAttacker, pTargetUnit >>> 0, pDmg)
-    SUNITDMG_ApplySideEffectsAndKill113c(m, pGame, pAttacker, pTargetUnit >>> 0, pDmg)
   }
 
   const pSeed = (pTargetUnit + 0x20) >>> 0
@@ -2401,29 +2554,41 @@ export function AURAS_ApplyPulseBuffAndDamageCallback_6FCBA7C0_113c(
   const pSub = m.u32((pAuraCtx + 0x0c) >>> 0) >>> 0
 
   if (m.u32((pSub + 0x48) >>> 0) !== 0) {
-    const pBuffCtx = m.alloc(0x10) >>> 0
-    const pBuffSub = m.alloc(0x50) >>> 0
-    for (let i = 0; i < 0x40; i += 4) {
-      m.setU32((pBuffSub + i) >>> 0, m.u32((pSub + i) >>> 0) >>> 0)
+    const pBuffCtx = k2W4B5StackPtr >>> 0
+    const pBuffSub = (pBuffCtx + 0x10) >>> 0
+    k2W4B5StackPtr = (pBuffSub + 0x50) >>> 0
+    m.fill(pBuffSub, 0x50, 0)
+    try {
+      for (let i = 0; i < 0x40; i += 4) {
+        m.setU32((pBuffSub + i) >>> 0, m.u32((pSub + i) >>> 0) >>> 0)
+      }
+      for (let i = 0x40; i < 0x50; i += 4) {
+        m.setU32((pBuffSub + i) >>> 0, 0)
+      }
+      m.setU32(pBuffCtx, pGame)
+      m.setU32((pBuffCtx + 0x04) >>> 0, pAttacker)
+      m.setU32((pBuffCtx + 0x08) >>> 0, 0)
+      m.setU32((pBuffCtx + 0x0c) >>> 0, pBuffSub)
+      AURAS_ApplyRadialStatBuffCallback113c(m, pBuffCtx, pTargetUnit >>> 0)
+    } finally {
+      k2W4B5StackPtr = pBuffCtx
     }
-    for (let i = 0x40; i < 0x50; i += 4) {
-      m.setU32((pBuffSub + i) >>> 0, 0)
-    }
-    m.setU32(pBuffCtx, pGame)
-    m.setU32((pBuffCtx + 0x04) >>> 0, pAttacker)
-    m.setU32((pBuffCtx + 0x08) >>> 0, 0)
-    m.setU32((pBuffCtx + 0x0c) >>> 0, pBuffSub)
-    AURAS_ApplyRadialStatBuffCallback113c(m, pBuffCtx, pTargetUnit >>> 0)
   }
 
   const pSrcDmg = m.u32((pSub + 0x4c) >>> 0) >>> 0
   if (pSrcDmg !== 0) {
-    const pDmg = m.alloc(0x70) >>> 0
-    for (let i = 0; i < 0x70; i += 4) {
-      m.setU32((pDmg + i) >>> 0, m.u32((pSrcDmg + i) >>> 0) >>> 0)
+    const pDmg = k2W4B5StackPtr >>> 0
+    k2W4B5StackPtr = (pDmg + 0x78) >>> 0
+    m.fill(pDmg, 0x78, 0)
+    try {
+      for (let i = 0; i < 0x70; i += 4) {
+        m.setU32((pDmg + i) >>> 0, m.u32((pSrcDmg + i) >>> 0) >>> 0)
+      }
+      SUNITDMG_ApplyDamage113c(m, pGame, pAttacker, pTargetUnit >>> 0, pDmg, 1, undefined, 1)
+      SUNITDMG_ApplySideEffectsAndKill113c(m, pGame, pAttacker, pTargetUnit >>> 0, pDmg)
+    } finally {
+      k2W4B5StackPtr = pDmg
     }
-    SUNITDMG_ApplyDamage113c(m, pGame, pAttacker, pTargetUnit >>> 0, pDmg)
-    SUNITDMG_ApplySideEffectsAndKill113c(m, pGame, pAttacker, pTargetUnit >>> 0, pDmg)
   }
   return 1
 }
@@ -2452,16 +2617,17 @@ export function ITEMS_HasUnitFlagOrLiveInventoryNodeItem_6FCBB570_113c(
   let pNode = INVENTORY_GetFirstNode113c(m, pInventory) >>> 0
   while (pNode !== 0) {
     const dwItemGuid = INVENTORY_GetNodeItemGuid113c(m, pNode) >>> 0
+    if (pGame === 0) {
+      throw new D2CommonAssertError('SUnit.cpp', 0x2d3)
+    }
     let pFoundItem = 0
-    if (pGame !== 0) {
-      let pItem = m.u32((pGame + (dwItemGuid & 0x7f) * 4 + 0x1720) >>> 0) >>> 0
-      while (pItem !== 0) {
-        if (m.u32((pItem + 0x0c) >>> 0) === dwItemGuid) {
-          pFoundItem = pItem
-          break
-        }
-        pItem = m.u32((pItem + 0xe4) >>> 0) >>> 0
+    let pItem = m.u32((pGame + (dwItemGuid & 0x7f) * 4 + 0x1720) >>> 0) >>> 0
+    while (pItem !== 0) {
+      if (m.u32((pItem + 0x0c) >>> 0) === dwItemGuid) {
+        pFoundItem = pItem
+        break
       }
+      pItem = m.u32((pItem + 0xe4) >>> 0) >>> 0
     }
     const pNext = INVENTORY_GetNextNode113c(m, pNode) >>> 0
     if (pFoundItem !== 0) return 1
@@ -2507,7 +2673,9 @@ export function PARTY_CreateAndLinkSubParty_6FCBBF70_113c(
 ): number {
   hitD2GameVa113c(0x6FCBBF70)
   const pPartyControl = m.u32((pGame + 0x1d2c) >>> 0) >>> 0
-  if (pPartyControl === 0) return 0
+  if (pPartyControl === 0) {
+    throw new D2CommonAssertError('Party.cpp', 0x7f)
+  }
 
   void m.u32((pGame + 0x1c) >>> 0)
   const pSubParty = m.alloc(0x0c) >>> 0
@@ -2574,37 +2742,43 @@ export function PARTY_DistributeGoldPickupAndReturnRemainder_6FCBC270_113c(
   nGoldAmount: number,
 ): number {
   hitD2GameVa113c(0x6FCBC270)
-  const pCountOut = m.alloc(4) >>> 0
-  m.setU32(pCountOut, 0)
-  PARTY_ForEachPartyMemberInSameLevel113c(
-    m,
-    pPlayer >>> 0,
-    pGame >>> 0,
-    PARTY_CountLivingPartyMemberCallback113c,
-    pCountOut,
-  )
-
-  const nPartyCount = i32(m, pCountOut)
+  const pStackBase = k2W4B5StackPtr >>> 0
+  const pCountOut = pStackBase
+  const pOutToAdd = (pStackBase + 4) >>> 0
+  const pOutRem = (pStackBase + 8) >>> 0
+  k2W4B5StackPtr = (pStackBase + 0x10) >>> 0
+  m.fill(pStackBase, 0x10, 0)
   let nPool = nGoldAmount | 0
+  try {
+    m.setU32(pCountOut, 0)
+    PARTY_ForEachPartyMemberInSameLevel113c(
+      m,
+      pPlayer >>> 0,
+      pGame >>> 0,
+      PARTY_CountLivingPartyMemberCallback113c,
+      pCountOut,
+    )
 
-  if (nPartyCount > 1) {
-    let wPartyId = 0xffff
-    if (pPlayer !== 0 && m.u32((pPlayer + 0x80) >>> 0) !== 0 && m.u32(pPlayer >>> 0) === 0) {
-      wPartyId =
-        D2GAME_PARTY_GetPartyIdForUnit113c(m, pPlayer >>> 0, m.u32((pPlayer + 0x80) >>> 0)) & 0xffff
-    }
-    const pSubParty = PARTY_FindSubPartyById_6FCBBD00_113c(m, pGame >>> 0, wPartyId) >>> 0
-    if (pSubParty !== 0) {
-      const nShare = (nPool / nPartyCount) | 0
-      const pPickerRoom = UNITS_GetRoom113c(m, pPlayer >>> 0) >>> 0
-      const nPickerLevel = DUNGEON_GetLevelIdFromRoom113c(m, pPickerRoom) | 0
+    const nPartyCount = i32(m, pCountOut)
 
-      let pNode = m.u32((pSubParty + 0x04) >>> 0) >>> 0
-      if (pNode !== 0) {
-        const pOutToAdd = m.alloc(4) >>> 0
-        const pOutRem = m.alloc(4) >>> 0
-        while (pNode !== 0) {
-          if (pGame !== 0) {
+    if (nPartyCount > 1) {
+      let wPartyId = 0xffff
+      if (pPlayer !== 0 && m.u32((pPlayer + 0x80) >>> 0) !== 0 && m.u32(pPlayer >>> 0) === 0) {
+        wPartyId =
+          D2GAME_PARTY_GetPartyIdForUnit113c(m, pPlayer >>> 0, m.u32((pPlayer + 0x80) >>> 0)) & 0xffff
+      }
+      const pSubParty = PARTY_FindSubPartyById_6FCBBD00_113c(m, pGame >>> 0, wPartyId) >>> 0
+      if (pSubParty !== 0) {
+        const nShare = (nPool / nPartyCount) | 0
+        const pPickerRoom = UNITS_GetRoom113c(m, pPlayer >>> 0) >>> 0
+        const nPickerLevel = DUNGEON_GetLevelIdFromRoom113c(m, pPickerRoom) | 0
+
+        let pNode = m.u32((pSubParty + 0x04) >>> 0) >>> 0
+        if (pNode !== 0) {
+          while (pNode !== 0) {
+            if (pGame === 0) {
+              throw new D2CommonAssertError('SUnit.cpp', 0x2d3)
+            }
             const dwGuid = m.u32(pNode) >>> 0
             let pMember = m.u32((pGame + (dwGuid & 0x7f) * 4 + 0x1120) >>> 0) >>> 0
             while (pMember !== 0) {
@@ -2641,11 +2815,13 @@ export function PARTY_DistributeGoldPickupAndReturnRemainder_6FCBC270_113c(
               }
               pMember = m.u32((pMember + 0xe4) >>> 0) >>> 0
             }
+            pNode = m.u32((pNode + 0x04) >>> 0) >>> 0
           }
-          pNode = m.u32((pNode + 0x04) >>> 0) >>> 0
         }
       }
     }
+  } finally {
+    k2W4B5StackPtr = pStackBase
   }
 
   const nLimit = STATLIST_GetUnitGoldBankLimit113c(m, pPlayer >>> 0) | 0

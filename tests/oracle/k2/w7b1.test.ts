@@ -62,14 +62,16 @@ function initDataTables(m: SparseMemory113c): number {
   m.setU32(0x6fdf0b50, pDataTables);
   m.setU32(0x6fd31c20, 0);
   m.setU32(0x6fd182a4, pBitMasks);
+  m.setU32(0x6fd18be0, pBitMasks);
   m.setU32(0x6fd27060, pBitMasks);
+  m.setU32(0x6fdd90b0, pBitMasks);
   for (let i = 0; i < 32; i++) {
     m.setU32(pBitMasks + i * 4, (1 << i) >>> 0);
   }
-  m.setU32(pDataTables + 0xb90, pSkillsTxt);
+  m.setU32(pDataTables + 0xb64, 0x130000);
+  m.setU32(pDataTables + 0xb6c, 512);
   m.setU32(pDataTables + 0xb98, pSkillsTxt);
   m.setU32(pDataTables + 0xba0, 256);
-  m.setU32(pDataTables + 0xc58, 512);
   m.setU32(pDataTables + 0xc4, 256);
   m.setU32(pDataTables + 0xbcc, pStatCostTxt);
   m.setU32(pDataTables + 0xbd4, 512);
@@ -174,7 +176,7 @@ describe('K2 Wave 7 Batch 1 (40 D2Game VAs)', () => {
     m.setU32(pArgs, pGame);
     QUESTS_Act2TaintedSunTriggerAltarDarkness_6FC56C20_113c(m, pArgs);
 
-    expect(QUESTS_Act3KurastTemplesSequenceFilter_6FC5BB60_113c(m, pGame, 1)).toBe(0);
+    expect(QUESTS_Act3KurastTemplesSequenceFilter_6FC5BB60_113c(m, pGame, 0, 1)).toBe(0);
   });
   it('ports [21..25/40] SrvDo 42/43/46/47 and delayed channel skill state', () => {
     const m = new SparseMemory113c();
@@ -231,9 +233,9 @@ describe('K2 Wave 7 Batch 1 (40 D2Game VAs)', () => {
       SKILLS_SrvDo063_RangedMultiShotAtTrackedPetTargets_6FC6DCD0_113c(m, pGame, pUnit, -1, 1),
     ).toBe(0);
 
-    m.setU32(0x100100 + 0xb98, 10);
+    m.setU32(0x100100 + 0xba0, 10);
     SKILLS_ApplyDimVisionToTarget_6FC70470_113c(m, pGame, pUnit, pUnit, 1);
-    m.setU32(0x100100 + 0xb98, 0x110000);
+    m.setU32(0x100100 + 0xba0, 256);
 
     expect(SKILLS_SrvDo067_NecromancerCurseRadius_6FC705D0_113c(m, pGame, pUnit, -1, 1)).toBe(0);
   });

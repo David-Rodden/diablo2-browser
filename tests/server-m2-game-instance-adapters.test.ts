@@ -164,18 +164,26 @@ describe('M2: LocalLoopbackAdapter & LocalLobbyProvider', () => {
 
   it('registers default local server hooks and creates loopback sessions via LocalLobbyProvider', async () => {
     registerDefaultLocalServerHooks()
-    const lobby = new LocalLobbyProvider({ seed: 555 })
+    const lobby = new LocalLobbyProvider({ seed: 555, backend: 'legacy' })
 
     await lobby.createCharacter({ name: 'OfflineSorc', charClass: 1 })
     const chars = await lobby.listCharacters()
     expect(chars.some((c) => c.name === 'OfflineSorc')).toBe(true)
 
-    const adapter = await lobby.enterGame({ charName: 'OfflineSorc', difficulty: 0 })
+    const adapter = await lobby.enterGame({
+      charName: 'OfflineSorc',
+      difficulty: 0,
+      backend: 'legacy',
+    })
     expect(adapter).toBeInstanceOf(LocalLoopbackAdapter)
     adapter.stepFrames(3)
     adapter.leave()
 
-    const handle = createLocalServerSession({ charName: 'OfflineSorc', classId: 1 })
+    const handle = createLocalServerSession({
+      charName: 'OfflineSorc',
+      classId: 1,
+      backend: 'legacy',
+    })
     expect(handle).not.toBeNull()
     expect(handle!.adapter).toBeInstanceOf(LocalLoopbackAdapter)
     handle!.stop?.()

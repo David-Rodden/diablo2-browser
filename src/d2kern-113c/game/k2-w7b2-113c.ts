@@ -475,7 +475,8 @@ export function ACT1Q4_BroadcastDebugQuestNotice_6FC835B0_113c(
 }
 
 function formatQuestStateDebugString(m: D2KernMemory113c, pBuf: number, nState: number): void {
-  const text = `queststate = ${nState | 0}`
+  // 0x6FD1CC2C in D2Game.dll .rdata: "changing state to %d\n\0"
+  const text = `changing state to ${nState | 0}\n`
   for (let i = 0; i < text.length; i++) {
     m.setU8((pBuf + i) >>> 0, text.charCodeAt(i) & 0xff)
   }
@@ -698,6 +699,7 @@ export function ACT1Q4_SendScrollOfInifussOrderPacket50_6FC847B0_113c(
   }
   const pPkt = allocScratch(0x20)
   try {
+    m.fill(pPkt, 0x20, 0)
     m.setU8(pPkt, 0x50)
     m.setU16((pPkt + 1) >>> 0, 4)
     for (let edx = 0; edx < 5; edx++) {
@@ -1574,12 +1576,13 @@ export function ACT1Q4_UpdateGibbetModeAndCainState_6FC88280_113c(
       QUESTS_AppendQuestTimer_6FC53AF0_113c(m, 1, ebp, 0x6fc88250)
     }
   } else if ((bDeleteCainMonster & 0xff) !== 0) {
+    // 0x6FC8836A: push 0 (pArg), mov eax, 1 (dwUnitType = UNIT_MONSTER)
     SUNIT_FindFirstLivingPlayerOrMonsterMatching_6FCFFCC0_113c(
       m,
       m.u32((ebp + 0x04) >>> 0) >>> 0,
       ACT1Q4_OnCainModeOrInteract_6FC88150_113c,
-      0,
       1,
+      0,
     )
   }
   if ((bDeleteCainMonster & 0xff) !== 0) {
@@ -1617,7 +1620,8 @@ export function ACT1Q5_RecordPlayerInMalusRoomAndSpawnLightning_6FC88AB0_113c(
   const pQuestChain = m.u32((pGame + 0x10f4) >>> 0) >>> 0;
   let ecx = 0;
   if (pQuestChain !== 0) {
-    let curr = m.u32((pQuestChain + 4) >>> 0) >>> 0;
+    // 0x6FC88ACC: mov edi, dword ptr [eax] (head of pQuestData list at +0x00)
+    let curr = m.u32(pQuestChain) >>> 0;
     while (curr !== 0) {
       if ((m.u32(curr) | 0) === 5) {
         ecx = curr;
@@ -1937,10 +1941,9 @@ export function OBJECTS_OperatePortalShrine_6FC8B9B0_113c(
   const edi = pOpStrc >>> 0;
   const pUnit0 = m.u32((edi + 8) >>> 0) >>> 0;
   const ebp = UNITS_GetRoom113c(m, pUnit0) >>> 0;
-  const pScratch = allocScratch(m, 24);
+  const pScratch = allocScratch(m, 16);
   const pCoords = pScratch;
-  const pSimpleCoords = (pScratch + 8) >>> 0;
-  const pBasicCoords = (pScratch + 16) >>> 0;
+  const pBasicCoords = (pScratch + 8) >>> 0;
   try {
     PATH_GetTargetTypeAndPosition113c(m, pUnit0, pCoords);
     const nSrcLevel0 = DUNGEON_GetLevelIdFromRoom113c(m, ebp) | 0;
@@ -1948,7 +1951,8 @@ export function OBJECTS_OperatePortalShrine_6FC8B9B0_113c(
     const nTownLevelId = DUNGEON_GetActLevelId113c(m, bAct) | 0;
     const pUnit1 = m.u32((edi + 8) >>> 0) >>> 0;
     const pRoom1 = UNITS_GetRoom113c(m, pUnit1) >>> 0;
-    if ((COLLISION_FindFreePositionSimple113c(m, pRoom1, pSimpleCoords, 3, 0x1c09, 0) | 0) === 0) {
+    // 0x6FC8B9F6: in/out pCoords is passed directly to COLLISION_FindFreePositionSimple
+    if ((COLLISION_FindFreePositionSimple113c(m, pRoom1, pCoords, 3, 0x1c09, 0) | 0) === 0) {
       return;
     }
 
@@ -2000,7 +2004,7 @@ export function OBJECTS_OperatePortalShrine_6FC8B9B0_113c(
     const pDestRoom = UNITS_GetRoom113c(m, pDestPortal) >>> 0;
     DUNGEON_ToggleHasPortalFlag113c(m, pDestRoom, 0);
   } finally {
-    freeScratch(24);
+    freeScratch(16);
   }
 }
 
@@ -2149,13 +2153,16 @@ export function OBJECTS_FloorSpikesEventTick_6FC8E270_113c(
  */
 export function CUBE_CanPlayerPickupAllCubeItems_6FC91170_113c(
   m: SparseMemory113c,
-  pPlayer: number,
+  pReceiverPlayer: number,
   pGame: number,
+  pSourcePlayer: number = pReceiverPlayer,
 ): number {
   hitD2GameVa113c(0x6FC91170)
-  const edi = pPlayer >>> 0;
+  // 0x6FC91178..0x6FC9117A: edi = ecx (pReceiverPlayer), eax = pSourcePlayer (+0x60 inventory)
+  const edi = pReceiverPlayer >>> 0;
+  const srcPlayer = pSourcePlayer >>> 0;
   const ebp = pGame >>> 0;
-  const pInv = m.u32((edi + 0x60) >>> 0) >>> 0;
+  const pInv = m.u32((srcPlayer + 0x60) >>> 0) >>> 0;
   let esi = INVENTORY_GetFirstItem113c(m, pInv) >>> 0;
   while (esi !== 0) {
     const ebx = INVENTORY_UnitIsItem113c(m, esi) >>> 0;
@@ -2188,7 +2195,8 @@ function rollSeedPtr113c(m: SparseMemory113c, pSeed: number, nRange: number): nu
   if (((nRange - 1) & nRange) === 0) {
     return (lo & (nRange - 1)) | 0;
   }
-  return ((lo | 0) % (nRange | 0)) | 0;
+  // 0x6FC211AD: `div esi` (unsigned 32-bit remainder in [0, nRange - 1])
+  return ((lo >>> 0) % (nRange >>> 0)) | 0;
 }
 
 function getSgptDataTablesPtr(m: SparseMemory113c): number {
@@ -2222,6 +2230,8 @@ function aiApproachTarget6FD12540(
     mode = 2;
   }
   PATH_SetStepNum113c(m, m.u32((pUnit + 0x2c) >>> 0), nStepNum | 0);
+  // 0x6FD125A5 -> 0x6FC95070 (MONSTER_InitModeChangeStrc) clears pUsedSkill
+  SKILLS_SetUsedSkill113c(m, pUnit >>> 0, 0);
   const sp = allocScratch(0x20);
   try {
     m.setU32(sp, mode >>> 0);
@@ -2273,7 +2283,8 @@ function aiApproachTarget6FD12540(
     if ((flagsByte & 2) !== 0) {
       const roll = (stepSeed64At113c(m, (pUnit + 0x20) >>> 0) >>> 0) % 100;
       if (roll < 0x46) {
-        AI_IdleWander113c(m, pGame >>> 0, pUnit >>> 0);
+        // 0x6FD12673: mov al, 4 (wander radius = 4)
+        AI_IdleWander113c(m, pGame >>> 0, pUnit >>> 0, 4);
         return 1;
       }
       AI_Stall113c(m, pGame >>> 0, pUnit >>> 0, 10);
@@ -2596,7 +2607,8 @@ export function AI_Thinker_Izual_6FC9EA10_113c(
       const aip2 = (m.u16((edi + (bDiff << 1) + 0x5c) >>> 0) << 16) >> 16;
       if (rem >= aip2) {
         if (nDist > 10) {
-          AI_StepRelativeToTargetUnit113c(m, ebx, edxUnit, pTarget, 6, 2);
+          // 0x6FC9EBBB: push 9 (nTargetDist = 9)
+          AI_StepRelativeToTargetUnit113c(m, ebx, edxUnit, pTarget, 6, 2, 9);
           return;
         }
         const nDelay = m.u8((edi + bDiff + 0x4f) >>> 0);
@@ -2641,9 +2653,18 @@ export function AI_Thinker_Izual_6FC9EA10_113c(
     m.setU32((ebp + 0x1c) >>> 0, (v1c - 1) >>> 0);
   }
   SKILLS_SetUsedSkill113c(m, edxUnit, 0);
+  let bModeParam = 0x64;
   if (edxUnit !== 0) {
-    MONSTATS2_GetRecordPtr113c(m, m.u32((edxUnit + 4) >>> 0) | 0);
+    const pMonStats2 = MONSTATS2_GetRecordPtr113c(m, m.u32((edxUnit + 4) >>> 0) | 0) >>> 0;
+    if (pMonStats2 !== 0) {
+      const pBitMasks = m.u32(D2GAME_IAT_GDW_BITMASKS_VA_113C) >>> 0;
+      const mask4 = pBitMasks !== 0 ? m.u32((pBitMasks + 0x10) >>> 0) : 0x10;
+      if ((m.u8((pMonStats2 + 0x104) >>> 0) & mask4) !== 0) {
+        bModeParam = 0x65;
+      }
+    }
   }
+  void bModeParam;
   MONSTER_StartMode113c(m, ebx, edxUnit, 4, pTarget, 0, 0);
 }
 
@@ -2753,17 +2774,16 @@ export function SKILLS_SrvDo_CloakOfShadows_6FCB4B10_113c(
   try {
     const pAuraArgs = pScratch;
     const pRadArgs = (pScratch + 0x2c) >>> 0;
-    m.setU32(pAuraArgs, pGame0);
+    // 0x6FCB4BB9..0x6FCB4BFF: exact 9-dword D2CurseStateParamStrc layout (+0x00..+0x20)
+    m.setU32(pAuraArgs, ebp);
     m.setU32((pAuraArgs + 0x04) >>> 0, ebp);
-    m.setU32((pAuraArgs + 0x08) >>> 0, ebp);
-    m.setU32((pAuraArgs + 0x0c) >>> 0, edi >>> 0);
-    m.setU32((pAuraArgs + 0x10) >>> 0, ebx >>> 0);
-    m.setU32((pAuraArgs + 0x14) >>> 0, nLen >>> 0);
+    m.setU32((pAuraArgs + 0x08) >>> 0, edi >>> 0);
+    m.setU32((pAuraArgs + 0x0c) >>> 0, ebx >>> 0);
+    m.setU32((pAuraArgs + 0x10) >>> 0, nLen >>> 0);
+    m.setU32((pAuraArgs + 0x14) >>> 0, wSelfStat >>> 0);
     m.setU32((pAuraArgs + 0x18) >>> 0, nSelfVal >>> 0);
     m.setU32((pAuraArgs + 0x1c) >>> 0, wAuraState >>> 0);
     m.setU32((pAuraArgs + 0x20) >>> 0, 0x6fcbf7a0);
-    m.setU32((pAuraArgs + 0x24) >>> 0, wSelfStat >>> 0);
-    m.setU32((pAuraArgs + 0x28) >>> 0, 0);
     const pStatList = STATES_CreateOrUpdateAuraStatList113c(m, pAuraArgs) >>> 0;
     if (pStatList === 0) {
       return 0;
@@ -2849,13 +2869,14 @@ export function SKILLS_TryConvertMonsterOnHit_6FCB5120_113c(
   if (pStatList === 0) {
     const dwOwnerType = ebp !== 0 ? m.u32(ebp) >>> 0 : 6;
     const dwOwnerGuid = ebp !== 0 ? m.u32((ebp + 0x0c) >>> 0) >>> 0 : 0xffffffff;
+    // STATLIST_AllocList113c(m, flags, ownerType, ownerId, stateNo, expireFrame)
     pStatList = STATLIST_AllocList113c(
       m,
-      m.u32((pGame0 + 0x1c) >>> 0) >>> 0,
       0x802,
-      ediExpire,
       dwOwnerType,
       dwOwnerGuid,
+      0,
+      ediExpire,
     ) >>> 0;
     if (pStatList === 0) {
       return 0;
@@ -2885,13 +2906,14 @@ export function SKILLS_TryConvertMonsterOnHit_6FCB5120_113c(
     if ((STATLIST_GetStatListFromUnitAndStateMemPort113c(m, esi, 0x6d) >>> 0) === 0) {
       const dwMonType = esi !== 0 ? m.u32(esi) >>> 0 : 6;
       const dwMonGuid = esi !== 0 ? m.u32((esi + 0x0c) >>> 0) >>> 0 : 0xffffffff;
+      // STATLIST_AllocList113c(m, flags, ownerType, ownerId, stateNo, expireFrame)
       const pLvlList = STATLIST_AllocList113c(
         m,
-        m.u32((pGame0 + 0x1c) >>> 0) >>> 0,
-        0,
         0,
         dwMonType,
         dwMonGuid,
+        0,
+        0,
       ) >>> 0;
       if (pLvlList !== 0) {
         STATLIST_SetState113c(m, pLvlList, 0x6d);
@@ -2900,8 +2922,9 @@ export function SKILLS_TryConvertMonsterOnHit_6FCB5120_113c(
         const maxLifeShr8 = (STATLIST_GetMaxLifeFromUnit113c(m, esi) | 0) >> 8;
         STATLIST_SetStat113c(m, pLvlList, 0xb0, nMonLvl, 0);
         STATLIST_SetStat113c(m, pLvlList, 0xb1, maxLifeShr8, 0);
-        let scaledCur = (mulDiv113c(curLifeShr8, nAttLvl, nMonLvl) << 8) | 0;
-        let scaledMax = (mulDiv113c(maxLifeShr8, nAttLvl, nMonLvl) << 8) | 0;
+        // 0x6FCB52F7..0x6FCB5313: GAME_MulDiv(factor=nAttLvl, value=lifeShr8, divisor=nMonLvl)
+        let scaledCur = (mulDiv113c(nAttLvl, curLifeShr8, nMonLvl) << 8) | 0;
+        let scaledMax = (mulDiv113c(nAttLvl, maxLifeShr8, nMonLvl) << 8) | 0;
         if (scaledMax < 1) {
           scaledMax = 1;
         }
@@ -2972,13 +2995,14 @@ export function SKILLS_SrvDo077_ChannelChargedStream_6FCB5BC0_113c(
     const nExpire = (m.u32((edi + 0xa8) >>> 0) + 0x15) >>> 0;
     const dwOwnerType = esi !== 0 ? m.u32(esi) >>> 0 : 6;
     const dwOwnerGuid = esi !== 0 ? m.u32((esi + 0x0c) >>> 0) >>> 0 : 0xffffffff;
+    // STATLIST_AllocList113c(m, flags, ownerType, ownerId, stateNo, expireFrame)
     const pNewList = STATLIST_AllocList113c(
       m,
-      m.u32((edi + 0x1c) >>> 0) >>> 0,
       2,
-      nExpire,
       dwOwnerType,
       dwOwnerGuid,
+      0,
+      nExpire,
     ) >>> 0;
     if (pNewList === 0) {
       return 0;
@@ -3044,7 +3068,10 @@ export function SKILLS_SrvDo078_DragonTalonMultiKick_6FCB5FE0_113c(
     return 0;
   }
   const pDmg = SUNITDMG_FindCombatDamageData113c(m, esi, edi) >>> 0;
-  SKILLS_ConsumeProgressiveChargesOnHit113c(m, pDmg, esi, ebp);
+  // 0x6FCB1B70: checks pDmg != 0 && (pDmg->wResultFlags & 1) before consuming charges
+  if (pDmg !== 0 && (m.u8((pDmg + 0x04) >>> 0) & 1) !== 0) {
+    SKILLS_ConsumeProgressiveChargesOnHit113c(m, 0, esi, ebp);
+  }
   SUNITDMG_ExecuteEvents113c(m, ebp, esi, edi, 1, 0);
   const pSkill = SKILLS_GetUsedSkill113c(m, esi) >>> 0;
   if (pSkill === 0) {

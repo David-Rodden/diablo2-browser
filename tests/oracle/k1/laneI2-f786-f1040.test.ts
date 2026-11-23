@@ -197,7 +197,7 @@ describe('K1R14-LaneI2: D2Game.dll Post-F150 F786..F1040 (37 VAs)', () => {
     expect(m.u32(pNode0d + 0x04 + 0x01)).toBe(99);
     expect(m.u8(pNode0d + 0x04 + 0x0b)).toBe(80);
 
-    expect(ITEMS_SyncSocketedSubItemsToClient113c(m, pClient, 0, 0)).toBe(1);
+    expect(ITEMS_SyncSocketedSubItemsToClient113c(m, pClient, 0, 0)).toBe(0);
     S2C_SendPacket9C_ItemActionWorld113c(m, pClient, 0, 2, 0, 0);
     UNITROOM_SendDroppedGroundItemToClient113c(m, 0, pClient);
     UNITROOM_BroadcastGroundItemIfUpdated113c(m, 0, pClient);

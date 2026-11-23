@@ -54,6 +54,7 @@ import {
   STATES_OnStateRemovedResetMonsterAi_6FC70130_113c,
 } from '../../../src/d2kern-113c/game/k2-w3b5-113c.ts'
 import { initD2GameGlobalsInMem113c } from '../../../src/d2kern-113c/game/regpop-spawn-113c.ts'
+import { EVENT_InitTimerQueue113c } from '../../../src/d2kern-113c/game/timer-wheel.ts'
 import { D2ItemStatCostTxt_SIZE } from '../../../src/d2kern-113c/mem/layout.generated.ts'
 import { SparseMemory113c } from '../../../src/d2kern-113c/mem/sparse-memory.ts'
 
@@ -145,14 +146,16 @@ describe('K2 Wave 3 Batch 5 (0x6FC70130..0x6FC7DDF0)', () => {
     const pAi = m.alloc(0x80)
     m.setU32(pMon, 1)
     m.setU32(pMon + 0x14, pMonData)
+    m.setU32(pMon + 0x80, pGame)
     m.setU32(pMonData, pMonStatsRec)
+    m.setU16(pMonStatsRec + 0x1e, 6)
     m.setU32(pMonData + 0x28, pAi)
     m.setU32(pMonData + 0x24, pMonStatsRec)
     m.setU32(pAi, 99)
     STATES_OnStateRemovedResetMonsterAi_6FC70130_113c(m, pMon, 5)
     expect(m.u32(pAi)).toBe(0)
 
-    SKILLS_ConvertMonsterAndScheduleExpire_6FC709E0_113c(m, 0, pGame, pMon, -1, 1)
+    SKILLS_ConvertMonsterAndScheduleExpire_6FC709E0_113c(m, 0, pGame, pMon, 0, 1)
 
     const pWorker = m.alloc(0x40)
     const pNode = m.alloc(0x20)
@@ -315,10 +318,12 @@ describe('K2 Wave 3 Batch 5 (0x6FC70130..0x6FC7DDF0)', () => {
     m.setU32(pNpc + 0x04, 0x200)
     ACT5Q3_Callback00_NpcActivate_6FC7DA70_113c(m, pQuest, pArg)
 
+    EVENT_InitTimerQueue113c(m, pGame)
     const pMon = m.alloc(0x100)
     const pMonData = m.alloc(0x80)
     const pMonPath = m.alloc(0x80)
     const pMonRoom = m.alloc(0x80)
+    m.setU32(pMonRoom + 0x7c, m.alloc(8))
     m.setU32(pMonData + 0x30, m.alloc(0x20))
     m.setU32(pMonPath + 0x1c, pMonRoom)
     m.setU32(pMon, 1)

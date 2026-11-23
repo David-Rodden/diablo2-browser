@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { EVENT_InitTimerQueue113c } from '../../../src/d2kern-113c/game/timer-wheel'
 import {
   AI_HandleSpecialQuestNpcCmd3_6FC3BDF0_113c,
   AI_Thinker_MeleeRangedApproachStall_6FC38A90_113c,
@@ -109,6 +110,7 @@ describe('K2 Wave 5 Batch 1 (w5b1: 45 D2Game.dll 1.13c functions)', () => {
     const pUnit = 0x210000
     const pPath = 0x210200
     m.fill(pGame, 0x1800, 0)
+    EVENT_InitTimerQueue113c(m, pGame)
     m.fill(pUnit, 0x100, 0)
     m.fill(pPath, 0x80, 0)
     m.setU32(pUnit, 1)
@@ -132,6 +134,7 @@ describe('K2 Wave 5 Batch 1 (w5b1: 45 D2Game.dll 1.13c functions)', () => {
     const pArgs = 0x231000
     const pMonStats = 0x232000
     m.fill(pGame, 0x1800, 0)
+    EVENT_InitTimerQueue113c(m, pGame)
     m.fill(pUnit, 0x100, 0)
     m.fill(pPath, 0x80, 0)
     m.fill(pArgs, 0x40, 0)
@@ -163,6 +166,7 @@ describe('K2 Wave 5 Batch 1 (w5b1: 45 D2Game.dll 1.13c functions)', () => {
     const pUnit = 0x241000
     const pPath = 0x241200
     m.fill(pGame, 0x1800, 0)
+    EVENT_InitTimerQueue113c(m, pGame)
     m.fill(pUnit, 0x100, 0)
     m.fill(pPath, 0x80, 0)
     m.setU32(pUnit, 1)
@@ -321,6 +325,7 @@ describe('K2 Wave 5 Batch 1 (w5b1: 45 D2Game.dll 1.13c functions)', () => {
     const pTarget = 0x273000
     const pTargetPath = 0x273200
     m.fill(pGame, 0x1800, 0)
+    EVENT_InitTimerQueue113c(m, pGame)
     m.fill(pUnit, 0x100, 0)
     m.fill(pUnitPath, 0x80, 0)
     m.fill(pUnitSkills, 0x40, 0)

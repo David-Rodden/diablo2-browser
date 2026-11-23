@@ -15,6 +15,7 @@ import {
   COLLISION_FindFreePositionBasic113c,
 } from '../common/collision.ts'
 import { UNITS_GetPlayerData113c } from '../common/composit.ts'
+import { D2CommonAssertError } from '../common/inline-helpers.ts'
 import { DRLG_GetActNoFromLevelId113c } from '../common/drlg/drlg.ts'
 import { SEED_GetLowSeed113c } from '../common/drlg/drlg-grid.ts'
 import {
@@ -154,7 +155,6 @@ import {
 } from './k2-laneH-0x6fc2-w1-113c.ts'
 import {
   ITEMS_CalcDiminishingMfPercent_6FC2E130_113c,
-  ITEMS_CalcGroundExpireFrame_6FC2E0A0_113c,
   ITEMS_ClearAffixesAndItemCell_6FC2E210_113c,
   ITEMS_InitBaseWeaponDamageStats_6FC2E860_113c,
 } from './k2-laneI-0x6fc3-w1-113c.ts'
@@ -406,18 +406,24 @@ export function ITEMS_GetDropItemLevel_6FC2E5D0_113c(
   const unit = pDropper >>> 0
   const game = pGame >>> 0
   let ilvl = 1
-  if (unit !== 0) {
+  if (unit === 0) {
+    if (_bUnused !== 0) {
+      throw new D2CommonAssertError('0x6fd19ff9', 0xa2a)
+    }
+  } else {
     const uType = m.u32(unit) >>> 0
     if (uType === 1) {
       ilvl = STATLIST_GetUnitStat113c(m, unit, 12, 0) | 0
     } else if (uType === 0) {
       ilvl = STATLIST_GetUnitBaseStat113c(m, unit, 12, 0) | 0
-    } else if (game !== 0 && isSgptDataTablesLoaded113c(m)) {
+    } else if (isSgptDataTablesLoaded113c(m)) {
+      const unitGame = m.u32((unit + 0x80) >>> 0) >>> 0
+      const effGame = unitGame !== 0 ? unitGame : game
       const pRoom = UNITS_GetRoom113c(m, unit) >>> 0
-      if (pRoom !== 0) {
+      if (effGame !== 0 && pRoom !== 0) {
         const levelId = DUNGEON_GetLevelIdFromRoom113c(m, pRoom) | 0
-        const diff = m.u8((game + 0x6d) >>> 0)
-        const bExp = m.u32((game + 0x70) >>> 0)
+        const diff = m.u8((effGame + 0x6d) >>> 0)
+        const bExp = m.u32((effGame + 0x70) >>> 0)
         ilvl = DATATBLS_GetLevelMonsterLevel113c(m, levelId, diff, bExp) | 0
       }
     }
@@ -446,14 +452,14 @@ export function ITEMS_FindFreeGroundDropCoords_6FC2E930_113c(
   const room = pRoom >>> 0
   const center = pCenterCoords >>> 0
   const out = pOutCoords >>> 0
-  if (room === 0 || center === 0 || out === 0) return 0
+  if (center === 0 || out === 0) return 0
 
   const cx = m.u32(center) | 0
   const cy = m.u32((center + 4) >>> 0) | 0
   const prefX = (cx + 2) | 0
   const prefY = (cy + 3) | 0
 
-  if (ROOM_FindRoomContainingSubtile113c(m, room, prefX, prefY) !== 0) {
+  if (room !== 0 && ROOM_FindRoomContainingSubtile113c(m, room, prefX, prefY) !== 0) {
     m.setU32(out, prefX >>> 0)
     m.setU32((out + 4) >>> 0, prefY >>> 0)
   } else {
@@ -643,8 +649,14 @@ export function ITEMS_RollItemQualityOnCreatedItem_6FC2EE90_113c(
   hitD2GameVa113c(0x6FC2EE90)
   const item = pItem >>> 0
   const drop = pItemDrop >>> 0
-  if (item === 0) return 2
+  if (item === 0 && !isSgptDataTablesLoaded113c(m)) {
+    return 2
+  }
+  // 0x6FC2EE96: D2Common.#10772 (ITEMS_GetItemFormat) runs BEFORE checking pItem == 0 (asserts 0x1505 on null).
   const wFormat = ITEMS_GetItemFormat113c(m, item) & 0xffff
+  if (item === 0) {
+    throw new D2CommonAssertError('0x6fd19ff9', 0x0a2a)
+  }
   if (wFormat >= 1 && drop !== 0) {
     const forcedQual = m.u32((drop + 0x30) >>> 0) | 0
     if (forcedQual !== 0) {
@@ -655,13 +667,19 @@ export function ITEMS_RollItemQualityOnCreatedItem_6FC2EE90_113c(
     return drop !== 0 && m.u32((drop + 0x30) >>> 0) !== 0 ? m.u32((drop + 0x30) >>> 0) | 0 : 2
   }
   const pGame = m.u32((item + 0x80) >>> 0) >>> 0
-  const diff = pGame !== 0 ? m.u8((pGame + 0x6d) >>> 0) : 0
+  if (pGame === 0) {
+    throw new D2CommonAssertError('0x6fd19ff9', 0x0482)
+  }
+  const diff = m.u8((pGame + 0x6d) >>> 0)
   const nItemId = m.u32((item + 0x04) >>> 0) | 0
   const versionArg = wFormat >= 1 ? 100 : 0
   const pRatio = DATATBLS_GetItemRatioTxtRecord113c(m, nItemId, diff, versionArg) >>> 0
+  if (pRatio === 0) {
+    throw new D2CommonAssertError('0x6fd19ff9', 0x0486)
+  }
   const pItemsTxt = DATATBLS_GetItemsTxtRecordMemPort113c(m, nItemId) >>> 0
-  if (pRatio === 0 || pItemsTxt === 0) {
-    return 2
+  if (pItemsTxt === 0) {
+    throw new D2CommonAssertError('0x6fd19ff9', 0x0489)
   }
   if (m.u8((pItemsTxt + 0x12a) >>> 0) !== 0) {
     return 2
@@ -676,6 +694,9 @@ export function ITEMS_RollItemQualityOnCreatedItem_6FC2EE90_113c(
       if (lvlDiff < 1) lvlDiff = 1
     }
   }
+
+  const fallbackQual =
+    ((((drop !== 0 ? m.u8((drop + 0x80) >>> 0) : 0) & 0x40) | 0x20) >>> 5) | 0
 
   if (wFormat >= 1) {
     for (let i = 0; i < 6; i++) {
@@ -710,43 +731,41 @@ export function ITEMS_RollItemQualityOnCreatedItem_6FC2EE90_113c(
         return q
       }
     }
-    return 1
+    return fallbackQual
   }
 
   // Classic format == 0 loop (`0x6FC2F084..0x6FC2F140`)
   for (let i = 0; i < 6; i++) {
     const q = CREATED_ITEM_QUALITY_ORDER_6FD1D09C[i]!
-    let base = 0
-    let div = 1
+    let thresh = 0
     if (q === 7) {
-      base = m.u32(pRatio) | 0
-      div = m.u32((pRatio + 0x04) >>> 0) | 0
+      thresh = ((m.u32(pRatio) | 0) - lvlDiff) | 0
     } else if (q === 6) {
-      base = m.u32((pRatio + 0x0c) >>> 0) | 0
-      div = m.u32((pRatio + 0x10) >>> 0) | 0
+      thresh = ((m.u32((pRatio + 0x0c) >>> 0) | 0) - lvlDiff) | 0
     } else if (q === 5) {
-      base = m.u32((pRatio + 0x18) >>> 0) | 0
-      div = m.u32((pRatio + 0x1c) >>> 0) | 0
+      thresh = ((m.u32((pRatio + 0x18) >>> 0) | 0) - lvlDiff) | 0
     } else if (q === 4) {
-      base = m.u32((pRatio + 0x24) >>> 0) | 0
-      div = m.u32((pRatio + 0x28) >>> 0) | 0
+      const base = m.u32((pRatio + 0x24) >>> 0) | 0
+      const div = m.u32((pRatio + 0x28) >>> 0) | 0
+      thresh = div !== 0 ? (base - sdiv32(lvlDiff, div)) | 0 : base
     } else if (q === 3) {
-      base = m.u32((pRatio + 0x30) >>> 0) | 0
-      div = m.u32((pRatio + 0x34) >>> 0) | 0
+      const base = m.u32((pRatio + 0x30) >>> 0) | 0
+      const div = m.u32((pRatio + 0x34) >>> 0) | 0
+      thresh = div !== 0 ? (base - sdiv32(lvlDiff, div)) | 0 : base
     } else {
-      base = m.u32((pRatio + 0x38) >>> 0) | 0
-      div = m.u32((pRatio + 0x3c) >>> 0) | 0
+      const base = m.u32((pRatio + 0x38) >>> 0) | 0
+      const div = m.u32((pRatio + 0x3c) >>> 0) | 0
+      thresh = div !== 0 ? (base - sdiv32(lvlDiff, div)) | 0 : base
     }
-    const thresh = div !== 0 ? ((base * 2 - sdiv32(lvlDiff, div)) | 0) : base * 2
     if (thresh <= 0) {
-      return q
+      thresh = 1
     }
     const pSeed = ITEMS_GetItemSeed113c(m, item) >>> 0
-    if ((SEED_RollLimitedFast113c(m, pSeed, thresh) | 0) <= 1) {
+    if (SEED_RollLimitedFast113c(m, pSeed, thresh) === 0) {
       return q
     }
   }
-  return 1
+  return fallbackQual
 }
 
 /**
@@ -1038,7 +1057,7 @@ export function ITEMS_InitItemUnit_6FC30160_113c(
     if (pItemsTxt !== 0) {
       const bQuest = m.u8((pItemsTxt + 0x12a) >>> 0)
       if (bQuest !== 0 && pGame !== 0) {
-        QUESTS_AttachUnitToQuest_6FC55890_113c(m, (bQuest - 1) | 0, item, pGame >>> 0)
+        QUESTS_AttachUnitToQuest_6FC55890_113c(m, item, (bQuest - 1) | 0, pGame >>> 0)
       }
     }
   }
@@ -1618,7 +1637,8 @@ export function ITEMS_InitCreatedItemStats_6FC31070_113c(
 
         let maxDur = m.u8((pItemsTxt + 0x112) >>> 0)
         const halfDur = maxDur >>> 1
-        let curDur = (halfDur + SEED_RollLimitedFast113c(m, (pItem + 0x20) >>> 0, maxDur)) | 0
+        // 0x6FC311DB..0x6FC311E7: halfDur + SEED_RollLimitedFast(pSeed, halfDur)
+        let curDur = (halfDur + SEED_RollLimitedFast113c(m, (pItem + 0x20) >>> 0, halfDur)) | 0
         if (curDur >= 0xff) curDur = 0xff
         STATLIST_SetUnitStat113c(m, pItem, 0x48, curDur, 0)
         if (maxDur >= 0xff) maxDur = 0xff
@@ -1644,7 +1664,8 @@ export function ITEMS_InitCreatedItemStats_6FC31070_113c(
         }
         let maxDur = m.u8((pItemsTxt + 0x112) >>> 0)
         const halfDur = maxDur >>> 1
-        let curDur = (halfDur + SEED_RollLimitedFast113c(m, (pItem + 0x20) >>> 0, maxDur)) | 0
+        // 0x6FC311DB..0x6FC311E7: halfDur + SEED_RollLimitedFast(pSeed, halfDur)
+        let curDur = (halfDur + SEED_RollLimitedFast113c(m, (pItem + 0x20) >>> 0, halfDur)) | 0
         if (curDur >= 0xff) curDur = 0xff
         STATLIST_SetUnitStat113c(m, pItem, 0x48, curDur, 0)
         if (maxDur >= 0xff) maxDur = 0xff
@@ -1704,12 +1725,16 @@ export function ITEMS_InitCreatedItemStats_6FC31070_113c(
         if (pQuestList === 0) {
           pQuestList = STATLIST_AllocList113c(
             m,
-            m.u32((pPostItem + 0x08) >>> 0),
             0x40,
-            0,
             4,
             m.u32((pPostItem + 0x0c) >>> 0),
+            0,
+            0,
           ) >>> 0
+          if (pQuestList !== 0) {
+            const pMemPool = m.u32((pPostItem + 0x08) >>> 0) >>> 0
+            if (pMemPool !== 0) m.setU32(pQuestList, pMemPool)
+          }
           STATLIST_MergeStatLists113c(m, pPostItem, pQuestList, 1)
         }
         STATLIST_SetStat113c(m, pQuestList, 0x164, m.u8((game + 0x6d) >>> 0), 0)
@@ -1930,21 +1955,13 @@ export function D2GAME_CreateItemEx_6FC31490_113c(
       }
     }
 
-    // Set ground expiration frame (`pItemData->dwActionStamp` at `+0x24`) when placed on ground (`eItemMode == 3`)
-    if (eItemMode === 3) {
-      const pItemData = m.u32((pItem + 0x14) >>> 0) >>> 0
-      if (pItemData !== 0 && m.u32((pItemData + 0x24) >>> 0) === 0) {
-        m.setU32(
-          (pItemData + 0x24) >>> 0,
-          ITEMS_CalcGroundExpireFrame_6FC2E0A0_113c(m, effGame, pItem) >>> 0,
-        )
-      }
-      if (activeRealItemDropHooks113c !== undefined) {
-        const cb = activeRealItemDropHooks113c.onWorldItemAction9C
-        if (cb !== undefined) {
-          const pkt = buildGroundItemPacket9C_6FCAD3D0_113c(m, effGame, pItem, 0)
-          cb(pItem, pkt)
-        }
+    // 0x6FC31850..0x6FC3186A: CreateItemEx does NOT write ground expire frame to pItemData+0x24;
+    // keep only the optional S2C 0x9C hook for live server ground-drop notifications.
+    if (eItemMode === 3 && activeRealItemDropHooks113c !== undefined) {
+      const cb = activeRealItemDropHooks113c.onWorldItemAction9C
+      if (cb !== undefined) {
+        const pkt = buildGroundItemPacket9C_6FCAD3D0_113c(m, effGame, pItem, 0)
+        cb(pItem, pkt)
       }
     }
 
@@ -2656,7 +2673,7 @@ export function ITEMS_ApplyItemDurabilityLoss_6FC32EE0_113c(
 
   if (isWeapon === 0 || ITEMS_CheckCommandFlags113c(m, item, 0x100) === 0) {
     if (game !== 0 && owner !== 0) {
-      ITEMS_BreakEquippedItemAtZeroDurability_6FCF5740_113c(m, game, owner, item)
+      ITEMS_BreakEquippedItemAtZeroDurability_6FCF5740_113c(m, item, owner, game)
     } else {
       STATLIST_SetUnitStat113c(m, item, 0x48, 0, 0)
     }
@@ -2816,8 +2833,8 @@ export function OBJECTS_FindFreeDropCoordsAndSpawnItem_6FC51000_113c(
           if (pSeedObj !== 0) {
             m.setU32((pSeedObj + 0xc4) >>> 0, (m.u32((pSeedObj + 0xc4) >>> 0) | 0x10) >>> 0)
             m.setU32((pSeedObj + 0xd0) >>> 0, 0x0b)
-            lastSpawnedObj = 0
           }
+          lastSpawnedObj = 0
 
           let clusterCount = 1
           let canGrow = 1
@@ -2887,8 +2904,8 @@ export function OBJECTS_FindFreeDropCoordsAndSpawnItem_6FC51000_113c(
             if (pExtraObj !== 0) {
               m.setU32((pExtraObj + 0xc4) >>> 0, (m.u32((pExtraObj + 0xc4) >>> 0) | 0x10) >>> 0)
               m.setU32((pExtraObj + 0xd0) >>> 0, 0x0b)
-              lastSpawnedObj = pExtraObj
             }
+            lastSpawnedObj = pExtraObj
             clusterCount = (clusterCount + 1) | 0
           }
           remClusters = (remClusters - 1) | 0

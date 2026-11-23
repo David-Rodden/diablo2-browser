@@ -629,11 +629,20 @@ export async function runK5BrowserMultiresE2e(
       const snap = app.getLastRenderSnapshot();
       const missingArt = Array.isArray(window.__d2MissingArt) ? window.__d2MissingArt : [];
       const rawBackend = typeof app.getSinglePlayerBackend === 'function' ? app.getSinglePlayerBackend() : 'legacy';
+      const adapterKind = app.session?.gameAdapter?.kind ?? null;
+      const activeBackend =
+        adapterKind === 'd2kern-113c'
+          ? 'd2kern-113c'
+          : adapterKind === 'ts'
+            ? 'legacy'
+            : rawBackend === 'd2kern-113c'
+              ? 'd2kern-113c'
+              : 'legacy';
       return {
         playMode: st.playMode,
         flowStage: st.stage,
         sessionPhase: app.session.phase,
-        activeBackend: rawBackend === 'd2kern-113c' ? 'd2kern-113c' : 'legacy',
+        activeBackend,
         act: app.session.world.act,
         areaId: app.session.world.areaId,
         selfId: app.session.world.selfId,

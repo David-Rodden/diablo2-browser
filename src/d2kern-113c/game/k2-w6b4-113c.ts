@@ -66,27 +66,22 @@ import {
 } from '../common/statlist'
 import {
   UNITROOM_RefreshUnit113c,
-  UNITS_CanUnitMeleeAttackTarget113c,
   UNITS_GetApproximateDistance113c,
-  UNITS_GetEquippedWeaponAdder113c,
   UNITS_GetRoom113c,
   UNITS_SetSeqFrameFromLowByte113c,
 } from '../common/unit'
 import type { Memory113c as D2KernMemory113c } from '../mem/sparse-memory'
-import { SUNIT_AreUnitsHostileOrUnaligned113c } from './a1c-post150-f786-f1040-113c'
 import { AI_CalcApproxUnitDistSubtiles113c, SUNIT_SetUnitEventSound113c } from './ai-fallen-113c'
 import {
   AI_Stall113c,
   SUNITDMG_AllocCombat113c,
-  SUNITDMG_CalcMonsterExperience113c,
-  SUNITDMG_CheckToHit113c,
   SUNITDMG_ExecuteEvents113c,
-  SUNITDMG_RollPassiveWeaponBlockOrShieldBlock113c,
 } from './combat-a1c-113c'
 import {
   D2GAME_CreateItemEx_6FC31490_113c,
   ITEMS_GetDropItemLevel_6FC2E5D0_113c,
 } from './k2-real-itemdrop-113c'
+import { SUNITDMG_RollMeleeToHitAndBlock_6FCFE5A0_113c } from './k2-real-s2c-combat-113c'
 import { SKILLS_GetFlags113c } from './replay-kernel-113c'
 import { PLAYER_IsBusyWithCursorOrNpcInteract113c } from './k2-items-tc-w1-113c'
 import {
@@ -217,41 +212,6 @@ function getSkillsTxt113c(m: D2KernMemory113c, nSkillId: number): number {
   const pBase = m.u32((pDataTables + 0xb98) >>> 0) >>> 0
   return pBase !== 0 ? ((pBase + Math.imul(id, 0x23c)) >>> 0) : 0
 }
-
-function rollMeleeToHitFlags6FCFE5A0(
-  m: D2KernMemory113c,
-  pAttacker: number,
-  pDefender: number,
-  pGame: number,
-  nToHitBonus: number,
-): number {
-  void SUNITDMG_CalcMonsterExperience113c
-  const att = pAttacker >>> 0
-  const def = pDefender >>> 0
-  if (att === 0 || def === 0) return 0
-  const attType = m.u32(att) | 0
-  const defType = m.u32(def) | 0
-  if ((attType !== 0 && attType !== 1) || (defType !== 0 && defType !== 1)) return 0
-  if ((SUNIT_AreUnitsHostileOrUnaligned113c(m, def, att, pGame >>> 0) | 0) === 0) return 0
-  let wFlags = defType === 0 && (m.u32((def + 0x10) >>> 0) | 0) === 3 ? 1 : 0
-  const nAdder = attType === 1 ? 3 : 1
-  if ((UNITS_CanUnitMeleeAttackTarget113c(m, att, def, nAdder) | 0) === 0) return 0
-  if ((wFlags & 1) === 0 && (SUNITDMG_CheckToHit113c(m, att, def, 0, nToHitBonus | 0) | 0) !== 0) {
-    wFlags |= 1
-  }
-  if ((wFlags & 1) !== 0) {
-    const bm = SUNITDMG_RollPassiveWeaponBlockOrShieldBlock113c(m, def) | 0
-    if ((bm & 2) !== 0) wFlags |= 0x100
-    if ((bm & 4) !== 0) wFlags |= 0x80
-    if ((bm & 0x10) !== 0) wFlags |= 0x8000
-    if ((bm & 1) !== 0) wFlags |= 0x10
-    if (bm !== 0) wFlags &= 0xfffe
-  }
-  if ((wFlags & 0x10) !== 0) wFlags &= 0xfffe
-  if ((wFlags & 1) !== 0 && (STATES_CheckState113c(m, def, 0x36) | 0) === 0) wFlags |= 4
-  return wFlags & 0xffff
-}
-void UNITS_GetEquippedWeaponAdder113c
 
 /**
  * Melee skill action with percentage physical scaling (`calc1`) and life/mana steal (`calc2`, `calc3`).
@@ -615,7 +575,7 @@ export function SKILLS_SrvDo_WhirlwindTick_6FC48BE0_113c(
           SKILLS_SetParam3113c(m, pSkill, m.u32((pTarget + 0x0c) >>> 0) >>> 0)
           for (let k = 0; k < 0x70; k += 4) m.setU32((pDmg + k) >>> 0, 0)
           const nToHit = SKILLS_GetSkillToHitBonus113c(m, unit, nSkillId | 0, nSkillLevel | 0) | 0
-          let wRes = rollMeleeToHitFlags6FCFE5A0(m, unit, pTarget, game, nToHit)
+          let wRes = SUNITDMG_RollMeleeToHitAndBlock_6FCFE5A0_113c(m, unit, pTarget, game, nToHit, 0, 0) & 0xffff
           m.setU16((pDmg + 0x04) >>> 0, wRes)
           if ((wRes & 1) !== 0) {
             wRes = (wRes | m.u16((pSkillsTxt + 0x12e) >>> 0)) & 0xffff
@@ -2400,13 +2360,16 @@ export function SKILLS_SrvDo067_DragonTalonKickHit_6FCB2940_113c(
     0
   const pDmg = allocW6B4Stack(m, 0x70)
   try {
-    const wResultFlags = rollMeleeToHitFlags6FCFE5A0(
-      m,
-      pAttacker,
-      pDefender,
-      pGame,
-      nToHitBonus,
-    )
+    const wResultFlags =
+      SUNITDMG_RollMeleeToHitAndBlock_6FCFE5A0_113c(
+        m,
+        pAttacker,
+        pDefender,
+        pGame,
+        nToHitBonus,
+        0,
+        0,
+      ) & 0xffff
     m.setU16((pDmg + 0x04) >>> 0, wResultFlags & 0xffff)
     if ((wResultFlags & 1) === 0) {
       return 0

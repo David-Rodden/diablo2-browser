@@ -182,6 +182,7 @@ describe('[K2] Wave 2 Batch 4 (w2b4: 0x6FCABF80..0x6FCBE490)', () => {
 
     // 1. S2C_QueueLocationPacket11_6FCABF80_113c (11 bytes)
     const c1 = allocClientWithQueue(m)
+    // D2Game.dll@0x6FCAA3E0 returns queued byte count (`nPacketSize`) on success.
     expect(
       S2C_QueueLocationPacket11_6FCABF80_113c(
         m,
@@ -193,7 +194,7 @@ describe('[K2] Wave 2 Batch 4 (w2b4: 0x6FCABF80..0x6FCBE490)', () => {
         0x5678,
         0x09,
       ),
-    ).toBe(1)
+    ).toBe(11)
     expect(m.u32(c1.pQueue + 0x00)).toBe(11)
     expect(m.u8(c1.pQueue + 0x04)).toBe(0x15)
     expect(m.u8(c1.pQueue + 0x05)).toBe(0x01)
@@ -215,7 +216,7 @@ describe('[K2] Wave 2 Batch 4 (w2b4: 0x6FCABF80..0x6FCBE490)', () => {
         0x01020304,
         0xcc,
       ),
-    ).toBe(1)
+    ).toBe(12)
     expect(m.u32(c2.pQueue + 0x00)).toBe(12)
     expect(m.u8(c2.pQueue + 0x04)).toBe(0x67)
     expect(m.u32(c2.pQueue + 0x05)).toBe(0xdeadbeef)
@@ -239,7 +240,7 @@ describe('[K2] Wave 2 Batch 4 (w2b4: 0x6FCABF80..0x6FCBE490)', () => {
         0x1111,
         0x2222,
       ),
-    ).toBe(1)
+    ).toBe(16)
     expect(m.u32(c3.pQueue + 0x00)).toBe(16)
     expect(m.u8(c3.pQueue + 0x04)).toBe(0x68)
     expect(m.u8(c3.pQueue + 0x05)).toBe(0x01)
@@ -252,7 +253,7 @@ describe('[K2] Wave 2 Batch 4 (w2b4: 0x6FCABF80..0x6FCBE490)', () => {
 
     // 4. S2C_QueueByteDwordPacket6_6FCAC3B0_113c (6 bytes)
     const c4 = allocClientWithQueue(m)
-    expect(S2C_QueueByteDwordPacket6_6FCAC3B0_113c(m, 0x20, 0x03, 0x89abcdef, c4.pClient)).toBe(1)
+    expect(S2C_QueueByteDwordPacket6_6FCAC3B0_113c(m, 0x20, 0x03, 0x89abcdef, c4.pClient)).toBe(6)
     expect(m.u32(c4.pQueue + 0x00)).toBe(6)
     expect(m.u8(c4.pQueue + 0x04)).toBe(0x20)
     expect(m.u8(c4.pQueue + 0x05)).toBe(0x03)
@@ -270,16 +271,16 @@ describe('[K2] Wave 2 Batch 4 (w2b4: 0x6FCABF80..0x6FCBE490)', () => {
       m.setU8(pBuf + i, 0x30 + i)
     }
     const p6 = allocPlayerWithClient(m)
-    expect(S2C_Send10BytePacketToPlayerUnit_6FCAC530_113c(m, p6.pPlayer, pBuf)).toBe(1)
+    expect(S2C_Send10BytePacketToPlayerUnit_6FCAC530_113c(m, p6.pPlayer, pBuf)).toBe(10)
     expect(m.u32(p6.pQueue + 0x00)).toBe(10)
     expect(S2C_Send10BytePacketToPlayerUnit_6FCAC530_113c(m, 0, pBuf)).toBe(0)
 
     const p7 = allocPlayerWithClient(m)
-    expect(S2C_Send7BytePacketToPlayerUnit_6FCAC5F0_113c(m, p7.pPlayer, pBuf)).toBe(1)
+    expect(S2C_Send7BytePacketToPlayerUnit_6FCAC5F0_113c(m, p7.pPlayer, pBuf)).toBe(7)
     expect(m.u32(p7.pQueue + 0x00)).toBe(7)
 
     const p8 = allocPlayerWithClient(m)
-    expect(S2C_Send11BytePacketToPlayerUnit_6FCAC690_113c(m, p8.pPlayer, pBuf)).toBe(1)
+    expect(S2C_Send11BytePacketToPlayerUnit_6FCAC690_113c(m, p8.pPlayer, pBuf)).toBe(11)
     expect(m.u32(p8.pQueue + 0x00)).toBe(11)
   })
 
@@ -573,18 +574,18 @@ describe('[K2] Wave 2 Batch 4 (w2b4: 0x6FCABF80..0x6FCBE490)', () => {
     const pItem = allocBasicItemForPacket9C(m)
     const pItemData = m.u32(pItem + D2UnitStrc.pUnitData.off)
     m.setU32(pItem + 0xc8, 0x3f)
-    m.setU32(pItemData + D2ItemDataStrc.dwCommandFlags.off, 0x03)
-    m.setU32(pItemData + D2ItemDataStrc.dwItemFlags.off, 0x2010)
+    m.setU32(pItemData + D2ItemDataStrc.dwItemFlags.off, 0x03)
+    m.setU32(pItemData + D2ItemDataStrc.dwCommandFlags.off, 0x2012)
 
-    m.setU32(D2GAME_ITEM_CLEAR_CMD_FLAGS_COUNT_VA_113C, 1)
-    m.setU32(D2GAME_ITEM_CLEAR_CMD_FLAGS_ARRAY_VA_113C, 0x01)
     m.setU32(D2GAME_ITEM_CLEAR_FLAGS_COUNT_VA_113C, 1)
-    m.setU32(D2GAME_ITEM_CLEAR_FLAGS_ARRAY_VA_113C, 0x2000)
+    m.setU32(D2GAME_ITEM_CLEAR_FLAGS_ARRAY_VA_113C, 0x01)
+    m.setU32(D2GAME_ITEM_CLEAR_CMD_FLAGS_COUNT_VA_113C, 1)
+    m.setU32(D2GAME_ITEM_CLEAR_CMD_FLAGS_ARRAY_VA_113C, 0x02)
 
     ITEMS_ClearAllDupeAndCommandFlags_6FCBB340_113c(m, pItem)
     expect(m.u32(pItem + 0xc8)).toBe(0x3f & ~0x14)
-    expect(m.u32(pItemData + D2ItemDataStrc.dwCommandFlags.off)).toBe(0x02)
-    expect(m.u32(pItemData + D2ItemDataStrc.dwItemFlags.off)).toBe(0x10)
+    expect(m.u32(pItemData + D2ItemDataStrc.dwItemFlags.off)).toBe(0x02)
+    expect(m.u32(pItemData + D2ItemDataStrc.dwCommandFlags.off)).toBe(0x2010)
   })
 
   it('PARTY functions (0x6FCBBC70..0x6FCBBE40) split gold and manage party control & sub-party nodes', () => {

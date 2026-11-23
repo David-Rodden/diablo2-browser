@@ -149,7 +149,8 @@
     "name": "PARTY_ForEachPartyMemberInSameLevel113c",
     "kernFile": "src/d2kern-113c/game/a1c-post150-f786-f1040-113c.ts",
     "tsSymbol": "PARTY_ForEachPartyMemberInSameLevel113c",
-    "status": "ported"
+    "status": "diff-verified",
+    "diffEvidence": "Wave 22 1:1 PE32 indirect-call audit (caller_callback; tools/oracle/callgraph/indirect-audit-batchD.json) verified in tests/oracle/k2/k2-disasm-verified-wave22-indD.test.ts"
   },
   {
     "module": "D2Game",

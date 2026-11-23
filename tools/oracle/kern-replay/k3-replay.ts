@@ -11,7 +11,14 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { gunzipSync } from 'node:zlib'
 import { collectImportGraph, legacyReachable } from './import-graph.ts'
-import type { Coverage113c, GapRow113c, GapSummary113c } from './gap-report.ts'
+import type {
+  ComputeGapsOptions113c,
+  Coverage113c,
+  GapRow113c,
+  GapSummary113c,
+  RuntimeModuleCoverage113c,
+  ScenarioGap113c,
+} from './gap-report.ts'
 import {
   REPO_ROOT_113C,
   UnportedFunction113c,
@@ -253,11 +260,35 @@ export function loadK3Coverage113c(name: string): Coverage113c {
 
 const DONE_STATUSES_113C = new Set(['ported', 'diff-verified'])
 
-export function computeK3Gaps113c(name: string): GapSummary113c {
+export function computeK3Gaps113c(name: string, opts?: ComputeGapsOptions113c): ScenarioGap113c {
   const coverage = loadK3Coverage113c(name)
   const manifest = loadManifest113c()
+  const rawTsVas = opts?.tsExecutedVas !== undefined ? opts.tsExecutedVas : runK3Replay113c(name).tsExecutedVas
+  const tsExecutedSet = new Set<string>(rawTsVas)
+  const tsExecutedVas = [...tsExecutedSet].sort()
+
   const executed: GapSummary113c['executed'] = {}
-  const gaps: GapRow113c[] = []
+  const runtimeMutable: Record<
+    string,
+    { dllExecuted: number; tsExecuted: number; tsTotalExecuted: number; runtimeGap: number; runtimeGapBytes: number }
+  > = {
+    D2Common: { dllExecuted: 0, tsExecuted: 0, tsTotalExecuted: 0, runtimeGap: 0, runtimeGapBytes: 0 },
+    D2Game: { dllExecuted: 0, tsExecuted: 0, tsTotalExecuted: 0, runtimeGap: 0, runtimeGapBytes: 0 },
+  }
+  for (const key of tsExecutedVas) {
+    const colon = key.indexOf(':')
+    const mod = colon >= 0 ? key.slice(0, colon) : key
+    let rm = runtimeMutable[mod]
+    if (rm === undefined) {
+      rm = { dllExecuted: 0, tsExecuted: 0, tsTotalExecuted: 0, runtimeGap: 0, runtimeGapBytes: 0 }
+      runtimeMutable[mod] = rm
+    }
+    rm.tsTotalExecuted++
+  }
+
+  const dllExecutedVas: string[] = []
+  const manifestGap: GapRow113c[] = []
+  const runtimeExecGap: GapRow113c[] = []
   const impure: Array<GapRow113c & { kernFile: string }> = []
   const purity = new Map<string, boolean>()
   const isPure = (kf: string): boolean => {
@@ -269,14 +300,39 @@ export function computeK3Gaps113c(name: string): GapSummary113c {
     return v
   }
   for (const h of coverage.hits) {
-    const f = manifest.get(manifestKey113c(h.module, h.va))
-    if (f === undefined) throw new Error(`${name}: covered ${manifestKey113c(h.module, h.va)} is not a manifest function`)
+    const key = manifestKey113c(h.module, h.va)
+    dllExecutedVas.push(key)
+    const f = manifest.get(key)
+    if (f === undefined) throw new Error(`${name}: covered ${key} is not a manifest function`)
     let e = executed[h.module]
     if (e === undefined) {
       e = { total: 0, done: 0, gap: 0, gapBytes: 0 }
       executed[h.module] = e
     }
     e.total++
+
+    let rm = runtimeMutable[h.module]
+    if (rm === undefined) {
+      rm = { dllExecuted: 0, tsExecuted: 0, tsTotalExecuted: 0, runtimeGap: 0, runtimeGapBytes: 0 }
+      runtimeMutable[h.module] = rm
+    }
+    rm.dllExecuted++
+
+    if (tsExecutedSet.has(key)) {
+      rm.tsExecuted++
+    } else {
+      rm.runtimeGap++
+      rm.runtimeGapBytes += f.size
+      runtimeExecGap.push({
+        module: h.module,
+        va: h.va,
+        name: f.name,
+        size: f.size,
+        status: f.status,
+        firstFrame: h.firstFrame,
+      })
+    }
+
     if (DONE_STATUSES_113C.has(f.status)) {
       e.done++
       if (typeof f.kernFile === 'string' && !isPure(f.kernFile)) {
@@ -294,7 +350,7 @@ export function computeK3Gaps113c(name: string): GapSummary113c {
     }
     e.gap++
     e.gapBytes += f.size
-    gaps.push({
+    manifestGap.push({
       module: h.module,
       va: h.va,
       name: f.name,
@@ -303,38 +359,77 @@ export function computeK3Gaps113c(name: string): GapSummary113c {
       firstFrame: h.firstFrame,
     })
   }
-  gaps.sort((a, b) => a.firstFrame - b.firstFrame || a.va - b.va)
+  dllExecutedVas.sort()
+  manifestGap.sort((a, b) => a.firstFrame - b.firstFrame || a.va - b.va)
+  runtimeExecGap.sort((a, b) => a.firstFrame - b.firstFrame || a.va - b.va)
   impure.sort((a, b) => a.firstFrame - b.firstFrame || a.va - b.va)
-  return { scenario: name, coverage, executed, gaps, impure }
+  const runtimeExecuted: Record<string, RuntimeModuleCoverage113c> = runtimeMutable
+  return {
+    scenario: name,
+    coverage,
+    executed,
+    gaps: manifestGap,
+    impure,
+    dllExecutedVas,
+    tsExecutedVas,
+    manifestGap,
+    runtimeExecGap,
+    runtimeExecuted,
+  }
 }
 
 function hexVa(va: number): string {
   return `0x${(va >>> 0).toString(16).toUpperCase().padStart(8, '0')}`
 }
 
-export function k3GapMarkdown113c(s: GapSummary113c): string {
+export function k3GapMarkdown113c(s: ScenarioGap113c): string {
   const c = s.coverage
   const lines = [
-    `# K3 replay gap list: ${s.scenario}`,
+    `# K3 replay coverage & runtime execution gap list: ${s.scenario}`,
     '',
     'Generated by `npx tsx tools/oracle/kern-replay/k3-replay.ts --write`; do not edit by hand.',
     '',
-    `Source: \`tests/fixtures/oracle/k3/replay/${s.scenario}.coverage.ndjson.gz\`: function-entry coverage of the`,
-    `original 1.13c D2Game.dll + D2Common.dll under headless Wine (\`d2host-113c.exe\`), frames F${c.from}..F${c.to},`,
-    `one-shot INT3 on all ${c.entries} manifest entries, armed inside the server frame (${c.hit} entries hit,`,
-    `${c.otherThreadHits} traps on other threads).`,
+    `Source: \`tests/fixtures/oracle/k3/replay/${s.scenario}.coverage.ndjson.gz\` (function-entry coverage of the`,
+    `original 1.13c D2Game.dll + D2Common.dll under headless Wine \`d2host-113c.exe\`, frames F${c.from}..F${c.to},`,
+    `${c.hit}/${c.entries} manifest entries hit, ${c.otherThreadHits} traps on other threads) vs live TS \`va-trace-113c\``,
+    `execution across \`runK3Replay113c('${s.scenario}')\`.`,
     '',
-    '| Module | executed | ported/dv | gap | gap bytes |',
-    '|---|---:|---:|---:|---:|',
+    '| Module | DLL executed | TS executed (`dll ∩ ts`) | TS total hit | manifest unported | manifest gap bytes | runtime exec gap (`dll - ts`) | runtime gap bytes |',
+    '|---|---:|---:|---:|---:|---:|---:|---:|',
   ]
   for (const mod of ['D2Common', 'D2Game']) {
-    const e = s.executed[mod]
-    if (e === undefined) lines.push(`| ${mod} | 0 | 0 | 0 | 0 |`)
-    else lines.push(`| ${mod} | ${e.total} | ${e.done} | ${e.gap} | ${e.gapBytes} |`)
+    const e = s.executed[mod] ?? { total: 0, done: 0, gap: 0, gapBytes: 0 }
+    const r = s.runtimeExecuted[mod] ?? {
+      dllExecuted: 0,
+      tsExecuted: 0,
+      tsTotalExecuted: 0,
+      runtimeGap: 0,
+      runtimeGapBytes: 0,
+    }
+    lines.push(
+      `| ${mod} | ${e.total} | ${r.tsExecuted} / ${r.dllExecuted} | ${r.tsTotalExecuted} | ${e.gap} | ${e.gapBytes} | ${r.runtimeGap} | ${r.runtimeGapBytes} |`,
+    )
   }
   for (const mod of ['D2Common', 'D2Game']) {
-    const rows = s.gaps.filter((g) => g.module === mod)
-    lines.push('', `## ${mod} (${rows.length})`, '', '| first | VA | size | status | name |', '|---:|---|---:|---|---|')
+    const rows = s.manifestGap.filter((g) => g.module === mod)
+    lines.push(
+      '',
+      `## ${mod} Manifest Unported (${rows.length})`,
+      '',
+      '| first | VA | size | status | name |',
+      '|---:|---|---:|---|---|',
+    )
+    for (const g of rows) lines.push(`| F${g.firstFrame} | \`${hexVa(g.va)}\` | ${g.size} | ${g.status} | ${g.name} |`)
+  }
+  for (const mod of ['D2Common', 'D2Game']) {
+    const rows = s.runtimeExecGap.filter((g) => g.module === mod)
+    lines.push(
+      '',
+      `## ${mod} Runtime Execution Gap — DLL Hit Not Executed by TS (${rows.length})`,
+      '',
+      '| first | VA | size | manifest status | name |',
+      '|---:|---|---:|---|---|',
+    )
     for (const g of rows) lines.push(`| F${g.firstFrame} | \`${hexVa(g.va)}\` | ${g.size} | ${g.status} | ${g.name} |`)
   }
   lines.push(
@@ -423,9 +518,23 @@ function main(argv: readonly string[]): number {
   mkdirSync(K3_DIVERGENCE_DIR_113C, { recursive: true })
   for (const r of results) {
     const a = buildK3Artifact113c(r)
-    const gap = computeK3Gaps113c(r.scenario)
+    const gap = computeK3Gaps113c(r.scenario, { tsExecutedVas: r.tsExecutedVas })
+    const rc = gap.runtimeExecuted.D2Common ?? {
+      dllExecuted: 0,
+      tsExecuted: 0,
+      tsTotalExecuted: 0,
+      runtimeGap: 0,
+      runtimeGapBytes: 0,
+    }
+    const rg = gap.runtimeExecuted.D2Game ?? {
+      dllExecuted: 0,
+      tsExecuted: 0,
+      tsTotalExecuted: 0,
+      runtimeGap: 0,
+      runtimeGapBytes: 0,
+    }
     console.log(
-      `${r.scenario}: boot F${r.bootFrame} ${r.bootCheck === null ? 'ok' : 'MISMATCH'}, strict F${r.strictHorizon}/${r.lastGoldenFrame}, pos F${r.posHorizon}/${r.lastGoldenFrame}, firstStrict=${JSON.stringify(r.firstStrictDivergence)}, firstPos=${JSON.stringify(r.firstPosDivergence)}, d2commonGap=${gap.executed.D2Common?.gap ?? 0}/${gap.executed.D2Common?.total ?? 0}, d2gameGap=${gap.executed.D2Game?.gap ?? 0}/${gap.executed.D2Game?.total ?? 0}`,
+      `${r.scenario}: boot F${r.bootFrame} ${r.bootCheck === null ? 'ok' : 'MISMATCH'}, strict F${r.strictHorizon}/${r.lastGoldenFrame}, pos F${r.posHorizon}/${r.lastGoldenFrame}, firstStrict=${JSON.stringify(r.firstStrictDivergence)}, firstPos=${JSON.stringify(r.firstPosDivergence)}, d2commonExec=${rc.tsExecuted}/${rc.dllExecuted} (totalTS=${rc.tsTotalExecuted}, manifestGap=${gap.executed.D2Common?.gap ?? 0}, runtimeExecGap=${rc.runtimeGap}), d2gameExec=${rg.tsExecuted}/${rg.dllExecuted} (totalTS=${rg.tsTotalExecuted}, manifestGap=${gap.executed.D2Game?.gap ?? 0}, runtimeExecGap=${rg.runtimeGap})`,
     )
     if (write) {
       const rootCauseMd = K3_SCENARIO_ROOT_CAUSE_MD_113C[r.scenario as K3ReplayScenarioName113c]

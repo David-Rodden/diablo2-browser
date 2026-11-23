@@ -185,8 +185,8 @@
     "name": "D2GAME_PLRMODES_DispatchModeSyncToClient",
     "kernFile": "src/d2kern-113c/game/boot-init-gap-b-113c.ts",
     "tsSymbol": "D2GAME_PLRMODES_DispatchModeSyncToClient113c",
-    "status": "ported",
-    "diffEvidence": "Unit and binary-isomorphic verification in tests/oracle/k1/laneJ3-f1-f2-b.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit and binary-isomorphic verification in tests/oracle/k1/laneJ3-f1-f2-b.test.ts; Wave 19 1:1 PE32 indirect-call audit (static_table; tools/oracle/callgraph/indirect-audit-batchA.json) verified in tests/oracle/k2/k2-disasm-verified-wave19-indA.test.ts"
   },
   {
     "va": "0x6FCEBDB0",
@@ -275,8 +275,8 @@
     "name": "D2GAME_SUNIT_IterateAllLivingPlayers",
     "kernFile": "src/d2kern-113c/game/boot-init-gap-b-113c.ts",
     "tsSymbol": "D2GAME_SUNIT_IterateAllLivingPlayers113c",
-    "status": "ported",
-    "diffEvidence": "Unit and binary-isomorphic verification in tests/oracle/k1/laneJ3-f1-f2-b.test.ts"
+    "status": "diff-verified",
+    "diffEvidence": "Unit and binary-isomorphic verification in tests/oracle/k1/laneJ3-f1-f2-b.test.ts; Wave 19 1:1 PE32 indirect-call audit (caller_callback; tools/oracle/callgraph/indirect-audit-batchA.json) verified in tests/oracle/k2/k2-disasm-verified-wave19-indA.test.ts"
   },
   {
     "va": "0x6FD10130",

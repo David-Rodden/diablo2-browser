@@ -34,7 +34,6 @@ import {
 } from '../common/inventory'
 import {
   DRLGWARP_TestRoomTileBit113c,
-  ITEMS_B043_GetTotalStatFromUnitFast113c,
   ITEMS_GetMissileType113c,
 } from '../common/items'
 import {
@@ -42,6 +41,7 @@ import {
   INVENTORY_GetActiveWeaponMemPort113c,
   INVENTORY_GetItemFromBodyLocMemPort113c,
   ITEMS_CheckIfThrowItemMemPort113c,
+  ITEMS_CheckItemTypeIdMemPort113c,
   STATLIST_GetStatListFromUnitAndStateMemPort113c,
 } from '../common/k0-d2common-memports'
 import { MONSTERS_GetHirelingTypeId113c } from '../common/missile'
@@ -81,6 +81,7 @@ import {
   STATLIST_GetMaxLifeFromUnit113c,
   STATLIST_GetStatListFromUnitAndFlag113c,
   STATLIST_GetUnitStat113c,
+  STATLIST_GetUnitStatWithLayer113c,
   STATLIST_MergeStatLists113c,
   STATLIST_SetExpireFrameEx113c,
   STATLIST_SetStat113c,
@@ -272,7 +273,7 @@ import {
   UNIT_GetPosY113c,
 } from './regpop-spawn-113c'
 import { SUNIT_FreeUnit113c } from './replay-final11-113c'
-import { ITEMS_CheckItemTypeId113c } from './replay-kernel-113c'
+import { AI_ApproachTarget113c } from './k2-real-s2c-combat-113c'
 import { EVENT_FreeNode113c, EVENT_SetEventFull113c } from './timer-wheel'
 import {
   AIGENERAL_FindAiCommandByType113c,
@@ -340,87 +341,57 @@ function stepSeed64At113c(m: D2KernMemory113c, pSeed: number): number {
   return newLo
 }
 
-function aiApproachTarget6FD12540(
+function rollSeed6FC21180(m: D2KernMemory113c, pSeed: number, nMax: number): number {
+  const seed = {
+    lo: m.u32(pSeed >>> 0) >>> 0,
+    hi: m.u32((pSeed + 4) >>> 0) >>> 0,
+  }
+  const r = seedRoll(seed, nMax | 0) | 0
+  m.setU32(pSeed >>> 0, seed.lo >>> 0)
+  m.setU32((pSeed + 4) >>> 0, seed.hi >>> 0)
+  return r
+}
+
+function findAiCommandByTypeInline113c(
   m: D2KernMemory113c,
-  pGame: number,
   pUnit: number,
-  pTarget: number,
-  nMode: number,
-  nX: number,
-  nY: number,
-  nStepNum: number,
-  dwFlags: number,
+  nCmdType: number,
 ): number {
-  let mode = nMode | 0
-  if (mode === 0x0f && (STATES_CheckState113c(m, pUnit >>> 0, 0x3c) | 0) !== 0) {
-    let pAiControl = 0
-    if (pUnit !== 0 && (m.u32(pUnit >>> 0) | 0) === 1) {
-      const pMonData = m.u32((pUnit + 0x14) >>> 0) >>> 0
-      if (pMonData !== 0) {
-        pAiControl = m.u32((pMonData + 0x2c) >>> 0) >>> 0
-      }
-    }
-    m.setU32((pAiControl + 0x18) >>> 0, 0)
-    m.setU32((pAiControl + 0x1c) >>> 0, 0)
-    m.setU8((pAiControl + 0x20) >>> 0, 0)
-    mode = 2
+  const unit = pUnit >>> 0
+  if (unit === 0 || (m.u32(unit) | 0) !== 1) {
+    return 0
   }
-  PATH_SetStepNum113c(m, m.u32((pUnit + 0x2c) >>> 0), nStepNum | 0)
-  const sp = allocScratch(0x20)
-  try {
-    MONSTER_InitModeChangeStrc113c(m, pUnit >>> 0, sp, mode)
-    if (pTarget !== 0) {
-      m.setU32((sp + 0x08) >>> 0, pTarget >>> 0)
-    } else {
-      m.setU32((sp + 0x0c) >>> 0, nX >>> 0)
-      m.setU32((sp + 0x10) >>> 0, nY >>> 0)
-    }
-    const res =
-      MONSTER_StartMode113c(
-        m,
-        pGame >>> 0,
-        m.u32((sp + 0x04) >>> 0) >>> 0,
-        m.u32(sp >>> 0) | 0,
-        m.u32((sp + 0x08) >>> 0) >>> 0,
-        m.u32((sp + 0x0c) >>> 0) | 0,
-        m.u32((sp + 0x10) >>> 0) | 0,
-      ) | 0
-    if (res !== 0) {
-      return res
-    }
-    const flagsByte = dwFlags & 0xff
-    if ((flagsByte & 4) !== 0) {
-      let pEvent = m.u32((pUnit + 0xdc) >>> 0) >>> 0
-      while (pEvent !== 0) {
-        const pNext = m.u32((pEvent + 0x24) >>> 0) >>> 0
-        if (m.u8(pEvent) === 2) {
-          EVENT_FreeNode113c(m, pGame >>> 0, pEvent)
-        }
-        pEvent = pNext
-      }
-    }
-    if ((flagsByte & 1) !== 0 && (m.u32(pUnit >>> 0) | 0) === 1) {
-      const pMonData = m.u32((pUnit + 0x14) >>> 0) >>> 0
-      if (pMonData !== 0) {
-        const pAiGeneral = m.u32((pMonData + 0x28) >>> 0) >>> 0
-        if (pAiGeneral !== 0) {
-          m.setU8((pAiGeneral + 8) >>> 0, (m.u8((pAiGeneral + 8) >>> 0) | 0x40) & 0xff)
-        }
-      }
-    }
-    if ((flagsByte & 2) !== 0) {
-      const roll = (stepSeed64At113c(m, (pUnit + 0x20) >>> 0) >>> 0) % 100
-      if (roll < 0x46) {
-        AI_IdleWander113c(m, pGame >>> 0, pUnit >>> 0)
-        return 1
-      }
-      AI_Stall113c(m, pGame >>> 0, pUnit >>> 0, 10)
-      return 1
-    }
-    return res
-  } finally {
-    freeScratch(0x20)
+  const pMonData = m.u32((unit + 0x14) >>> 0) >>> 0
+  if (pMonData === 0) {
+    return 0
   }
+  const pAiGen = m.u32((pMonData + 0x28) >>> 0) >>> 0
+  if (pAiGen === 0) {
+    return 0
+  }
+  const pHead = m.u32((pAiGen + 0x20) >>> 0) >>> 0
+  if (pHead === 0) {
+    return 0
+  }
+  const targetType = nCmdType >>> 0
+  let pCur = m.u32(pHead) >>> 0
+  if (pCur === 0) {
+    return 0
+  }
+  if ((m.u32((pCur + 8) >>> 0) >>> 0) !== targetType) {
+    let guard = 0
+    while (pCur !== pHead && pCur !== 0 && guard < 1024) {
+      pCur = m.u32(pCur) >>> 0
+      if (pCur === 0) {
+        return 0
+      }
+      if ((m.u32((pCur + 8) >>> 0) >>> 0) === targetType) {
+        break
+      }
+      guard = (guard + 1) | 0
+    }
+  }
+  return (m.u32((pCur + 8) >>> 0) >>> 0) === targetType ? pCur : 0
 }
 
 /**
@@ -779,8 +750,8 @@ export function PARTY_AddPlayerToSubParty_6FCBC4F0_113c(
       pOtherPlayer = m.u32((pOtherPlayer + 0xe4) >>> 0) >>> 0
     }
     if (pOtherPlayer !== 0) {
-      PARTY_ClearHostilityFlag08_6FD14210_113c(m, player, game, pOtherPlayer)
       PARTY_ClearHostilityFlag08_6FD14210_113c(m, pOtherPlayer, game, player)
+      PARTY_ClearHostilityFlag08_6FD14210_113c(m, player, game, pOtherPlayer)
     }
     pMemberNode = m.u32((pMemberNode + 0x04) >>> 0) >>> 0
   }
@@ -962,7 +933,7 @@ export function SKILLS_CreateOffhandThrowProjectile_6FCC2A40_113c(
       const wpn = m.u32(ppWeapon) >>> 0
       if (
         ITEMS_CheckIfThrowItemMemPort113c(m, wpn) === 0 &&
-        ITEMS_CheckItemTypeId113c(m, wpn, 0x7d) === 0
+        STATLIST_GetUnitStatWithLayer113c(m, wpn, 0x7d, 0) === 0
       ) {
         return 0
       }
@@ -976,9 +947,9 @@ export function SKILLS_CreateOffhandThrowProjectile_6FCC2A40_113c(
   }
   m.setU32((unit + 0xc4) >>> 0, (m.u32((unit + 0xc4) >>> 0) | 0x40) >>> 0)
   const nMissileId = ITEMS_GetMissileType113c(m, pWeapon) | 0
-  const hasMagicThrowStat = ITEMS_B043_GetTotalStatFromUnitFast113c(m, pWeapon, 0x26, 0) | 0
+  const isThrowingPotion = ITEMS_CheckItemTypeIdMemPort113c(m, pWeapon, 0x26) | 0
   let pMissile = 0
-  if (hasMagicThrowStat !== 0) {
+  if (isThrowingPotion !== 0) {
     pMissile =
       SKILLS_CreateProjectileAtOffsetWithAmmoCheck_6FCC1880_113c(
         m,
@@ -1055,7 +1026,7 @@ export function SKILLS_CreateMainhandThrowProjectile_6FCC2B40_113c(
       const wpn = m.u32(ppWeapon) >>> 0
       if (
         ITEMS_CheckIfThrowItemMemPort113c(m, wpn) === 0 &&
-        ITEMS_CheckItemTypeId113c(m, wpn, 0x7d) === 0
+        STATLIST_GetUnitStatWithLayer113c(m, wpn, 0x7d, 0) === 0
       ) {
         return 0
       }
@@ -1069,9 +1040,9 @@ export function SKILLS_CreateMainhandThrowProjectile_6FCC2B40_113c(
   }
   m.setU32((unit + 0xc4) >>> 0, (m.u32((unit + 0xc4) >>> 0) | 0x40) >>> 0)
   const nMissileId = ITEMS_GetMissileType113c(m, pWeapon) | 0
-  const hasMagicThrowStat = ITEMS_B043_GetTotalStatFromUnitFast113c(m, pWeapon, 0x26, 0) | 0
+  const isThrowingPotion = ITEMS_CheckItemTypeIdMemPort113c(m, pWeapon, 0x26) | 0
   let pMissile = 0
-  if (hasMagicThrowStat !== 0) {
+  if (isThrowingPotion !== 0) {
     pMissile =
       SKILLS_CreateProjectileAtOffsetWithAmmoCheck_6FCC1880_113c(
         m,
@@ -1150,8 +1121,8 @@ export function MONAI_EvaluateShadowSkillCastChance_6FCC4890_113c(
   }
   const nManaCostShifted = SKILLS_EvaluateSkillManaCost113c(m, skillId, nSkillLevel) | 0
   const pSeed = (shadow + 0x20) >>> 0
-  const nRollCost = ((stepSeed64At113c(m, pSeed) >>> 0) % 100) | 0
-  const nCostPenalty = Math.trunc((nManaCostShifted * 160) / 100) | 0
+  const nRollCost = rollSeed6FC21180(m, pSeed, 100) | 0
+  const nCostPenalty = Math.trunc(Math.imul(nManaCostShifted, 160) / 100) | 0
   if (nRollCost > ((100 - nCostPenalty) | 0)) {
     return 0
   }
@@ -1176,9 +1147,8 @@ export function MONAI_EvaluateShadowSkillCastChance_6FCC4890_113c(
     m.setU32((pAiControl + 0x18) >>> 0, minBound >>> 0)
   }
   const rollMax = i32(m, (pAiControl + 0x18) >>> 0)
-  const nRollThreshold =
-    rollMax <= 0 ? 0 : ((stepSeed64At113c(m, pSeed) >>> 0) % (rollMax >>> 0)) | 0
-  const nRoll100 = ((stepSeed64At113c(m, pSeed) >>> 0) % 100) | 0
+  const nRollThreshold = rollSeed6FC21180(m, pSeed, rollMax) | 0
+  const nRoll100 = rollSeed6FC21180(m, pSeed, 100) | 0
   if (nRollThreshold > nRoll100) {
     return 0
   }
@@ -1256,7 +1226,7 @@ export function MONAI_SiegeMinionThinkA_6FCC5EB0_113c(
   if (wSkill1 > 0) {
     const nDiff = m.u8((game + 0x6d) >>> 0)
     if (nDist < sx16(m.u16((pMonStatsTxt + 0x56 + nDiff * 2) >>> 0))) {
-      const nRoll = ((stepSeed64At113c(m, (unit + 0x20) >>> 0) >>> 0) % 100) | 0
+      const nRoll = rollSeed6FC21180(m, (unit + 0x20) >>> 0, 100) | 0
       const nDiffNow = m.u8((game + 0x6d) >>> 0)
       if (nRoll < sx16(m.u16((pMonStatsTxt + 0x5c + nDiffNow * 2) >>> 0))) {
         const nSkillId = sx16(m.u16((pMonStatsTxt + 0x170) >>> 0))
@@ -1274,11 +1244,11 @@ export function MONAI_SiegeMinionThinkA_6FCC5EB0_113c(
       AI_Stall113c(m, game, unit, 0x19)
       return
     }
-    const nAtkRoll = ((stepSeed64At113c(m, (unit + 0x20) >>> 0) >>> 0) % 2) | 0
+    const nAtkRoll = rollSeed6FC21180(m, (unit + 0x20) >>> 0, 2) | 0
     AI_StartAttackMode113c(m, nAtkRoll !== 0 ? 4 : 5, unit, game, pTarget)
     return
   }
-  aiApproachTarget6FD12540(m, game, unit, pTarget, 2, 0, 0, 1, 0)
+  AI_ApproachTarget113c(m, game, unit, pTarget, 2, 0, 0, 1, 0)
   AI_ScheduleAiThinkTimer_6FD120C0_113c(m, game, unit, 10)
 }
 
@@ -1376,7 +1346,7 @@ export function MONAI_SiegeMinionThinkB_6FCC6050_113c(
   }
   const nDiff = m.u8((game + 0x6d) >>> 0)
   if (nDist < sx16(m.u16((pMonStatsTxt + 0x56 + nDiff * 2) >>> 0))) {
-    const nRollAtk = ((stepSeed64At113c(m, pSeed) >>> 0) % 100) | 0
+    const nRollAtk = rollSeed6FC21180(m, pSeed, 100) | 0
     const nDiffAtk = m.u8((game + 0x6d) >>> 0)
     if (nRollAtk < sx16(m.u16((pMonStatsTxt + 0x5c + nDiffAtk * 2) >>> 0))) {
       if (AI_StartAttackMode113c(m, 4, unit, game, pTarget) !== 0) {
@@ -1446,7 +1416,7 @@ export function MONAI_SiegeMinionThinkC_6FCC62D0_113c(
   if (wSkill1 > 0 && MONAI_MonsterHasSkillIdInMonStats_6FCD0840_113c(m, unit, wSkill1) !== 0) {
     const nDiff = m.u8((game + 0x6d) >>> 0)
     if (nDist < sx16(m.u16((pMonStatsTxt + 0x56 + nDiff * 2) >>> 0))) {
-      const nRoll = ((stepSeed64At113c(m, (unit + 0x20) >>> 0) >>> 0) % 100) | 0
+      const nRoll = rollSeed6FC21180(m, (unit + 0x20) >>> 0, 100) | 0
       const nDiffChance = m.u8((game + 0x6d) >>> 0)
       if (sx16(m.u16((pMonStatsTxt + 0x5c + nDiffChance * 2) >>> 0)) > nRoll) {
         const targetX = UNIT_GetPosX113c(m, pTarget) | 0
@@ -1465,17 +1435,17 @@ export function MONAI_SiegeMinionThinkC_6FCC62D0_113c(
         const stepX = Math.trunc(Math.imul(nMult, dx) / distToCoords) | 0
         const stepY = Math.trunc(Math.imul(nMult, dy) / distToCoords) | 0
         const nMode = (m.u8((pMonStatsTxt + 0x180) >>> 0) << 24) >> 24
-        const pSkill =
-          SKILLS_GetHighestLevelSkillFromUnitAndIdFastcall113c(
-            m,
-            unit,
-            sx16(m.u16((pMonStatsTxt + 0x170) >>> 0)),
-          ) >>> 0
-        SKILLS_SetUsedSkill113c(m, unit, pSkill)
-        PATH_SetStepNum113c(m, m.u32((unit + 0x2c) >>> 0), 1)
         const sp = allocScratch(0x20)
         try {
           MONSTER_InitModeChangeStrc113c(m, unit, sp, nMode)
+          const pSkill =
+            SKILLS_GetHighestLevelSkillFromUnitAndIdFastcall113c(
+              m,
+              unit,
+              sx16(m.u16((pMonStatsTxt + 0x170) >>> 0)),
+            ) >>> 0
+          SKILLS_SetUsedSkill113c(m, unit, pSkill)
+          PATH_SetStepNum113c(m, m.u32((unit + 0x2c) >>> 0), 1)
           const destX = (targetX + stepX) | 0
           const destY = (targetY + stepY) | 0
           m.setU32((sp + 0x0c) >>> 0, destX >>> 0)
@@ -1490,17 +1460,17 @@ export function MONAI_SiegeMinionThinkC_6FCC62D0_113c(
     }
   }
   if (bInMelee !== 0) {
-    const nRollMelee = ((stepSeed64At113c(m, (unit + 0x20) >>> 0) >>> 0) % 100) | 0
+    const nRollMelee = rollSeed6FC21180(m, (unit + 0x20) >>> 0, 100) | 0
     const nDiff = m.u8((game + 0x6d) >>> 0)
     if (nRollMelee >= sx16(m.u16((pMonStatsTxt + 0x62 + nDiff * 2) >>> 0))) {
       AI_Stall113c(m, game, unit, 0x19)
       return
     }
-    const nAtkRoll = ((stepSeed64At113c(m, (unit + 0x20) >>> 0) >>> 0) % 2) | 0
+    const nAtkRoll = rollSeed6FC21180(m, (unit + 0x20) >>> 0, 2) | 0
     AI_StartAttackMode113c(m, nAtkRoll !== 0 ? 4 : 5, unit, game, pTarget)
     return
   }
-  aiApproachTarget6FD12540(m, game, unit, pTarget, 2, 0, 0, 1, 0)
+  AI_ApproachTarget113c(m, game, unit, pTarget, 2, 0, 0, 1, 0)
   AI_ScheduleAiThinkTimer_6FD120C0_113c(m, game, unit, 10)
 }
 
@@ -1562,8 +1532,8 @@ export function MONAI_WorldstoneMinionThink_6FCC7410_113c(
     const nType = m.u32(unit) >>> 0
     const pRoom = UNITS_GetRoom113c(m, unit) >>> 0
     DUNGEON_AddRoomPortalNode113c(m, pRoom, nType, nGuid)
-    UNITROOM_RemoveUnitFromRoom113c(m, unit)
     UNITS_SetTargetUnitForDynamicUnitEx113c(m, unit)
+    UNITROOM_RemoveUnitFromRoom113c(m, unit)
     SUNIT_FreeUnit113c(m, game, unit)
     return
   }
@@ -1577,7 +1547,7 @@ export function MONAI_WorldstoneMinionThink_6FCC7410_113c(
   if (pAiControl !== 0) {
     m.setU32((pAiControl + 0x18) >>> 0, 7)
   }
-  aiApproachTarget6FD12540(m, game, unit, pWorldstoneObj, 2, 0, 0, 1, 0)
+  AI_ApproachTarget113c(m, game, unit, pWorldstoneObj, 2, 0, 0, 1, 0)
 }
 
 /**
@@ -1679,7 +1649,7 @@ export function MONAI_NihlathakThink_6FCC7580_113c(
     const pSkill4Check =
       SKILLS_GetHighestLevelSkillFromUnitAndIdFastcall113c(m, unit, wSkill4Check) >>> 0
     if (pSkill4Check !== 0) {
-      const nRoll4 = SEED_RollLimitedFast113c(m, pSeed, 100) | 0
+      const nRoll4 = rollSeed6FC21180(m, pSeed, 100) | 0
       if (nRoll4 < 0x3c && nDist < 0x0e) {
         const nMode4 = m.u8((pMonStatsTxt + 0x183) >>> 0)
         const nSkillId4 = sx16(m.u16((pMonStatsTxt + 0x176) >>> 0))
@@ -1705,7 +1675,7 @@ export function MONAI_NihlathakThink_6FCC7580_113c(
           m.setU32((pScanCtx + 0x10) >>> 0, 0)
           m.setU32((pScanCtx + 0x14) >>> 0, 0)
           AITARGET_ScanUnitsByModeTable113c(m, 1, pScanCtx, game, unit, 0x6fc35c40)
-          pMinionTarget = m.u32((pScanCtx + 0x0c) >>> 0) >>> 0
+          pMinionTarget = m.u32((pScanCtx + 0x10) >>> 0) >>> 0
         } finally {
           freeScratch(0x18)
         }
@@ -1739,7 +1709,7 @@ export function MONAI_NihlathakThink_6FCC7580_113c(
             return
           }
         }
-        AI_IdleWander113c(m, game, unit)
+        AI_IdleWander113c(m, game, unit, 6)
         return
       }
     }
@@ -1759,7 +1729,7 @@ export function MONAI_NihlathakThink_6FCC7580_113c(
 
   const nRollWalk = ((stepSeed64At113c(m, pSeed) >>> 0) % 100) | 0
   if (nRollWalk < 0x3c) {
-    aiApproachTarget6FD12540(m, game, unit, pTarget, 2, 0, 0, 1, 0)
+    AI_ApproachTarget113c(m, game, unit, pTarget, 2, 0, 0, 1, 0)
   }
   AI_Stall113c(m, game, unit, 5)
 }
@@ -1826,18 +1796,18 @@ export function MONAI_RescuedBarbarianSoldierThink_6FCC7A10_113c(
       const nType = m.u32(unit) >>> 0
       const pRoom = UNITS_GetRoom113c(m, unit) >>> 0
       DUNGEON_AddRoomPortalNode113c(m, pRoom, nType, nGuid)
-      UNITROOM_RemoveUnitFromRoom113c(m, unit)
       UNITS_SetTargetUnitForDynamicUnitEx113c(m, unit)
+      UNITROOM_RemoveUnitFromRoom113c(m, unit)
       SUNIT_FreeUnit113c(m, game, unit)
       return
     }
     const nRollWalk = ((stepSeed64At113c(m, pSeed) >>> 0) % 100) | 0
     if (nRollWalk < 0x46) {
-      aiApproachTarget6FD12540(m, game, unit, pPrisonObj, 2, 0, 0, 1, 7)
+      AI_ApproachTarget113c(m, game, unit, pPrisonObj, 2, 0, 0, 1, 7)
       return
     }
-    if ((SEED_RollLimitedFast113c(m, pSeed, 100) | 0) < 10) {
-      AI_IdleWander113c(m, game, unit)
+    if ((rollSeed6FC21180(m, pSeed, 100) | 0) < 10) {
+      AI_IdleWander113c(m, game, unit, 4)
       return
     }
     AI_Stall113c(m, game, unit, 10)
@@ -1853,7 +1823,7 @@ export function MONAI_RescuedBarbarianSoldierThink_6FCC7A10_113c(
       }
     } else {
       ACT5Q2_PromoteState5IfPrisonersRemaining_6FC7A200_113c(m, game)
-      if ((SEED_RollLimitedFast113c(m, pSeed, 1000) | 0) < 100) {
+      if ((rollSeed6FC21180(m, pSeed, 1000) | 0) < 100) {
         const pPkt = allocScratch(8)
         try {
           m.setU8(pPkt, 0x8a)
@@ -1894,7 +1864,7 @@ export function AIBAAL_CombatThink_6FCC9610_113c(
   const aiParam = pAiParam >>> 0
   const pMonStatsTxt = m.u32((aiParam + 0x1c) >>> 0) >>> 0
 
-  let pCmd = AIGENERAL_FindAiCommandByType113c(m, unit, 0x0a) >>> 0
+  let pCmd = findAiCommandByTypeInline113c(m, unit, 0x0a) >>> 0
   if (pCmd === 0 && unit !== 0) {
     const uType = m.u32(unit) | 0
     const pPath = m.u32((unit + 0x2c) >>> 0) >>> 0
@@ -1911,7 +1881,7 @@ export function AIBAAL_CombatThink_6FCC9610_113c(
       posY = PATH_GetPosY113c(m, pPath) >>> 0
     }
     AIGENERAL_CopyAiCommandParams113c(m, unit, 0x0a, posX, posY, 0, 0)
-    pCmd = AIGENERAL_FindAiCommandByType113c(m, unit, 0x0a) >>> 0
+    pCmd = findAiCommandByTypeInline113c(m, unit, 0x0a) >>> 0
   }
 
   const pScratch = allocScratch(8)
@@ -1998,7 +1968,7 @@ export function AIBAAL_CombatThink_6FCC9610_113c(
       if (pCtrl !== 0) m.setU32((pCtrl + 0x1c) >>> 0, 0x14)
       const targetY = UNIT_GetPosY113c(m, pTarget) | 0
       const targetX = UNIT_GetPosX113c(m, pTarget) | 0
-      aiApproachTarget6FD12540(m, game, unit, 0, 2, targetX, targetY, 1, 0)
+      AI_ApproachTarget113c(m, game, unit, 0, 2, targetX, targetY, 1, 0)
       if (pAiControl !== 0) m.setU32((pAiControl + 0x14) >>> 0, 0)
       return
     }
@@ -2062,7 +2032,7 @@ export function AIBAAL_CombatThink_6FCC9610_113c(
       }
       const tetherX = i32(m, (pCmd + 0x0c) >>> 0)
       const tetherY = i32(m, (pCmd + 0x10) >>> 0)
-      if (aiApproachTarget6FD12540(m, game, unit, 0, 2, tetherX, tetherY, 1, 4) === 0) {
+      if (AI_ApproachTarget113c(m, game, unit, 0, 2, tetherX, tetherY, 1, 4) === 0) {
         let pEv = m.u32((unit + 0xdc) >>> 0) >>> 0
         while (pEv !== 0) {
           const pNext = m.u32((pEv + 0x24) >>> 0) >>> 0
@@ -2082,7 +2052,7 @@ export function AIBAAL_CombatThink_6FCC9610_113c(
           m.setU32((pCtrl2 + 0x1c) >>> 0, 0x32)
           m.setU8((pCtrl2 + 0x20) >>> 0, 0x4d)
         }
-        if (aiApproachTarget6FD12540(m, game, unit, 0, 2, midX, midY, 1, 4) === 0) {
+        if (AI_ApproachTarget113c(m, game, unit, 0, 2, midX, midY, 1, 4) === 0) {
           let pEv2 = m.u32((unit + 0xdc) >>> 0) >>> 0
           while (pEv2 !== 0) {
             const pNext2 = m.u32((pEv2 + 0x24) >>> 0) >>> 0
@@ -2128,7 +2098,7 @@ export function AIBAAL_CombatThink_6FCC9610_113c(
     case 16: {
       const pCtrl = getUnitAiCtrl()
       if (pCtrl !== 0) m.setU32((pCtrl + 0x1c) >>> 0, 0x14)
-      AI_IdleWander113c(m, game, unit)
+      AI_IdleWander113c(m, game, unit, 5)
       if (pAiControl !== 0) m.setU32((pAiControl + 0x14) >>> 0, 0)
       return
     }
@@ -2250,9 +2220,9 @@ export function ITEMEVENT_TryScheduleReanimateOnKill_6FCCF210_113c(
   if (pDefMonData !== 0 && (m.u8((pDefMonData + 0x16) >>> 0) & 0x0c) !== 0) {
     return 0
   }
-  const nLayer = (dwStatAndLayer >>> 16) & 0xffff
-  const nStatId = dwStatAndLayer & 0xffff
-  const nChance = ITEMS_B043_GetTotalStatFromUnitFast113c(m, attacker, nStatId, nLayer) | 0
+  const nStatId = (dwStatAndLayer >>> 16) & 0xffff
+  const nMonsterClassId = dwStatAndLayer & 0xffff
+  const nChance = STATLIST_GetUnitStatWithLayer113c(m, attacker, nStatId, nMonsterClassId) | 0
   if (nChance <= 0) {
     return 0
   }
@@ -2272,7 +2242,7 @@ export function ITEMEVENT_TryScheduleReanimateOnKill_6FCCF210_113c(
     defender,
     game,
     0x0d,
-    nLayer,
+    nMonsterClassId,
     dwOwnerPlayerGuid,
     0x6fcce200,
     0,
@@ -2789,13 +2759,7 @@ export function SKILLS_SrvDo135_ApplyRandomOblivionKnightCurse_6FCD5950_113c(
   nSkillLevel: number,
 ): number {
   hitD2GameVa113c(0x6FCD5950)
-  const seed = {
-    lo: m.u32((pUnit + 0x20) >>> 0) >>> 0,
-    hi: m.u32((pUnit + 0x24) >>> 0) >>> 0,
-  }
-  const nRoll = seedRoll(seed, 5) >>> 0
-  m.setU32((pUnit + 0x20) >>> 0, seed.lo >>> 0)
-  m.setU32((pUnit + 0x24) >>> 0, seed.hi >>> 0)
+  const nRoll = (stepSeed64At113c(m, (pUnit + 0x20) >>> 0) >>> 0) % 5
 
   const nCurseSkillId = OBLIVION_KNIGHT_CURSE_TABLE_6FD1B454[nRoll] | 0
   if (nCurseSkillId < 0) {
@@ -2928,7 +2892,7 @@ export function AIBAAL_CloneThink_6FCD8460_113c(
 ): void {
   hitD2GameVa113c(0x6FCD8460)
   if (pUnit === 0) {
-    SUNITDMG_DistributeExperience113c(m, pGame, pUnit, 0)
+    SUNITDMG_DistributeExperience113c(m, pGame, 0, pUnit)
     return
   }
 
@@ -2945,7 +2909,7 @@ export function AIBAAL_CloneThink_6FCD8460_113c(
             m.u32((pAiGeneral + 0x2c) >>> 0),
           ) >>> 0
         if (pLinkedUnit !== 0 && SUNIT_IsDeadOrDying113c(m, pLinkedUnit) !== 0) {
-          SUNITDMG_DistributeExperience113c(m, pGame, pUnit, 0)
+          SUNITDMG_DistributeExperience113c(m, pGame, 0, pUnit)
           return
         }
       }
@@ -2953,14 +2917,14 @@ export function AIBAAL_CloneThink_6FCD8460_113c(
   }
 
   if (((m.u32((pUnit + 0xc8) >>> 0) >>> 10) & 1) === 0) {
-    SUNITDMG_DistributeExperience113c(m, pGame, pUnit, 0)
+    SUNITDMG_DistributeExperience113c(m, pGame, 0, pUnit)
     return
   }
 
   const pOwner =
     SUNIT_GetServerUnit113c(m, pGame, m.u32((pUnit + 0x94) >>> 0), m.u32((pUnit + 0x98) >>> 0)) >>> 0
   if (pOwner === 0 || SUNIT_IsDeadOrDying113c(m, pOwner) !== 0) {
-    SUNITDMG_DistributeExperience113c(m, pGame, pUnit, 0)
+    SUNITDMG_DistributeExperience113c(m, pGame, 0, pUnit)
     return
   }
 
@@ -2982,7 +2946,7 @@ export function AIBAAL_CloneThink_6FCD8460_113c(
         AIBAAL_AreUnitsInSameActWithin1020_6FCD6D30_113c,
       ) >>> 0
 
-    let pCmd = AIGENERAL_FindAiCommandByType113c(m, pUnit, 0x0a) >>> 0
+    let pCmd = findAiCommandByTypeInline113c(m, pUnit, 0x0a) >>> 0
     if (pCmd === 0) {
       const x = UNIT_GetPosX113c(m, pUnit) | 0
       const y = UNIT_GetPosY113c(m, pUnit) | 0
@@ -3059,7 +3023,7 @@ export function AIBAAL_ThroneRoomThink_6FCD8610_113c(
         AIBAAL_AreUnitsInSameActWithin1020_6FCD6D30_113c,
       ) >>> 0
 
-    let pCmd = AIGENERAL_FindAiCommandByType113c(m, pUnit, 0x0a) >>> 0
+    let pCmd = findAiCommandByTypeInline113c(m, pUnit, 0x0a) >>> 0
 
     if (pCmd === 0) {
       const uType = m.u32(pUnit >>> 0) | 0
@@ -3081,7 +3045,7 @@ export function AIBAAL_ThroneRoomThink_6FCD8610_113c(
       }
 
       AIGENERAL_CopyAiCommandParams113c(m, pUnit, 0x0a, x, y, 0, 0)
-      pCmd = AIGENERAL_FindAiCommandByType113c(m, pUnit, 0x0a) >>> 0
+      pCmd = findAiCommandByTypeInline113c(m, pUnit, 0x0a) >>> 0
     }
 
     const pAiTickParam = m.u32(pAiParam >>> 0) >>> 0

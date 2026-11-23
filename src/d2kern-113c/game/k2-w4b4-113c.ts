@@ -70,8 +70,6 @@ import {
 import {
   AI_IdleWander113c,
   AI_Stall113c,
-  ITEMS_ApplySocketAndEtherealBonuses113c,
-  ITEMS_PickUniqueItem113c,
   MONSTER_StartMode113c,
 } from './combat-a1c-113c'
 import {
@@ -85,10 +83,7 @@ import {
   MONUMOD_MarkBossAndIncrementUniqueCount113c,
 } from './k2-items-tc-w1-113c'
 import { PLRTRADE_HasAnyCubePageItemOnUnit113c } from './k2-combat-core-w1-113c'
-import {
-  STORM_TSArrayCalcChunkSize_6FC225F0_113c,
-  STORM_TSListUnlinkAll_6FC22180_113c,
-} from './k2-laneH-0x6fc2-w1-113c'
+import { STORM_TSArrayCalcChunkSize_6FC225F0_113c } from './k2-laneH-0x6fc2-w1-113c'
 import {
   ITEMS_ClearAffixesAndItemCell_6FC2E210_113c,
   ITEMS_FindQuestItemByBaseCode_6FC2E660_113c,
@@ -96,10 +91,7 @@ import {
   ITEMS_GetVendorManaPotionCode_6FC2E310_113c,
 } from './k2-laneI-0x6fc3-w1-113c'
 import { OBJECTS_CheckSpawnSpotClearMargin2_6FC4E5D0_113c } from './k2-laneJ-0x6fc4-w1-113c'
-import {
-  STORM_TSListPlacementNewCopy_6FC226F0_113c,
-  STORM_TSListPlacementNewDefault_6FC225A0_113c,
-} from './k2-w2b1-113c'
+import { STORM_TSListPlacementNewDefault_6FC225A0_113c } from './k2-w2b1-113c'
 import { OBJECTS_CanSpawnMonsterClassInRoom_6FC89940_113c } from './k2-w2b2-113c'
 import {
   NET_SendPacket77_ButtonAction_6FCAB340_113c,
@@ -116,10 +108,7 @@ import {
   AI_StartModeAtCoordsStep1_6FD11FF0_113c,
   type K2W2B8Hooks113c,
 } from './k2-w2b8-113c'
-import {
-  OBJRGN_ResolveMonsterShrineBaseClassId_6FC2B510_113c,
-  STORM_TSListDestroy_6FC21FE0_113c,
-} from './k2-w3b1-113c'
+import { OBJRGN_ResolveMonsterShrineBaseClassId_6FC2B510_113c } from './k2-w3b1-113c'
 import { PLAYERSAVE_WriteInventoryAndCursorItems_6FC737D0_113c } from './k2-w3b5-113c'
 import {
   MONSTER_StartGetHitOrScheduleAi_6FC965E0_113c,
@@ -136,6 +125,7 @@ import {
 import {
   ITEMS_SpawnRandomMiscItemInRoomAtCoords_6FC31CA0_113c,
   MONUMOD_InitBossAndMinionPackUMods_6FC448A0_113c,
+  STORM_TSListDestroySehWrapper_6FC21F60_113c,
 } from './k2-w4b1-113c'
 import {
   ACT5Q3_SpawnFrozenAnyaAndObject189_6FC7C690_113c,
@@ -151,11 +141,11 @@ import {
   OBJ_SpawnMonster369FromObject_6FC8B860_113c,
   OBJ_SpawnRandomMonsterTrapFromObject_6FC8A4E0_113c,
   PLRTRADE_DropPlayerInventoryGold_6FC57F80_113c,
+  STORM_TSListArrayResize_6FC22630_113c,
 } from './k2-w4b3-113c'
 import {
   ITEMS_FinalizeNormalExpansionItem_6FC30550_113c,
   ITEMS_RollItemQualityOnCreatedItem_6FC2EE90_113c,
-  isSgptDataTablesLoaded113c,
 } from './k2-real-itemdrop-113c'
 import {
   MONSTER_RegisterContinuousModeEvent113c,
@@ -303,43 +293,10 @@ function freeStackFrame113c(size: number): void {
   k2W4B4StackPtr = (k2W4B4StackPtr + aligned) >>> 0
 }
 
-function resizeTSListArrayDefault113c(
-  m: D2KernMemory113c,
-  pListArray: number,
-  nNewCount: number,
-): void {
-  const esi = pListArray >>> 0
-  const ebx = nNewCount >>> 0
-  const nOldAlloc = m.u32((esi + 0x04) >>> 0) >>> 0
-  const pOldLists = m.u32((esi + 0x08) >>> 0) >>> 0
-  if (ebx < nOldAlloc) {
-    for (let edi = ebx; edi < (m.u32((esi + 0x04) >>> 0) >>> 0); edi = (edi + 1) >>> 0) {
-      STORM_TSListUnlinkAll_6FC22180_113c(m, (pOldLists + imul32(edi, 12)) >>> 0)
-    }
-  }
-  const byteSize = (imul32(ebx, 3) << 2) >>> 0
-  m.setU32((esi + 0x00) >>> 0, ebx)
-  const pNewLists = byteSize > 0 ? m.alloc(byteSize) >>> 0 : 0
-  m.setU32((esi + 0x08) >>> 0, pNewLists)
-  if (pOldLists !== 0) {
-    let copyCount = m.u32((esi + 0x04) >>> 0) >>> 0
-    if (ebx < copyCount) {
-      copyCount = ebx
-    }
-    for (let i = 0; i < copyCount; i++) {
-      const off = imul32(i, 12) >>> 0
-      const pDst = (m.u32((esi + 0x08) >>> 0) + off) >>> 0
-      const pSrc = (pOldLists + off) >>> 0
-      STORM_TSListPlacementNewCopy_6FC226F0_113c(m, pDst, pSrc)
-      STORM_TSListUnlinkAll_6FC22180_113c(m, pSrc)
-    }
-  }
-}
-
 /**
  * [1/45] Sets the active element count (`+0x04`) of a `TSGrowableArray<TSExplicitList>`,
- * destroying tail lists on shrink or growing capacity aligned to chunk size (`+0x0C`) and
- * placement-constructing new lists via `0x6FC225A0`.
+ * destroying tail lists on shrink (`0x6FC21F60`) or growing capacity aligned to chunk size (`+0x0C`)
+ * via `0x6FC22630` and placement-constructing new lists via `0x6FC225A0`.
  *
  * @va D2Game:0x6FC22510
  */
@@ -363,7 +320,7 @@ export function STORM_TSListArraySetCount_6FC22510_113c(
         if (hooks?.onTSListDestroy_6FC21F60) {
           hooks.onTSListDestroy_6FC21F60(m, pList)
         } else {
-          STORM_TSListDestroy_6FC21FE0_113c(m, pList)
+          STORM_TSListDestroySehWrapper_6FC21F60_113c(m, pList)
         }
         ebp = (ebp + 1) >>> 0
         ebx = (ebx + 12) >>> 0
@@ -386,7 +343,7 @@ export function STORM_TSListArraySetCount_6FC22510_113c(
     if (hooks?.onTSListArrayResize_6FC22630) {
       hooks.onTSListArrayResize_6FC22630(m, esi, ebx)
     } else {
-      resizeTSListArrayDefault113c(m, esi, ebx)
+      STORM_TSListArrayResize_6FC22630_113c(m, esi, ebx)
     }
   }
 
@@ -406,8 +363,8 @@ export function STORM_TSListArraySetCount_6FC22510_113c(
 
 /**
  * [2/45] Re-initializes `*ppItem` to Normal quality (`2`), restores `dwSavedSeed`,
- * applies socket/ethereal bonuses, and dispatches either `0x6FC30600` (format `0`)
- * or `ITEMS_PickUniqueItem113c` (`0x6FC30550`, format `!= 0`).
+ * invokes `0x6FC2EE90` (`ITEMS_RollItemQualityOnCreatedItem`), and dispatches either
+ * `0x6FC30600` (format `0`) or `0x6FC30550` (`ITEMS_FinalizeNormalExpansionItem`, format `!= 0`).
  *
  * @va D2Game:0x6FC309B0
  */
@@ -429,11 +386,7 @@ export function ITEMS_FallbackToNormalQualityAndFinalize_6FC309B0_113c(
   ITEMS_SetOwnerGuid113c(m, m.u32(edi) >>> 0, ebxSeed)
   const pSeed = ITEMS_GetItemSeed113c(m, m.u32(edi) >>> 0) >>> 0
   SEED_InitLowSeed113c(m, pSeed, ebxSeed)
-  if (isSgptDataTablesLoaded113c(m)) {
-    ITEMS_RollItemQualityOnCreatedItem_6FC2EE90_113c(m, m.u32(edi) >>> 0, esi)
-  } else {
-    ITEMS_ApplySocketAndEtherealBonuses113c(m, esi, m.u32(edi) >>> 0, 0)
-  }
+  ITEMS_RollItemQualityOnCreatedItem_6FC2EE90_113c(m, m.u32(edi) >>> 0, esi)
   ITEMS_SetItemQuality113c(m, m.u32(edi) >>> 0, 2)
   m.setU32((esi + 0x30) >>> 0, 2)
 
@@ -447,11 +400,7 @@ export function ITEMS_FallbackToNormalQualityAndFinalize_6FC309B0_113c(
     }
     return
   }
-  if (isSgptDataTablesLoaded113c(m)) {
-    ITEMS_FinalizeNormalExpansionItem_6FC30550_113c(m, ebxItem, esi)
-  } else {
-    ITEMS_PickUniqueItem113c(m, esi, ebxItem)
-  }
+  ITEMS_FinalizeNormalExpansionItem_6FC30550_113c(m, ebxItem, esi)
 }
 
 /**
@@ -1688,9 +1637,11 @@ export function MONSTER_TickPathStepAndAnim_6FC96A10_113c(
   hitD2GameVa113c(0x6FC96A10)
   const edi = pGame >>> 0
   const esi = pMonster >>> 0
-  if (hooks?.world) {
-    MONSTER_StepPath113c(hooks.world, esi)
-  }
+  const stepWorld =
+    hooks !== undefined && hooks.world !== undefined
+      ? hooks.world
+      : ({ m } as unknown as FallenSliceWorld113c)
+  MONSTER_StepPath113c(stepWorld, esi)
   UNITS_AdvanceAnimFrame113c(m, esi)
   if ((UNITS_HasAnimFinished113c(m, esi) | 0) !== 0) {
     MONSTER_StartGetHitOrScheduleAi_6FC965E0_113c(m, edi, esi)
@@ -1788,10 +1739,10 @@ function approachTargetOrStartMode113c(
   dwFlags: number,
   hooks?: K2W4B4Hooks113c,
 ): void {
-  if (hooks?.world) {
+  if (hooks !== undefined && hooks.world !== undefined) {
     AI_ApproachTarget113c(hooks.world, pMonster, pTarget, nMode, 0, 0, nStepNum, dwFlags)
   } else {
-    MONSTER_StartMode113c(m, pGame, pMonster, nMode, pTarget, 0, 0)
+    AI_ApproachTarget113c(m, pGame, pMonster, pTarget, nMode, 0, 0, nStepNum, dwFlags)
   }
 }
 
@@ -1818,7 +1769,7 @@ export function AI_ThinkWakeOrUnburrowSkill_6FC9CE40_113c(
   const edxStats = m.u32((ecxArgs + 0x1c) >>> 0) >>> 0
 
   if (aiState === 0x0a || aiState === 0x0b) {
-    AI_InitMonsterAiThinkFn113c(m, esiMon)
+    AI_InitMonsterAiThinkFn113c(m, esiMon, ediGame, ebpParam, aiState)
     if (esiMon !== 0) {
       let pEvent = m.u32((esiMon + 0xdc) >>> 0) >>> 0
       while (pEvent !== 0) {
@@ -1855,7 +1806,7 @@ export function AI_ThinkWakeOrUnburrowSkill_6FC9CE40_113c(
     return
   }
 
-  AI_InitMonsterAiThinkFn113c(m, esiMon)
+  AI_InitMonsterAiThinkFn113c(m, esiMon, ediGame, ebpParam, aiState)
   AI_ScheduleAiThinkTimer_6FD120C0_113c(m, ediGame, esiMon, 1)
 }
 
@@ -1874,7 +1825,6 @@ export function AI_ThinkMeleeBasic_6FCA1F50_113c(
   hooks?: K2W4B4Hooks113c,
 ): void {
   hitD2GameVa113c(0x6FCA1F50)
-  void seedRoll
   const ebxGame = pGame >>> 0
   const esiMon = pMonster >>> 0
   const args = pAiTickArgs >>> 0
@@ -1902,7 +1852,7 @@ export function AI_ThinkMeleeBasic_6FCA1F50_113c(
     const diff1 = m.u8((ebxGame + 0x6d) >>> 0) & 0xff
     const wanderChance = (m.u16((ediStats + diff1 * 2 + 0x5c) >>> 0) << 16) >> 16
     if (rollWander < wanderChance) {
-      AI_IdleWander113c(m, ebxGame, esiMon)
+      AI_IdleWander113c(m, ebxGame, esiMon, 3)
       return
     }
     const stallDelay = (m.u16((ediStats + diff1 * 2 + 0x6e) >>> 0) << 16) >> 16
@@ -1915,7 +1865,13 @@ export function AI_ThinkMeleeBasic_6FCA1F50_113c(
     const diff2 = m.u8((ebxGame + 0x6d) >>> 0) & 0xff
     const atkChance = (m.u16((ediStats + diff2 * 2 + 0x62) >>> 0) << 16) >> 16
     if (rollAtk < atkChance) {
-      const rollA2 = stepUnitLcgMod100_113c(m, pSeed)
+      const seedObj = {
+        lo: m.u32(pSeed) >>> 0,
+        hi: m.u32((pSeed + 0x04) >>> 0) >>> 0,
+      }
+      const rollA2 = seedRoll(seedObj, 0x64) | 0
+      m.setU32(pSeed, seedObj.lo >>> 0)
+      m.setU32((pSeed + 0x04) >>> 0, seedObj.hi >>> 0)
       const diff3 = m.u8((ebxGame + 0x6d) >>> 0) & 0xff
       const a1Chance = (m.u16((ediStats + diff3 * 2 + 0x68) >>> 0) << 16) >> 16
       const atkMode = rollA2 < a1Chance ? 4 : 5
@@ -1965,10 +1921,11 @@ function startMonsterAttackModeWithMonStats2MoveCheck113c(
       const pMonStats2 = MONSTATS2_GetRecordPtr113c(m, i32(m, (esiMon + 0x04) >>> 0)) >>> 0
       if (pMonStats2 !== 0) {
         const pMasks = tryReadU32(m, D2GAME_IAT_GDW_BITMASKS_VA_113C)
-        const bitIdx = mode & 31
+        const byteOff = (mode >>> 3) & 3
+        const bitIdx = mode & 7
         const mask =
           pMasks !== 0 ? m.u32((pMasks + (bitIdx << 2)) >>> 0) >>> 0 : (1 << bitIdx) >>> 0
-        if ((m.u8((pMonStats2 + 0x104) >>> 0) & mask) !== 0) {
+        if ((m.u8((pMonStats2 + 0x104 + byteOff) >>> 0) & mask) !== 0) {
           bPathType = 0x65
         }
       }
@@ -2156,7 +2113,9 @@ export function AI_ThinkChargerRunOrAttack_6FCA2EC0_113c(
   const pBonusScratch = allocStackFrame113c(16)
   let nBonusTier = 0
   try {
-    m.setU32(pBonusScratch, ediGame)
+    m.setU32(pBonusScratch, 0)
+    m.setU32((pBonusScratch + 0x04) >>> 0, 0)
+    m.setU32((pBonusScratch + 0x08) >>> 0, 0)
     m.setU32((pBonusScratch + 0x0c) >>> 0, 0)
     MONSTER_GetDifficultyAndPlayerBonus113c(
       m,
@@ -2165,8 +2124,9 @@ export function AI_ThinkChargerRunOrAttack_6FCA2EC0_113c(
       (pBonusScratch + 4) >>> 0,
       (pBonusScratch + 8) >>> 0,
       (pBonusScratch + 12) >>> 0,
+      ebpMon,
     )
-    nBonusTier = i32(m, (pBonusScratch + 0x0c) >>> 0)
+    nBonusTier = i32(m, pBonusScratch)
   } finally {
     freeStackFrame113c(16)
   }
@@ -2512,28 +2472,30 @@ export function AI_ThinkBurrowerSpawner_6FCA77B0_113c(
         const spawnY = i32(m, (pSpawnScratch + 12) >>> 0)
         const pRoom = UNITS_GetRoom113c(m, ediMon) >>> 0
         const pSpawnRoom = ROOM_FindRoomContainingSubtile113c(m, pRoom, spawnX, spawnY) >>> 0
-        const pSpawned =
-          MONSTER_SpawnAtCoords113c(
-            m,
-            i32(m, (pSpawnScratch + 4) >>> 0),
-            i32(m, pSpawnScratch),
-            esiGame,
-            pSpawnRoom,
-            spawnX,
-            spawnY,
-            2,
-            0x42,
-            hooks?.regpop,
-          ) >>> 0
-        if (pSpawned !== 0) {
-          m.setU32((ebxParam + 0x18) >>> 0, (i32(m, (ebxParam + 0x18) >>> 0) - 1) >>> 0)
-          m.setU32(
-            (pSpawned + 0xc4) >>> 0,
-            (m.u32((pSpawned + 0xc4) >>> 0) | 0x4020000) >>> 0,
-          )
-          if (i32(m, (ediMon + 0x04) >>> 0) === 0x2c7) {
-            STATES_ToggleGfxStateFlag113c(m, pSpawned, 0xb8, 1)
-            STATES_SetMonsterSkillIconOnUnit113c(m, pSpawned, 0xca, 0)
+        if (pSpawnRoom !== 0) {
+          const pSpawned =
+            MONSTER_SpawnAtCoords113c(
+              m,
+              i32(m, (pSpawnScratch + 4) >>> 0),
+              i32(m, pSpawnScratch),
+              esiGame,
+              pSpawnRoom,
+              spawnX,
+              spawnY,
+              2,
+              0x42,
+              hooks?.regpop,
+            ) >>> 0
+          if (pSpawned !== 0) {
+            m.setU32((ebxParam + 0x18) >>> 0, (i32(m, (ebxParam + 0x18) >>> 0) - 1) >>> 0)
+            m.setU32(
+              (pSpawned + 0xc4) >>> 0,
+              (m.u32((pSpawned + 0xc4) >>> 0) | 0x4020000) >>> 0,
+            )
+            if (ediMon !== 0 && i32(m, (ediMon + 0x04) >>> 0) === 0x2c7) {
+              STATES_ToggleGfxStateFlag113c(m, pSpawned, 0xb8, 1)
+              STATES_SetMonsterSkillIconOnUnit113c(m, pSpawned, 0xca, 0)
+            }
           }
         }
       } finally {
@@ -2554,7 +2516,7 @@ export function AI_ThinkBurrowerSpawner_6FCA77B0_113c(
  * [30/45] Nest / egg-layer spawner AI think (`0x6FCA7A60`): stalls `25 * wAiParam[1]` frames when
  * `pAiParam + 0x1C !== 0`, starts mode `8` (`S1`) at own coordinates (`0x6FD11FF0`) when `pAiParam + 0x18 === 0`
  * and `spawnCount < wAiParam[0]`, or spawns a child monster via `UNITS_GetMonsterSplitSpawnParams113c` +
- * `MONSTER_SpawnAtCoords113c` using callback `0x6FC61E90` (`AIGENERAL_GetField3C_113c`).
+ * `MONSTER_SpawnAtCoords113c` using callback `0x6FC40C60` (`AIGENERAL_GetField3C_113c`).
  *
  * @va D2Game:0x6FCA7A60
  */

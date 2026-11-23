@@ -22,6 +22,7 @@ import {
   INVENTORY_UnitIsItem113c,
 } from '../common/inventory'
 import { DRLGWARP_TestRoomTileBit113c } from '../common/items'
+import { SKILLS_SetUsedSkillMemPort113c } from '../common/k0-d2common-memports'
 import {
   MISSILE_GetRemainingFrames113c,
   MISSILE_GetTargetX113c,
@@ -75,8 +76,10 @@ import {
   AI_FleeFrom113c,
   AI_IdleWander113c,
   AI_Stall113c,
+  MONSTER_StartMode113c,
   SUNITDMG_GetPlayerClientClassId113c,
 } from './combat-a1c-113c'
+import { AI_ApproachTarget113c } from './k2-real-s2c-combat-113c'
 import { AURA_ForEachUnitInRadius113c } from './k2-gap-itemdef-113c'
 import { MISSILE_SrvDo01_LinearProjectile113c } from './k2-gap-melee-dot-113c'
 import { QUESTS_SendNpcMessagePacket27_113c } from './k2-items-tc-w1-113c'
@@ -105,10 +108,6 @@ import {
   SKILLS_RollAndAddSkillPhysDamage_6FCBF1A0_113c,
 } from './k2-w2b5-113c'
 import { ACT4Q1_Callback10_RemovePlayerGuid_6FCD94D0_113c } from './k2-w2b6-113c'
-import {
-  AI_ApproachTargetPathType13_6FD13000_113c,
-  AI_StartModeAtCoordsKeepSteps_6FD121E0_113c,
-} from './k2-w2b8-113c'
 import { MISSILES_SpawnRandomWalkableSubMissileOnInterval_6FC5D1E0_113c } from './k2-w3b3-113c'
 import {
   ACT5Q1_Callback00_NpcActivate_6FC787C0_113c,
@@ -233,10 +232,7 @@ import {
   NPCS_RepairAndRechargeUnitItem_6FCDD9B0_113c,
   NPCS_ReturnSoldOrGambledItemToPlayerInventoryOrFree_6FCDD880_113c,
 } from './k2-w8b3-113c'
-import {
-  SKILLS_SetUsedSkill113c,
-  UNITS_ChangeAnimMode113c,
-} from './monster-events'
+import { UNITS_ChangeAnimMode113c } from './monster-events'
 import {
   MONSTER_SpawnPartyMinionInRing113c,
   MONSTATS2_GetRecordPtr113c,
@@ -1590,7 +1586,7 @@ export function AI_SummonerThink_6FCA5780_113c(
     freeStack(m, 0x20);
     return;
   }
-  AI_IdleWander113c(m, pGame, pUnit);
+  AI_IdleWander113c(m, pGame, pUnit, 4);
   freeStack(m, 0x20);
 }
 
@@ -1622,17 +1618,18 @@ export function AI_GreaterMummyThink_6FCA8380_113c(
     const r = (rollSeed() % 100) >>> 0;
     const nDiff = m.u8((pGame + 0x6d) >>> 0);
     if ((r | 0) < i16(m, (pMonStatsTxt + nDiff * 2 + 0x56) >>> 0)) {
-      SKILLS_SetUsedSkill113c(m, pUnit, 0);
+      SKILLS_SetUsedSkillMemPort113c(m, pUnit, 0);
       let nVel = 0x64;
       if (pUnit !== 0) {
         const pMonStats2 = MONSTATS2_GetRecordPtr113c(m, m.u32((pUnit + 0x04) >>> 0)) >>> 0;
         if (pMonStats2 !== 0) {
           const pTable = m.u32(0x6fd18be0);
-          const mask = pTable !== 0 ? m.u32((pTable + 0x10) >>> 0) : 0;
+          const mask = pTable !== 0 ? m.u32((pTable + 0x10) >>> 0) : 0x10;
           if ((m.u8((pMonStats2 + 0x104) >>> 0) & mask) !== 0) nVel = 0x65;
         }
       }
-      AI_StartModeAtCoordsKeepSteps_6FD121E0_113c(m, pUnit, 4, pGame, pTarget, nVel);
+      void nVel;
+      MONSTER_StartMode113c(m, pGame, pUnit, 4, pTarget, 0, 0);
       return;
     }
   }
@@ -1640,17 +1637,18 @@ export function AI_GreaterMummyThink_6FCA8380_113c(
     const r = (rollSeed() % 100) >>> 0;
     const nDiff = m.u8((pGame + 0x6d) >>> 0);
     if ((r | 0) < i16(m, (pMonStatsTxt + nDiff * 2 + 0x56) >>> 0)) {
-      SKILLS_SetUsedSkill113c(m, pUnit, 0);
+      SKILLS_SetUsedSkillMemPort113c(m, pUnit, 0);
       let nVel = 0x64;
       if (pUnit !== 0) {
         const pMonStats2 = MONSTATS2_GetRecordPtr113c(m, m.u32((pUnit + 0x04) >>> 0)) >>> 0;
         if (pMonStats2 !== 0) {
           const pTable = m.u32(0x6fd18be0);
-          const mask = pTable !== 0 ? m.u32((pTable + 0x14) >>> 0) : 0;
+          const mask = pTable !== 0 ? m.u32((pTable + 0x14) >>> 0) : 0x20;
           if ((m.u8((pMonStats2 + 0x104) >>> 0) & mask) !== 0) nVel = 0x65;
         }
       }
-      AI_StartModeAtCoordsKeepSteps_6FD121E0_113c(m, pUnit, 5, pGame, pTarget, nVel);
+      void nVel;
+      MONSTER_StartMode113c(m, pGame, pUnit, 5, pTarget, 0, 0);
       return;
     }
   }
@@ -1708,7 +1706,7 @@ export function AI_GreaterMummyThink_6FCA8380_113c(
     const nDiff = m.u8((pGame + 0x6d) >>> 0);
     if ((r | 0) < i16(m, (pMonStatsTxt + nDiff * 2 + 0x5c) >>> 0)) {
       const wSkill1 = i16(m, (pMonStatsTxt + 0x170) >>> 0);
-      if (SKILLS_CanMonsterCastAtTarget113c(m, 0, pCorpse, pGame, wSkill1, 0) !== 0) {
+      if (SKILLS_CanMonsterCastAtTarget113c(m, 0, pCorpse, pUnit, wSkill1, 0, undefined, pGame) !== 0) {
         UNITS_SetTargetUnitForDynamicUnit113c(m, pUnit, pCorpse);
         AI_CastSkillMode14_113c(m, pUnit, wSkill1, pGame, pCorpse, 0, 0);
         freeStack(m, 0x30);
@@ -1753,7 +1751,7 @@ export function AI_GreaterMummyThink_6FCA8380_113c(
   if (i32(m, (pScanCtx + 0x0c) >>> 0) <= 0) {
     const pAiCtrl = getAiControl();
     if (pAiCtrl !== 0) m.setU32((pAiCtrl + 0x1c) >>> 0, 0x32);
-    AI_ApproachTargetPathType13_6FD13000_113c(m, pUnit, pTarget, pGame, 2);
+    AI_ApproachTarget113c(m, pGame, pUnit, pTarget, 2, 0, 0, 3, 0);
     freeStack(m, 0x30);
     return;
   }
@@ -1766,7 +1764,7 @@ export function AI_GreaterMummyThink_6FCA8380_113c(
       if (nParam !== 0) m.setU32((pAiCtrl + 0x18) >>> 0, nParam);
       m.setU8((pAiCtrl + 0x20) >>> 0, 3);
     }
-    AI_ApproachTargetPathType13_6FD13000_113c(m, pUnit, pTarget, pGame, 2);
+    AI_ApproachTarget113c(m, pGame, pUnit, pTarget, 2, 0, 0, 1, 0);
     freeStack(m, 0x30);
     return;
   }
@@ -1815,14 +1813,10 @@ export function SKILLS_SrvDo_RadialAuraDamage_6FCB57F0_113c(
   m.setU32((pDmg + 0x00) >>> 0, (m.u32((pDmg + 0x00) >>> 0) | m.u32((pSkillsTxt + 0x130) >>> 0)) >>> 0);
   const nParam56 = SKILLS_EvalParam56DimReturns113c(m, nSkillLevel, nSkillId) >>> 0;
   const pAuraArgs = (sp + 0x08) >>> 0;
-  m.setU32((pAuraArgs + 0x00) >>> 0, pGame);
-  m.setU32((pAuraArgs + 0x04) >>> 0, pUnit);
-  m.setU32((pAuraArgs + 0x08) >>> 0, nSkillId >>> 0);
-  m.setU32((pAuraArgs + 0x0c) >>> 0, nSkillLevel >>> 0);
-  m.setU32((pAuraArgs + 0x10) >>> 0, nParam56);
-  m.setU32((pAuraArgs + 0x14) >>> 0, pDmg);
-  m.setU32((pAuraArgs + 0x18) >>> 0, m.u32((pSkillsTxt + 0x150) >>> 0));
-  m.setU32((pAuraArgs + 0x1c) >>> 0, m.u32((pSkillsTxt + 0x154) >>> 0));
+  m.setU32((pAuraArgs + 0x00) >>> 0, pDmg);
+  m.setU32((pAuraArgs + 0x04) >>> 0, nParam56);
+  m.setU32((pAuraArgs + 0x08) >>> 0, m.u32((pSkillsTxt + 0x150) >>> 0));
+  m.setU32((pAuraArgs + 0x0c) >>> 0, m.u32((pSkillsTxt + 0x154) >>> 0));
   AURA_ForEachUnitInRadius113c(
     m,
     pGame,
@@ -1972,8 +1966,8 @@ export function PETS_WarpOrUnsummonPlayerPets_6FCB7340_113c(
         if (pPetTypeRec !== 0) {
           const bWarpFlag = m.u8((pPetTypeRec + 0x04) >>> 0);
           const pWarpMasks = m.u32(0x6fd18be0);
-          const mask0 = pWarpMasks !== 0 ? m.u32(pWarpMasks) : 0;
-          const mask1 = pWarpMasks !== 0 ? m.u32((pWarpMasks + 0x04) >>> 0) : 0;
+          const mask0 = pWarpMasks !== 0 ? m.u32(pWarpMasks) : 1;
+          const mask1 = pWarpMasks !== 0 ? m.u32((pWarpMasks + 0x04) >>> 0) : 2;
           if ((mask0 & bWarpFlag) !== 0) {
             PETS_WarpPetListBucketToRoomAndCoord_6FCB72C0_113c(m, pPetSlot, pTargetRoom, pGame, nX, nY);
           } else if ((mask1 & bWarpFlag) !== 0) {

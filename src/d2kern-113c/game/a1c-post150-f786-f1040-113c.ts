@@ -101,9 +101,7 @@ import {
   PLAYER_StartModeAtCoords113c,
 } from './c2s-packet-113c.ts';
 import {
-  stepSeedInMem113c,
-} from './combat-a1c-113c.ts';
-import {
+  AIGENERAL_GetOwnerData_6FC40D50_113c,
   PLAYER_StartModeCast113c,
   PLAYER_ScheduleSkillActionFrameEvents113c,
   SUNITDMG_FindCombatDamageData113c,
@@ -129,6 +127,7 @@ import {
   SUNIT_GetServerUnit113c,
 } from './game-strc.ts';
 import {
+  D2GAME_IAT_SGPT_DATATABLES_VA_113C,
   SUNIT_ValidatePathTargetUnit113c,
   UNIT_GetPosX113c,
   UNIT_GetPosY113c,
@@ -142,7 +141,22 @@ import {
   SrvDoFunc_065_AuraRadialStatBuff113c,
 } from './k2-gap-itemdef-113c.ts';
 import { SKILLS_ApplyBloodManaHealthCost_6FC2BE20_113c } from './k2-laneH-0x6fc2-w1-113c.ts';
+import { NET_SendPacket9D_ItemActionOwned_6FCAB0F0_113c } from './k2-w4b4-113c.ts';
+import {
+  SKILLS_ApplyDelayedChargeAttackRatingBonus_6FCB1400_113c,
+  SKILLS_ApplyDelayedChargeDamageMultiplier_6FCB1F10_113c,
+} from './k2-w4b5-113c.ts';
+import {
+  SKILLS_ApplyProgressiveElemChargeAndConversion_6FCB18D0_113c,
+  SKILLS_ApplyProgressiveElemChargeWithFreeze_6FCB1A30_113c,
+} from './k2-w5b2-113c.ts';
 import { SKILLS_SrvEvent02_ApplyCalcFreezeAndState_6FC62C70_113c } from './k2-laneL-0x6fc6-w1-113c.ts';
+import {
+  D2GAME_PARTY_GetPartyIdForUnit113c,
+} from './boot-init-gap-b-113c.ts';
+import {
+  PARTY_FindSubPartyById_6FCBBD00_113c,
+} from './k2-w2b4-113c.ts';
 import {
   MONAI_EnableState172OnTarget_6FCCC910_113c,
   SKILLS_ExecuteMeleeEventsOnPathTarget_6FCC20C0_113c,
@@ -182,11 +196,14 @@ import {
 } from './k2-w5b3-113c.ts';
 import { SKILLS_CreateDirectionalProjectileWithToHitAndAmmo_6FCC28F0_113c } from './k2-w6b2-113c.ts';
 import {
+  ITEMEVENT_ReanimateCorpseAsReturned_6FCCE200_113c,
   ITEMEVENT_TriggerChanceToCastSkill_6FCCDBF0_113c,
   ITEMEVENT_TriggerMeleeChanceToCastSkill_6FCCDDC0_113c,
 } from './k2-w6b5-113c.ts';
 import { ITEMEVENT_TryScheduleReanimateOnKill_6FCCF210_113c } from './k2-w7b3-113c.ts';
 import { SKILLS_OnHitEffect_HitBlindsTarget_6FCCE0E0_113c } from './k2-w8b2-113c.ts';
+import { QUESTS_DispatchUnitChainCallbacks_6FC53C70_113c } from './k2-laneJ-0x6fc4-w1-113c.ts';
+import { CLIENTS_GetPlayerUnit113c } from './replay-final11-113c.ts';
 import { NET_QueuePacketToClient113c } from '../net/packet-sink.ts';
 import { hitD2GameVa113c } from '../va-trace-113c.ts';
 
@@ -210,29 +227,29 @@ function enqueueClientPacketBytes113c(
   return NET_QueuePacketToClient113c(m, pClient >>> 0, slice);
 }
 
+let a1cOwnerScratchPtr = 0x7fd90000;
+
 /**
- * Resolves a monster unit's AI owner ID and owner unit type from
- * pMonsterData (+0x14) -> pAiGeneral (+0x28).
+ * Resolves a monster unit's AI owner ID and owner unit type via canonical
+ * `D2Game:0x6FC40D50` (`AIGENERAL_GetOwnerData_6FC40D50_113c`).
  */
 function getMonsterAiOwnerIdAndType113c(
   m: Memory113c,
   pMonster: number,
 ): { ownerId: number; ownerType: number } {
-  if (pMonster === 0 || m.u32(pMonster) !== 1) {
-    return { ownerId: -1, ownerType: 0 };
+  const sp = a1cOwnerScratchPtr;
+  a1cOwnerScratchPtr = (sp + 8) >>> 0;
+  try {
+    m.setU32(sp, 0xffffffff);
+    m.setU32((sp + 4) >>> 0, 0);
+    AIGENERAL_GetOwnerData_6FC40D50_113c(m, pMonster, sp, (sp + 4) >>> 0);
+    return {
+      ownerId: m.u32(sp) | 0,
+      ownerType: m.u32((sp + 4) >>> 0) | 0,
+    };
+  } finally {
+    a1cOwnerScratchPtr = sp;
   }
-  const pMonsterData = m.u32(pMonster + 0x14);
-  if (pMonsterData === 0) {
-    return { ownerId: -1, ownerType: 0 };
-  }
-  const pAiGen = m.u32(pMonsterData + 0x28);
-  if (pAiGen === 0 || m.u32(pAiGen + 0x28) === 0) {
-    return { ownerId: -1, ownerType: 0 };
-  }
-  return {
-    ownerId: (m.u32(pAiGen + 0x2c) | 0),
-    ownerType: (m.u32(pAiGen + 0x30) | 0),
-  };
 }
 
 /**
@@ -260,38 +277,6 @@ function checkPlayerPairPvpFlag113c(
     pRel = m.u32(pRel + 0x0c);
   }
   return 0;
-}
-
-/**
- * Resolves the party ID (`wPartyId` at `+0x28` of `pPlayerData->pNetClient` or
- * player party list) for a player unit; returns -1 (0xFFFF) if unpartied.
- */
-function getPlayerPartyId113c(
-  m: Memory113c,
-  pPlayer: number,
-  pGame: number,
-): number {
-  if (pPlayer === 0 || m.u32(pPlayer) !== 0 || pGame === 0) {
-    return -1;
-  }
-  const pPartyCtrl = m.u32(pGame + 0x1d24);
-  if (pPartyCtrl === 0) {
-    return -1;
-  }
-  const unitId = m.u32(pPlayer + 0x0c);
-  let pSubParty = m.u32(pPartyCtrl + 0x04);
-  while (pSubParty !== 0) {
-    const wPartyId = (m.u16(pSubParty) << 16) >> 16;
-    let pMember = m.u32(pSubParty + 0x04);
-    while (pMember !== 0) {
-      if (m.u32(pMember) === unitId) {
-        return wPartyId;
-      }
-      pMember = m.u32(pMember + 0x04);
-    }
-    pSubParty = m.u32(pSubParty + 0x08);
-  }
-  return -1;
 }
 
 /**
@@ -323,15 +308,25 @@ function resolveAttackerPlayerOwner113c(
 }
 
 /**
- * SuperUnique ID -> quest index lookup table at D2Game.dll 0x6FC56028 (35 bytes).
+ * Jump table switch mask at D2Game.dll 0x6FC56028 (35 bytes, monClass 0x1A..0x3C):
+ * `0` forces `bForceInactive = 1` in `QUESTS_OnMonsterKill113c`.
  */
-const SUPERUNIQUE_QUEST_INDEX_TABLE_113C = new Uint8Array([
-  0x02, 0x03, 0x04, 0x05, 0x06, 0x1f, 0x0a, 0x0a,
-  0x0a, 0x0d, 0x22, 0x22, 0x22, 0x12, 0x14, 0x12,
-  0x12, 0x12, 0x21, 0x16, 0x23, 0x0b, 0x28, 0x19,
-  0x24, 0x00, 0x25, 0x1e, 0x15, 0x1b, 0x1c, 0x1d,
-  0x1d, 0x1d, 0x00,
+const QUEST_KILL_MONCLASS_FORCE_JT_113C = new Uint8Array([
+  0, 0, 1, 0, 1, 1, 1, 1,
+  1, 1, 0, 0, 0, 0, 1, 1,
+  0, 0, 0, 0, 1, 1, 1, 1,
+  1, 1, 1, 1, 1, 1, 1, 1,
+  1, 1, 0,
 ]);
+
+function getQuestSgptDataTablesPtr113c(m: Memory113c): number {
+  const iatSlot = m.u32(D2GAME_IAT_SGPT_DATATABLES_VA_113C) >>> 0;
+  if (iatSlot !== 0) {
+    const deref = m.u32(iatSlot) >>> 0;
+    return deref !== 0 ? deref : iatSlot;
+  }
+  return m.u32(0x6fde9e1c) >>> 0;
+}
 
 /**
  * Builds an S2C 0x9C / 0x9D item action packet in scratch memory at `pBuf`.
@@ -690,6 +685,21 @@ export function SKILLS_ValidateSkillTargetAlignment113c(
   return 1;
 }
 
+export type SkillsSrvStDispatcherFn113c = (
+  m: Memory113c,
+  wSrvStFunc: number,
+  pGame: number,
+  pUnit: number,
+  nSkillId: number,
+  nSkillLevel: number,
+) => number;
+
+let defaultSkillsSrvStDispatcher113c: SkillsSrvStDispatcherFn113c | null = null;
+
+export function registerSkillsSrvStDispatcher113c(fn: SkillsSrvStDispatcherFn113c | null): void {
+  defaultSkillsSrvStDispatcher113c = fn;
+}
+
 // @va D2Game:0x6FCBFD00
 export function SKILLS_ExecuteSkillStart113c(
   m: Memory113c,
@@ -726,7 +736,7 @@ export function SKILLS_ExecuteSkillStart113c(
   if (bNoManaCost === 0 && SKILLS_CheckSkillManaAndCharges113c(m, pUnit) === 0) {
     return 0;
   }
-  if ((m.u8(pSkillsTxt + 0x06) & 0x20) === 0) {
+  if ((m.u8(pSkillsTxt + 0x05) & 0x01) === 0) {
     if (DUNGEON_CheckRoomIsTownMemPort113c(m, pRoom) !== 0) {
       return 0;
     }
@@ -771,6 +781,8 @@ export function SKILLS_ExecuteSkillStart113c(
       stResult = SKILLS_StartPlayerSkillAnimOrCast113c(m, pGame, pUnit, nSkillId, nSkillLevel);
     } else if (onSrvStFunc !== undefined) {
       stResult = onSrvStFunc(m, wSrvStFunc, pGame, pUnit, nSkillId, nSkillLevel);
+    } else if (defaultSkillsSrvStDispatcher113c !== null) {
+      stResult = defaultSkillsSrvStDispatcher113c(m, wSrvStFunc, pGame, pUnit, nSkillId, nSkillLevel);
     }
   }
   if (stResult === 0) {
@@ -856,7 +868,7 @@ export function SKILLS_StartUsedSkill113c(
       if (pTargetRoom === 0) {
         return 0;
       }
-      if ((m.u8(pSkillsTxt + 0x06) & 0x20) === 0) {
+      if ((m.u8(pSkillsTxt + 0x05) & 0x01) === 0) {
         if (DUNGEON_CheckRoomIsTownMemPort113c(m, pTargetRoom) !== 0) {
           return 0;
         }
@@ -1029,11 +1041,11 @@ export function SUNIT_CanPlayerTargetUnitWithSkill113c(
   if (pTargetOwner === pPlayer) {
     return 1;
   }
-  const party1 = SUNITDMG_GetPlayerClientClassId113c(m, pPlayer);
-  if (party1 === -1) {
+  const party1 = SUNITDMG_GetPlayerClientClassId113c(m, pPlayer) & 0xffff;
+  if (party1 === 0xffff) {
     return 0;
   }
-  const party2 = SUNITDMG_GetPlayerClientClassId113c(m, pTargetOwner);
+  const party2 = SUNITDMG_GetPlayerClientClassId113c(m, pTargetOwner) & 0xffff;
   return party1 === party2 ? 1 : 0;
 }
 
@@ -1117,42 +1129,78 @@ export function QUESTS_OnMonsterKill113c(
   pVictim: number,
 ): void {
   hitD2GameVa113c(0x6FC55EF0);
-  if (pGame === 0 || pVictim === 0) {
+  const victim = pVictim >>> 0;
+  if (victim === 0 || (m.u32((victim + 0x74) >>> 0) >>> 0) === 0) {
     return;
   }
-  if (m.u32(pVictim + 0x74) === 0) {
+  const game = pGame >>> 0;
+  if (game === 0) {
     return;
   }
-  const pQuestCtrl = m.u32(pGame + 0x10f4);
-  if (pQuestCtrl === 0 || m.u32(pQuestCtrl + 0x08) !== 0) {
-    return;
-  }
-  const pKillerPlayer = resolveAttackerPlayerOwner113c(m, pGame, pKiller);
-  const superUniqueId = MONSTER_GetSuperUniqueId113c(m, pVictim);
-  if (superUniqueId >= 0 && superUniqueId < 35) {
-    const qIdx = SUPERUNIQUE_QUEST_INDEX_TABLE_113C[superUniqueId];
-    const pGameSeed = pQuestCtrl + 0x18;
-    stepSeedInMem113c(m, pGameSeed);
-    if (qIdx !== 0) {
-      m.setU32(pQuestCtrl + 0x14, qIdx >>> 0);
+  let killer = pKiller >>> 0;
+  if (m.u8((game + 0x6a) >>> 0) === 3 && killer === 0) {
+    const pClient = m.u32((game + 0x88) >>> 0) >>> 0;
+    if (pClient !== 0) {
+      killer = CLIENTS_GetPlayerUnit113c(m, pClient, 0) >>> 0;
     }
   }
-  const victimClassId = m.u32(pVictim + 0x04);
-  if (
-    victimClassId === 242 ||
-    victimClassId === 243 ||
-    victimClassId === 391 ||
-    victimClassId === 544
-  ) {
-    m.setU32(pQuestCtrl + 0x10, victimClassId >>> 0);
-  }
-  let pQuestNode = m.u32(pVictim + 0x74);
-  while (pQuestNode !== 0) {
-    const questId = m.u32(pQuestNode);
-    if (pKillerPlayer !== 0) {
-      m.setU32(pQuestCtrl + 0x0c, questId >>> 0);
+
+  const sp = a1cOwnerScratchPtr;
+  a1cOwnerScratchPtr = (sp + 0x10) >>> 0;
+  try {
+    m.setU32(sp, game);
+    m.setU32((sp + 0x04) >>> 0, 8);
+    m.setU32((sp + 0x08) >>> 0, victim);
+    m.setU32((sp + 0x0c) >>> 0, 0);
+
+    if (killer !== 0) {
+      const killerType = m.u32(killer) >>> 0;
+      if (killerType === 0) {
+        m.setU32((sp + 0x0c) >>> 0, killer);
+      } else if (killerType === 1) {
+        const owner = getMonsterAiOwnerIdAndType113c(m, killer);
+        if (owner.ownerType === 0) {
+          const pOwner = SUNIT_GetServerUnit113c(m, game, 0, owner.ownerId) >>> 0;
+          m.setU32((sp + 0x0c) >>> 0, pOwner);
+        }
+      }
     }
-    pQuestNode = m.u32(pQuestNode + 0x04);
+
+    let bForceInactive = 0;
+    if ((m.u32(victim) >>> 0) === 1) {
+      const pMonData = m.u32((victim + 0x14) >>> 0) >>> 0;
+      if (pMonData !== 0 && (m.u8((pMonData + 0x16) >>> 0) & 2) !== 0) {
+        const suId = (m.u16((pMonData + 0x26) >>> 0) << 16) >> 16;
+        let monClass = -1;
+        if (suId >= 0) {
+          const pTables = getQuestSgptDataTablesPtr113c(m);
+          if (pTables !== 0 && suId < (m.u32((pTables + 0xadc) >>> 0) | 0)) {
+            const pSuBase = m.u32((pTables + 0xad4) >>> 0) >>> 0;
+            if (pSuBase !== 0) {
+              monClass = m.u32((pSuBase + suId * 0x34 + 0x08) >>> 0) | 0;
+            }
+          }
+        }
+        const jtIdx = (monClass - 0x1a) >>> 0;
+        if (jtIdx <= 0x22 && QUEST_KILL_MONCLASS_FORCE_JT_113C[jtIdx] === 0) {
+          bForceInactive = 1;
+        }
+      }
+    }
+
+    const victimClassId = m.u32((victim + 0x04) >>> 0) >>> 0;
+    if (
+      victimClassId === 0x187 ||
+      victimClassId === 0xf2 ||
+      victimClassId === 0xf3 ||
+      victimClassId === 0x220
+    ) {
+      bForceInactive = 1;
+    }
+
+    QUESTS_DispatchUnitChainCallbacks_6FC53C70_113c(m, sp, bForceInactive);
+  } finally {
+    a1cOwnerScratchPtr = sp;
   }
 }
 
@@ -1361,6 +1409,16 @@ function invokeUnitItemEventCallback113c(
         sm,
         pGame,
         nEventType,
+        pUnit,
+        pTarget,
+        pDmg,
+        dwArg1,
+        dwArg2,
+      );
+    case 0x6fcce200:
+      return ITEMEVENT_ReanimateCorpseAsReturned_6FCCE200_113c(
+        sm,
+        pGame,
         pUnit,
         pTarget,
         pDmg,
@@ -1621,52 +1679,53 @@ export function SKILLS_ApplyProgressiveChargesToDamage113c(
   pDmg: number,
 ): void {
   hitD2GameVa113c(0x6FCB1E30);
-  if (pUnit === 0 || pDmg === 0) {
+  if (pDmg === 0 || (m.u8((pDmg + 0x04) >>> 0) & 1) === 0) {
     return;
   }
-  if (STATES_CheckStateMaskByIndexOnUnit113c(m, pUnit, 0x19) === 0) {
-    return;
-  }
-  const pDataTablesPtr = m.u32(0x6fd1829c);
-  const pDataTables = pDataTablesPtr !== 0 ? m.u32(pDataTablesPtr) : 0;
+  const pDataTablesPtr = m.u32(0x6fd1829c) >>> 0;
+  let pDataTables = pDataTablesPtr !== 0 ? m.u32(pDataTablesPtr) >>> 0 : 0;
   if (pDataTables === 0) {
     return;
   }
-  const nProgCount = (m.u32(pDataTables + 0x170) | 0);
-  const pProgStates = m.u32(pDataTables + 0x16c);
-  if (nProgCount <= 0 || pProgStates === 0) {
-    return;
-  }
+  let nProgCount = (m.u16((pDataTables + 0x170) >>> 0) << 16) >> 16;
   for (let i = 0; i < nProgCount; i = (i + 1) | 0) {
-    const stateId = (m.u16(pProgStates + ((i * 2) | 0)) << 16) >> 16;
+    const pProgStates = m.u32((pDataTables + 0x16c) >>> 0) >>> 0;
+    const stateId = (m.u16((pProgStates + ((i * 2) | 0)) >>> 0) << 16) >> 16;
     if (STATES_CheckState113c(m, pUnit, stateId) !== 0) {
-      const pStatList = STATLIST_GetStatListFromUnitAndStateMemPort113c(m, pUnit, stateId);
+      const pDt2 = m.u32(m.u32(0x6fd1829c) >>> 0) >>> 0;
+      const pProgStates2 = m.u32((pDt2 + 0x16c) >>> 0) >>> 0;
+      const stateId2 = (m.u16((pProgStates2 + ((i * 2) | 0)) >>> 0) << 16) >> 16;
+      const pStatList = STATLIST_GetStatListFromUnitAndStateMemPort113c(m, pUnit, stateId2) >>> 0;
       if (pStatList !== 0) {
-        const skillId = STATLIST_GetStatValue113c(m, pStatList, 0x144, 0);
-        const charges = STATLIST_GetStatValue113c(m, pStatList, 0x156, skillId);
-        const slvl = STATLIST_GetStatValue113c(m, pStatList, 0x155, skillId);
-        if (charges > 0 && slvl > 0 && skillId >= 0) {
-          const pSkillsTxt = SKILLS_GetRecordPtrFast113c(m, skillId);
+        const skillId = STATLIST_GetStatValue113c(m, pStatList, 0x15e, 0) | 0;
+        const pDt3 = m.u32(m.u32(0x6fd1829c) >>> 0) >>> 0;
+        if (skillId > 0 && skillId < (m.u32((pDt3 + 0xba0) >>> 0) | 0)) {
+          const pSkillsTxt = SKILLS_GetRecordPtrFast113c(m, skillId) >>> 0;
           if (pSkillsTxt !== 0) {
-            const bPrgDam = m.u8(pSkillsTxt + 0x33);
-            if (bPrgDam >= 2 && bPrgDam <= 4) {
-              const calcOff = (0x168 + ((charges - 1) << 2)) | 0;
-              const bonusVal = SKILLS_EvalCalcByOffset113c(m, pUnit, calcOff, skillId, slvl);
-              if (bPrgDam === 2) {
-                m.setU32(pDmg + 0x60, (((m.u32(pDmg + 0x60) | 0) + bonusVal) | 0) >>> 0);
-              } else if (bPrgDam === 3) {
-                m.setU32(pDmg + 0x0c, (((m.u32(pDmg + 0x0c) | 0) + bonusVal) | 0) >>> 0);
-              } else if (bPrgDam === 4) {
-                const stealBonus = STATLIST_GetStatValue113c(m, pStatList, 0x3c, 0);
-                m.setU32(pDmg + 0x3c, (((m.u32(pDmg + 0x3c) | 0) + stealBonus) | 0) >>> 0);
-                const manaBonus = STATLIST_GetStatValue113c(m, pStatList, 0x3e, 0);
-                m.setU32(pDmg + 0x40, (((m.u32(pDmg + 0x40) | 0) + manaBonus) | 0) >>> 0);
-              }
+            const bPrgCalc = m.u8((pSkillsTxt + 0x44) >>> 0);
+            if (bPrgCalc === 2) {
+              SKILLS_ApplyDelayedChargeAttackRatingBonus_6FCB1400_113c(m, pUnit, pStatList, pDmg);
+            } else if (bPrgCalc === 3) {
+              SKILLS_ApplyProgressiveElemChargeWithFreeze_6FCB1A30_113c(
+                m,
+                pUnit,
+                pStatList,
+                pDmg,
+              );
+            } else if (bPrgCalc === 4) {
+              SKILLS_ApplyProgressiveElemChargeAndConversion_6FCB18D0_113c(
+                m,
+                pUnit,
+                pDmg,
+                pStatList,
+              );
             }
           }
         }
       }
     }
+    pDataTables = m.u32(m.u32(0x6fd1829c) >>> 0) >>> 0;
+    nProgCount = (m.u16((pDataTables + 0x170) >>> 0) << 16) >> 16;
   }
 }
 
@@ -1677,40 +1736,36 @@ export function SKILLS_ApplyProgressiveAttackRatingAndPhysBonuses113c(
   pDmg: number,
 ): void {
   hitD2GameVa113c(0x6FCB22A0);
-  if (pUnit === 0 || pDmg === 0) {
+  if (pDmg === 0 || (m.u8((pDmg + 0x04) >>> 0) & 1) === 0) {
     return;
   }
-  if (STATES_CheckStateMaskByIndexOnUnit113c(m, pUnit, 0x19) === 0) {
-    return;
-  }
-  const pDataTablesPtr = m.u32(0x6fd1829c);
-  const pDataTables = pDataTablesPtr !== 0 ? m.u32(pDataTablesPtr) : 0;
+  const pDataTablesPtr = m.u32(0x6fd1829c) >>> 0;
+  let pDataTables = pDataTablesPtr !== 0 ? m.u32(pDataTablesPtr) >>> 0 : 0;
   if (pDataTables === 0) {
     return;
   }
-  const nProgCount = (m.u32(pDataTables + 0x170) | 0);
-  const pProgStates = m.u32(pDataTables + 0x16c);
-  if (nProgCount <= 0 || pProgStates === 0) {
-    return;
-  }
+  let nProgCount = (m.u16((pDataTables + 0x170) >>> 0) << 16) >> 16;
   for (let i = 0; i < nProgCount; i = (i + 1) | 0) {
-    const stateId = (m.u16(pProgStates + ((i * 2) | 0)) << 16) >> 16;
+    const pProgStates = m.u32((pDataTables + 0x16c) >>> 0) >>> 0;
+    const stateId = (m.u16((pProgStates + ((i * 2) | 0)) >>> 0) << 16) >> 16;
     if (STATES_CheckState113c(m, pUnit, stateId) !== 0) {
-      const pStatList = STATLIST_GetStatListFromUnitAndStateMemPort113c(m, pUnit, stateId);
+      const pDt2 = m.u32(m.u32(0x6fd1829c) >>> 0) >>> 0;
+      const pProgStates2 = m.u32((pDt2 + 0x16c) >>> 0) >>> 0;
+      const stateId2 = (m.u16((pProgStates2 + ((i * 2) | 0)) >>> 0) << 16) >> 16;
+      const pStatList = STATLIST_GetStatListFromUnitAndStateMemPort113c(m, pUnit, stateId2) >>> 0;
       if (pStatList !== 0) {
-        const skillId = STATLIST_GetStatValue113c(m, pStatList, 0x144, 0);
-        const charges = STATLIST_GetStatValue113c(m, pStatList, 0x156, skillId);
-        const slvl = STATLIST_GetStatValue113c(m, pStatList, 0x155, skillId);
-        if (charges > 0 && slvl > 0 && skillId >= 0) {
-          const pSkillsTxt = SKILLS_GetRecordPtrFast113c(m, skillId);
-          if (pSkillsTxt !== 0 && m.u8(pSkillsTxt + 0x33) === 1) {
-            const calcOff = (0x168 + ((charges - 1) << 2)) | 0;
-            const bonusPct = SKILLS_EvalCalcByOffset113c(m, pUnit, calcOff, skillId, slvl);
-            m.setU32(pDmg + 0x60, (((m.u32(pDmg + 0x60) | 0) + bonusPct) | 0) >>> 0);
+        const skillId = STATLIST_GetStatValue113c(m, pStatList, 0x15e, 0) | 0;
+        const pDt3 = m.u32(m.u32(0x6fd1829c) >>> 0) >>> 0;
+        if (skillId > 0 && skillId < (m.u32((pDt3 + 0xba0) >>> 0) | 0)) {
+          const pSkillsTxt = SKILLS_GetRecordPtrFast113c(m, skillId) >>> 0;
+          if (pSkillsTxt !== 0 && m.u8((pSkillsTxt + 0x44) >>> 0) === 1) {
+            SKILLS_ApplyDelayedChargeDamageMultiplier_6FCB1F10_113c(m, pUnit, pStatList, pDmg);
           }
         }
       }
     }
+    pDataTables = m.u32(m.u32(0x6fd1829c) >>> 0) >>> 0;
+    nProgCount = (m.u16((pDataTables + 0x170) >>> 0) << 16) >> 16;
   }
 }
 
@@ -1780,48 +1835,43 @@ export function PARTY_ForEachPartyMemberInSameLevel113c(
   pArg: number,
 ): void {
   hitD2GameVa113c(0x6FCBC070);
-  if (pPlayer === 0 || m.u32(pPlayer) !== 0) {
-    return;
-  }
-  const wPartyId = getPlayerPartyId113c(m, pPlayer, pGame);
-  if (wPartyId === -1) {
-    pfnCallback(m, pGame, pPlayer, pArg);
-    return;
-  }
-  const pPlayerRoom = UNITS_GetRoom113c(m, pPlayer);
+  const pPlayerRoom = pPlayer !== 0 ? UNITS_GetRoom113c(m, pPlayer) : 0;
   if (pPlayerRoom === 0) {
     pfnCallback(m, pGame, pPlayer, pArg);
     return;
   }
   const playerLevelId = DUNGEON_GetLevelIdFromRoom113c(m, pPlayerRoom);
-  if (playerLevelId === 0 || pGame === 0) {
+  const pUnitGame = pPlayer !== 0 ? (m.u32((pPlayer + 0x80) >>> 0) >>> 0) : 0;
+  if (pPlayer === 0 || pUnitGame === 0 || m.u32(pPlayer) !== 0) {
+    pfnCallback(m, pGame, pPlayer, pArg);
     return;
   }
-  const pPartyCtrl = m.u32(pGame + 0x1d24);
-  if (pPartyCtrl === 0) {
+  const wPartyId = D2GAME_PARTY_GetPartyIdForUnit113c(m, pPlayer, pUnitGame) & 0xffff;
+  if (wPartyId === 0xffff) {
+    pfnCallback(m, pGame, pPlayer, pArg);
     return;
   }
-  let pSubParty = m.u32(pPartyCtrl + 0x04);
-  while (pSubParty !== 0) {
-    if (((m.u16(pSubParty) << 16) >> 16) === wPartyId) {
-      let pMember = m.u32(pSubParty + 0x04);
-      while (pMember !== 0) {
-        const memberUnitId = m.u32(pMember);
-        const pMemberUnit = SUNIT_GetServerUnit113c(m, pGame, 0, memberUnitId);
-        if (pMemberUnit !== 0) {
-          const pMemberRoom = UNITS_GetRoom113c(m, pMemberUnit);
-          if (pMemberRoom !== 0) {
-            const memberLevelId = DUNGEON_GetLevelIdFromRoom113c(m, pMemberRoom);
-            if (memberLevelId === playerLevelId) {
-              pfnCallback(m, pGame, pMemberUnit, pArg);
-            }
-          }
+  if (pGame === 0 || (m.u32((pGame + 0x1d2c) >>> 0) >>> 0) === 0) {
+    return;
+  }
+  const pSubParty = PARTY_FindSubPartyById_6FCBBD00_113c(m, pGame, wPartyId) >>> 0;
+  if (pSubParty === 0) {
+    return;
+  }
+  let pMember = m.u32((pSubParty + 0x04) >>> 0) >>> 0;
+  while (pMember !== 0) {
+    const memberUnitId = m.u32(pMember) >>> 0;
+    const pMemberUnit = SUNIT_GetServerUnit113c(m, pGame, 0, memberUnitId);
+    if (pMemberUnit !== 0) {
+      const pMemberRoom = UNITS_GetRoom113c(m, pMemberUnit);
+      if (pMemberRoom !== 0) {
+        const memberLevelId = DUNGEON_GetLevelIdFromRoom113c(m, pMemberRoom);
+        if (memberLevelId === playerLevelId) {
+          pfnCallback(m, pGame, pMemberUnit, pArg);
         }
-        pMember = m.u32(pMember + 0x04);
       }
-      return;
     }
-    pSubParty = m.u32(pSubParty + 0x08);
+    pMember = m.u32((pMember + 0x04) >>> 0) >>> 0;
   }
 }
 
@@ -1862,11 +1912,7 @@ export function SKILLS_SetSkillDelayTimer113c(
     return 0;
   }
   const delayFlags = m.u8(pSkillsTxt + 0x04) & 0x60;
-  if (bResetExisting !== 0) {
-    if (delayFlags === 0) {
-      return 0;
-    }
-  } else if ((m.u8(pSkillsTxt + 0x04) & 0x20) === 0) {
+  if (delayFlags === 0) {
     return 0;
   }
   const delayCalc = m.u32((pSkillsTxt + 0x128) >>> 0);
@@ -1884,7 +1930,7 @@ export function SKILLS_SetSkillDelayTimer113c(
   }
   for (let cur = m.u32((pUnit + 0xdc) >>> 0); cur !== 0; ) {
     const next = m.u32((cur + 0x24) >>> 0);
-    if (m.u8((cur + 0x04) >>> 0) === 8 && (m.u32((cur + 0x14) >>> 0) | 0) === -1) {
+    if (m.u8(cur >>> 0) === 8 && (m.u32((cur + 0x14) >>> 0) | 0) === -1) {
       EVENT_FreeNode113c(m, pGame, cur);
     }
     cur = next;
@@ -1922,7 +1968,7 @@ export function SKILLS_ExecuteSkillDoFunc113c(
   if (pSkillsTxt === 0) {
     return 0;
   }
-  if ((m.u8(pSkillsTxt + 0x06) & 0x20) === 0) {
+  if ((m.u8(pSkillsTxt + 0x05) & 0x01) === 0) {
     if (DUNGEON_CheckRoomIsTownMemPort113c(m, pRoom) !== 0) {
       return 0;
     }
@@ -2331,6 +2377,8 @@ export function S2C_SendPacket0D_UnitStop113c(
 // F1040 (4 VAs)
 // ===========================================================================
 
+let a1cF1040StackPtr = 0x7ec90000;
+
 // @va D2Game:0x6FCAC890
 export function ITEMS_SyncSocketedSubItemsToClient113c(
   m: Memory113c,
@@ -2340,63 +2388,40 @@ export function ITEMS_SyncSocketedSubItemsToClient113c(
 ): number {
   hitD2GameVa113c(0x6FCAC890);
   if (ITEMS_GetSubTypeFromItem113c(m, pItem) === 0) {
-    return 1;
+    return 0;
   }
-  if (ITEMS_TestFlagMask113c(m, nCmdFlags, 0x20) !== 0) {
-    return 1;
+  if (ITEMS_TestFlagMask113c(m, nCmdFlags >>> 0, 0x20) !== 0) {
+    return 0;
   }
-  if (pItem === 0) {
-    return 1;
-  }
-  const pInv = m.u32(pItem + 0x60);
+  const pInv = m.u32((pItem + 0x60) >>> 0) >>> 0;
   if (pInv === 0) {
-    return 1;
+    return 0;
   }
-  let pSubItem = INVENTORY_GetFirstItem113c(m, pInv);
+  let pSubItem = INVENTORY_GetFirstItem113c(m, pInv) >>> 0;
   if (pSubItem === 0) {
     return 1;
   }
-  const scratchFlagsPtr = 0x004ff300;
-  const scratchPktBuf = 0x004ff310;
-  while (pSubItem !== 0) {
-    const pVerified = INVENTORY_UnitIsItem113c(m, pSubItem);
-    m.setU32(scratchFlagsPtr, nCmdFlags >>> 0);
-    ITEMS_SetOrClearFlagMask113c(m, scratchFlagsPtr, 0x08, 1);
-    const updatedFlags = m.u32(scratchFlagsPtr) >>> 0;
-
-    m.fill(scratchPktBuf, 0x100, 0);
-    m.setU8(scratchPktBuf + 0x00, 0x9d);
-    m.setU8(scratchPktBuf + 0x01, 0x13);
-    const equipLoc = INVENTORY_GetItemEquipLocation113c(m, pItem, pVerified) & 0xff;
-    m.setU8(scratchPktBuf + 0x03, equipLoc);
-    m.setU32(scratchPktBuf + 0x04, pVerified !== 0 ? m.u32(pVerified + 0x0c) : 0xffffffff);
-    m.setU8(scratchPktBuf + 0x08, m.u32(pItem) & 0xff);
-    m.setU32(scratchPktBuf + 0x09, m.u32(pItem + 0x0c));
-
-    const savedSubFlags = ITEMS_GetCommandFlags113c(m, pVerified) >>> 0;
-    ITEMS_SetOrClearCommandFlags113c(m, pVerified, updatedFlags, 1);
-    const nSer = ITEMS_SerializeItemToBuffer113c(
-      m,
-      pVerified,
-      (scratchPktBuf + 0x0d) >>> 0,
-      0xf4,
-      0,
-      0,
-      0,
-    ) | 0;
-    ITEMS_SetOrClearCommandFlags113c(m, pVerified, 0xffffffff, 0);
-    ITEMS_SetOrClearCommandFlags113c(m, pVerified, savedSubFlags, 1);
-
-    if (nSer > 0) {
-      const pktLen = (nSer + 0x0d) & 0xff;
-      m.setU8(scratchPktBuf + 0x02, pktLen);
-      const pktBytes = new Uint8Array(pktLen);
-      for (let i = 0; i < pktLen; i = (i + 1) | 0) {
-        pktBytes[i] = m.u8(scratchPktBuf + i);
-      }
-      enqueueClientPacketBytes113c(m, pClient, pktBytes, pktLen);
+  const sp = a1cF1040StackPtr;
+  a1cF1040StackPtr = (sp + 8) >>> 0;
+  try {
+    m.setU32(sp, nCmdFlags >>> 0);
+    while (pSubItem !== 0) {
+      const pVerified = INVENTORY_UnitIsItem113c(m, pSubItem) >>> 0;
+      ITEMS_SetOrClearFlagMask113c(m, sp, 0x08, 1);
+      const updatedFlags = m.u32(sp) >>> 0;
+      NET_SendPacket9D_ItemActionOwned_6FCAB0F0_113c(
+        m,
+        0x13,
+        pItem >>> 0,
+        pVerified,
+        pClient >>> 0,
+        updatedFlags,
+        0,
+      );
+      pSubItem = INVENTORY_GetNextItem113c(m, pSubItem) >>> 0;
     }
-    pSubItem = INVENTORY_GetNextItem113c(m, pSubItem);
+  } finally {
+    a1cF1040StackPtr = sp;
   }
   return 1;
 }

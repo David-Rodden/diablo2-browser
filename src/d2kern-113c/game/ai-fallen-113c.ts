@@ -13,6 +13,7 @@ import {
 } from '../common/collision.ts'
 import { MONSTER_GetMissileIdForAnimMode113c } from '../common/drlg/drlg-ver.ts'
 import { DUNGEON_GetRoomCoordListFromSubtile113c } from '../common/dungeon.ts'
+import { D2CommonAssertError } from '../common/inline-helpers.ts'
 import {
   DUNGEON_CheckRoomIsTownMemPort113c,
   SKILLS_GetUsedSkillMemPort113c,
@@ -62,6 +63,7 @@ import {
   MONSTER_IsContinuousMode113c,
   SUNIT_IsDeadOrDying113c,
   UNITS_ChangeAnimMode113c,
+  registerFreeAttackerCombatList113c,
 } from './monster-events.ts'
 import {
   D2GAME_IAT_GDW_BITMASKS_VA_113C,
@@ -91,6 +93,10 @@ import {
   SUNITDMG_ExecuteMissileOrMeleeDmg113c,
   type FallenSliceWorld113c,
 } from './replay-kernel-113c.ts'
+import { SEED_RollLimitedRandomNumber113c } from './combat-a1c-113c.ts'
+import { AITARGET_ScanUnitsByModeTable113c } from './town-runtime-gap-113c.ts'
+import { MONAI_FindTargetOrNearestBlockingObstacle_6FCD1BC0_113c } from './k2-w5b3-113c.ts'
+import { MONSTER_SpawnFallenShamanPack_6FD0FB80_113c } from './k2-w7b4-113c.ts'
 import { hitD2GameVa113c } from '../va-trace-113c.ts'
 
 /** `D2Game.dll` `.data` `0x6FD2E668`: special AI dispatch table (`16` bytes/row). */
@@ -184,15 +190,16 @@ function dispatchMonsterStartMode(
   if (hooks !== undefined && hooks.onMonsterStartMode !== undefined) {
     return hooks.onMonsterStartMode(m, pGame, pModeArgs, bUpdateAnim) | 0
   }
+  const mode = m.u32(pModeArgs) | 0
+  const pUnit = m.u32((pModeArgs + 0x04) >>> 0) >>> 0
+  const pTarget = m.u32((pModeArgs + 0x08) >>> 0) >>> 0
+  const tx = m.u32((pModeArgs + 0x0c) >>> 0) | 0
+  const ty = m.u32((pModeArgs + 0x10) >>> 0) | 0
   if (world !== undefined) {
-    const mode = m.u32(pModeArgs) | 0
-    const pUnit = m.u32((pModeArgs + 0x04) >>> 0) >>> 0
-    const pTarget = m.u32((pModeArgs + 0x08) >>> 0) >>> 0
-    const tx = m.u32((pModeArgs + 0x0c) >>> 0) | 0
-    const ty = m.u32((pModeArgs + 0x10) >>> 0) | 0
     return MONSTER_StartMode113c(world, pUnit, mode, pTarget, tx, ty) ? 1 : 0
   }
-  return 0
+  const pathTypeArg = m.u8((pModeArgs + 0x15) >>> 0)
+  return MONSTER_StartMode113c(m, pGame >>> 0, pUnit, mode, pTarget, tx, ty, pathTypeArg, bUpdateAnim | 0) | 0
 }
 
 /**
@@ -278,7 +285,7 @@ export function AIGENERAL_ReassignPackOnBossDeath113c(
 
   while (pWalk !== 0) {
     if (pGame === 0) {
-      throw new Error('AIGENERAL_ReassignPackOnBossDeath113c: pGame == NULL (line 723)')
+      throw new D2CommonAssertError('AiUtil.cpp', 723)
     }
     const candGuid = m.u32(pWalk) >>> 0
     pNewBoss = SUNIT_GetServerUnit113c(m, pGame, 1, candGuid)
@@ -377,7 +384,7 @@ export function AIGENERAL_BroadcastCmdToMinions113c(
   while (pMinionNode !== 0) {
     const pHashGame = m.u32((pLeaderAiGen + 0x28) >>> 0)
     if (pHashGame === 0) {
-      throw new Error('AIGENERAL_BroadcastCmdToMinions113c: pGame == NULL (line 723)')
+      throw new D2CommonAssertError('AiUtil.cpp', 723)
     }
     const minionGuid = m.u32(pMinionNode) >>> 0
     const pMinion = SUNIT_GetServerUnit113c(m, pHashGame, 1, minionGuid)
@@ -440,7 +447,7 @@ export function MONSTER_InitModeChangeStrc113c(
   hitD2GameVa113c(0x6FC95070)
   const mode = nMode | 0
   if (mode >= 0x10) {
-    throw new Error('MONSTER_InitModeChangeStrc113c: nMode >= 16 (line 1976)')
+    throw new D2CommonAssertError('MonsterMode.cpp', 1976)
   }
   SKILLS_SetUsedSkillMemPort113c(m, pUnit, 0)
   m.fill(pModeArgs, 0x20, 0)
@@ -813,7 +820,7 @@ export function AI_Skeleton113c(
     }
     const aip4 = sx16(m.u16((pMonStatsTxt + 0x68 + bDiff * 2) >>> 0))
     if (aip4 < -0x7e || aip4 > 0x7e) {
-      throw new Error('AI_Skeleton113c: out-of-bounds velocity override (line 272)')
+      throw new D2CommonAssertError('AiUtil.cpp', 272)
     }
     const pMonData =
       pUnit !== 0 && (m.u32(pUnit) | 0) === 1 ? m.u32((pUnit + 0x14) >>> 0) : 0
@@ -821,7 +828,10 @@ export function AI_Skeleton113c(
     if (aip4 !== 0) {
       m.setU32((pAiParam + 0x1c) >>> 0, aip4 >>> 0)
     }
-    const fled = world !== undefined ? AI_FleeFrom113c(world, pTarget, pUnit, 4, true) : 0
+    const fled =
+      world !== undefined
+        ? AI_FleeFrom113c(world, pTarget, pUnit, 4, true)
+        : AI_FleeFrom113c(m, pGame, pUnit, pTarget, 4, 1)
     if (!fled) {
       AI_StartAttackMode113c(m, 4, pUnit, pGame, pTarget, world, hooks)
     }
@@ -836,12 +846,14 @@ export function AI_Skeleton113c(
     m.setU32((pAiControl + 0x14) >>> 0, 1)
     if (world !== undefined) {
       AI_ApproachTarget113c(world, pUnit, pTarget, 2, 0, 0, 1, 0)
+    } else {
+      AI_ApproachTarget113c(m, pGame, pUnit, pTarget, 2, 0, 0, 1, 0)
     }
     return
   }
 
   if (nDist > 3) {
-    const wanderRoll = SEED_RollLimitedFast113c(m, pUnitSeed, 100)
+    const wanderRoll = SEED_RollLimitedRandomNumber113c(m, pUnitSeed, 100)
     const bDiffNow = m.u8((pGame + 0x6d) >>> 0)
     const aip2 = sx16(m.u16((pMonStatsTxt + 0x5c + bDiffNow * 2) >>> 0))
     if (wanderRoll < aip2) {
@@ -851,18 +863,22 @@ export function AI_Skeleton113c(
       m.setU32((pAiParam + 0x1c) >>> 0, 0xffffffce)
       if (world !== undefined) {
         AI_IdleWander113c(world, pUnit, 4)
+      } else {
+        AI_IdleWander113c(m, pGame, pUnit, 4)
       }
       return
     }
     if (world !== undefined) {
       AI_IdleWander113c(world, pUnit, 3)
+    } else {
+      AI_IdleWander113c(m, pGame, pUnit, 3)
     }
     return
   }
 
   const aip4Close = sx16(m.u16((pMonStatsTxt + 0x68 + bDiff * 2) >>> 0))
   if (aip4Close < -0x7e || aip4Close > 0x7e) {
-    throw new Error('AI_Skeleton113c: out-of-bounds velocity override (line 272)')
+    throw new D2CommonAssertError('AiUtil.cpp', 272)
   }
   const pMonDataClose =
     pUnit !== 0 && (m.u32(pUnit) | 0) === 1 ? m.u32((pUnit + 0x14) >>> 0) : 0
@@ -870,7 +886,10 @@ export function AI_Skeleton113c(
   if (aip4Close !== 0) {
     m.setU32((pAiParamClose + 0x1c) >>> 0, aip4Close >>> 0)
   }
-  const fledClose = world !== undefined ? AI_FleeFrom113c(world, pTarget, pUnit, 4, true) : 0
+  const fledClose =
+    world !== undefined
+      ? AI_FleeFrom113c(world, pTarget, pUnit, 4, true)
+      : AI_FleeFrom113c(m, pGame, pUnit, pTarget, 4, 1)
   if (!fledClose) {
     AI_StartAttackMode113c(m, 4, pUnit, pGame, pTarget, world, hooks)
   }
@@ -966,6 +985,15 @@ export function AI_FallenShaman113c(
         useCustomCorpseFilter ? 1 : 9,
         useCustomCorpseFilter,
       )
+    } else {
+      AITARGET_ScanUnitsByModeTable113c(
+        m,
+        useCustomCorpseFilter ? 1 : 9,
+        pScanCtx,
+        pGame,
+        pUnit,
+        useCustomCorpseFilter ? 0x6fc9bd50 : 0,
+      )
     }
 
     const rallyRoll = (stepSeed64Inline(m, pUnitSeed) >>> 0) % 100
@@ -1011,7 +1039,13 @@ export function AI_FallenShaman113c(
       const pAltTarget =
         hooks !== undefined && hooks.onFindNearestPlayer !== undefined
           ? hooks.onFindNearestPlayer(m, pGame, pUnit, pNearDist) >>> 0
-          : 0
+          : MONAI_FindTargetOrNearestBlockingObstacle_6FCD1BC0_113c(
+              m,
+              pUnit,
+              pGame,
+              0,
+              pNearDist,
+            ) >>> 0
       curDist = m.u32(pNearDist) | 0
       if (pAltTarget !== 0) {
         const bDiff6 = m.u8((pGame + 0x6d) >>> 0)
@@ -1061,12 +1095,16 @@ export function AI_FallenShaman113c(
       m.setU8((pAiParam + 0x20) >>> 0, 3)
       if (world !== undefined) {
         AI_ApproachTarget113c(world, pUnit, pTarget, 2, 0, 0, 1, 0)
+      } else if (pGame !== 0) {
+        AI_ApproachTarget113c(m, pGame, pUnit, pTarget, 2, 0, 0, 1, 0)
       }
       return
     }
 
     if (world !== undefined) {
       AI_Stall113c(world, pUnit, 10)
+    } else if (pGame !== 0) {
+      AI_Stall113c(m, pGame, pUnit, 10)
     }
   } finally {
     aiFallenStackPtr = sp
@@ -1123,9 +1161,10 @@ export function AI_CheckApproachTauntSound113c(
   SUNIT_SetUnitEventSound113c(m, pUnit, 0x10, 0)
   const pAiControlAfter = m.u32(pAiArgs)
   m.setU8((pAiControlAfter + 0x08) >>> 0, (m.u8((pAiControlAfter + 0x08) >>> 0) | 0x10) & 0xff)
-  void pGame
   if (world !== undefined) {
     AI_Stall113c(world, pUnit, 20)
+  } else if (pGame !== 0) {
+    AI_Stall113c(m, pGame, pUnit, 20)
   }
   return 1
 }
@@ -1354,7 +1393,7 @@ export function SUNIT_SetUnitEventSound113c(
 ): void {
   hitD2GameVa113c(0x6FCFFFD0)
   if (pUnit === 0) {
-    throw new Error('SUNIT_SetUnitEventSound113c: pUnit == NULL (line 1368)')
+    throw new D2CommonAssertError('SUnit.cpp', 1368)
   }
   m.setU16((pUnit + 0x6e) >>> 0, wSoundId & 0xffff)
   m.setU32((pUnit + 0x70) >>> 0, pSourceUnit >>> 0)
@@ -1378,7 +1417,7 @@ export function AI_SetAiControlOverrides113c(
   hitD2GameVa113c(0x6FD11A20)
   const vel = nVelPct | 0
   if (vel < -0x7e || vel > 0x7e) {
-    throw new Error('AI_SetAiControlOverrides113c: nVelPct out of [-126..126] (line 272)')
+    throw new D2CommonAssertError('AiUtil.cpp', 272)
   }
   let pType = nPathType | 0
   if (pType === 1) pType = 7
@@ -1515,6 +1554,8 @@ export function AI_CastSkillWithMode113c(
     }
     if (world !== undefined) {
       AI_Stall113c(world, pUnit, 10)
+    } else if (pGame !== 0) {
+      AI_Stall113c(m, pGame, pUnit, 10)
     }
     return 0
   } finally {
@@ -1537,6 +1578,7 @@ export function SKILLS_CanMonsterCastAtTarget113c(
   nSkillId: number,
   x: number,
   hooks?: AiFallenHooks113c,
+  pGameArg = 0,
 ): number {
   hitD2GameVa113c(0x6FD13E30)
   const id = nSkillId | 0
@@ -1595,10 +1637,34 @@ export function SKILLS_CanMonsterCastAtTarget113c(
 
   if (id === 0xc7) {
     const tRoom = UNITS_GetRoom113c(m, pTarget)
+    const resolvedGame =
+      (pGameArg >>> 0) !== 0
+        ? (pGameArg >>> 0)
+        : pTarget !== 0
+          ? (m.u32((pTarget + 0x80) >>> 0) >>> 0)
+          : pCaster !== 0
+            ? (m.u32((pCaster + 0x80) >>> 0) >>> 0)
+            : 0
     if (hooks !== undefined && hooks.onSpawnBonePrison !== undefined) {
-      return hooks.onSpawnBonePrison(m, pTarget, 0x154, pCaster, tRoom, 1) | 0
+      return hooks.onSpawnBonePrison(
+        m,
+        pTarget,
+        0x154,
+        resolvedGame !== 0 ? resolvedGame : pCaster,
+        tRoom,
+        1,
+      ) | 0
     }
-    return 0
+    return MONSTER_SpawnFallenShamanPack_6FD0FB80_113c(
+      m,
+      pTarget,
+      0x154,
+      resolvedGame,
+      tRoom,
+      0,
+      0,
+      1,
+    ) | 0
   }
 
   if (id === 0xb8) {
@@ -1640,3 +1706,5 @@ export function SKILLS_CanMonsterCastAtTarget113c(
 }
 
 export { PATH_GetPosX113c as aiFallenPathPosX_113c, PATH_GetPosY113c as aiFallenPathPosY_113c }
+
+registerFreeAttackerCombatList113c(SUNITDMG_FreeAttackerCombatList113c)

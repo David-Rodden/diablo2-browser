@@ -12,7 +12,11 @@
 
 import { describe, expect, it, vi } from 'vitest'
 import { OnlineSession } from '../../src/client/session/online-session.ts'
-import { LocalLobbyProvider, LocalLoopbackAdapter } from '../../src/server/loopback-adapter.ts'
+import {
+  LocalKernelD2gsAdapter113c,
+  LocalLobbyProvider,
+  LocalLoopbackAdapter,
+} from '../../src/server/loopback-adapter.ts'
 import { readD2sSave113c } from '../../src/server/save/d2s-reader.ts'
 import type { GameServerAdapter } from '../../src/netproto/index.ts'
 
@@ -20,7 +24,7 @@ async function enterLocalGame(
   session: OnlineSession,
   lobby: LocalLobbyProvider,
   charName: string,
-): Promise<LocalLoopbackAdapter> {
+): Promise<LocalKernelD2gsAdapter113c | LocalLoopbackAdapter> {
   const adapter = await lobby.enterGame({ charName, difficulty: 0 })
   const characters = await lobby.listCharacters()
   session.attachGameServer(adapter, {
@@ -57,6 +61,7 @@ describe('Issue #1324 — Single Player in-game lifecycle runs through OnlineSes
     session.onSessionLost((ev) => lost.push(ev.reason))
 
     const first = await enterLocalGame(session, lobby, 'SpHero')
+    expect(first).toBeInstanceOf(LocalKernelD2gsAdapter113c)
     expect(session.phase).toBe('ingame')
     expect(session.world.entities.has(first.playerUnitId)).toBe(true)
     expect(weatherInit).toHaveBeenCalledTimes(1)
@@ -78,20 +83,43 @@ describe('Issue #1324 — Single Player in-game lifecycle runs through OnlineSes
     expect(session.world.entities.size).toBeGreaterThan(0)
 
     const second = await lobby.enterGame({ charName: 'SpHero', difficulty: 0 })
-    session.attachGameServer(second, {
-      localCharacter: {
-        characters: await lobby.listCharacters(),
-        selectedName: 'SpHero',
-        writeProgression: (n, p) => lobby.writeCharacterProgression(n, p),
-      },
+    expect(second).toBeInstanceOf(LocalKernelD2gsAdapter113c)
+    let stateBeforeFirstGame2Event:
+      | { readonly actLoaded: boolean; readonly hasStale777: boolean; readonly lastLight: number }
+      | undefined
+    const origHandle = session.handleServerEvent.bind(session)
+    const handleSpy = vi.spyOn(session, 'handleServerEvent').mockImplementation((ev) => {
+      if (!stateBeforeFirstGame2Event) {
+        stateBeforeFirstGame2Event = {
+          actLoaded: internals.clientActLoaded,
+          hasStale777: session.world.entities.has(777),
+          lastLight: internals.lastObjectLightBuildFrame,
+        }
+      }
+      return origHandle(ev)
     })
+    try {
+      session.attachGameServer(second, {
+        localCharacter: {
+          characters: await lobby.listCharacters(),
+          selectedName: 'SpHero',
+          writeProgression: (n, p) => lobby.writeCharacterProgression(n, p),
+        },
+      })
+    } finally {
+      handleSpy.mockRestore()
+    }
     // The reset ran before any event of the second game was processed.
     expect(weatherInit).toHaveBeenCalledTimes(2)
     expect(questFxReset).toHaveBeenCalledTimes(2)
     expect(audioInit).toHaveBeenCalledTimes(2)
     expect(internals.lastObjectLightBuildFrame).toBe(0)
-    expect(internals.clientActLoaded).toBe(false)
-    expect(session.world.entities.size).toBe(0)
+    expect(stateBeforeFirstGame2Event).toEqual({
+      actLoaded: false,
+      hasStale777: false,
+      lastLight: 0,
+    })
+    expect(session.world.entities.has(777)).toBe(false)
     expect(session.world.self.name).toBe('SpHero')
     expect(session.selectedChar).toBe('SpHero')
 
@@ -105,12 +133,11 @@ describe('Issue #1324 — Single Player in-game lifecycle runs through OnlineSes
     const lobby = await newLobbyWithHero()
     const session = new OnlineSession()
     const adapter = await enterLocalGame(session, lobby, 'SpHero')
-    const game = adapter.getGameInstance()
 
-    const before = game.tickCount
+    const before = adapter.tickCount
     session.tick(40, 120)
     session.tick(40, 160)
-    expect(game.tickCount).toBe(before + 2)
+    expect(adapter.tickCount).toBe(before + 2)
 
     // Paused local game: the adapter only runs its pause frame and drops the owed time.
     adapter.setPaused(true)

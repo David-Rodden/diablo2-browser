@@ -190,10 +190,12 @@ describe('K2 Wave 4 Batch 3 (w4b3): 45 D2Game.dll VAs', () => {
     m.setU8(szBase, 0x41)
     m.setU8(szBase + 1, 0)
     GAME_AssignUniqueGameName_6FC4BC90_113c(m, pGame, szBase, {
-      onIsGameNameAvailable_6FC4ABD0: (_mem, pStr) => (m.u8(pStr + 1) === 0x31 ? 1 : 0),
+      onIsGameNameAvailable_6FC4ABD0: (_mem, pStr) =>
+        m.u8(pStr + 1) === 0x7e && m.u8(pStr + 2) === 0x31 ? 1 : 0,
     })
     expect(m.u8(pGame + 0x2a)).toBe(0x41)
-    expect(m.u8(pGame + 0x2b)).toBe(0x31)
+    expect(m.u8(pGame + 0x2b)).toBe(0x7e)
+    expect(m.u8(pGame + 0x2c)).toBe(0x31)
 
     expect(PLRTRADE_DropPlayerInventoryGold_6FC57F80_113c(m, pGame, 99, pPlayer, 10)).toBe(0)
 
@@ -282,6 +284,13 @@ describe('K2 Wave 4 Batch 3 (w4b3): 45 D2Game.dll VAs', () => {
     m.setU32(pPlayer + 0x2c, pPlrPath)
     m.setU32(pPlrPath + 0x1c, pRoom)
     m.setU32(pPlrData + 0x10, pQFlags)
+    m.setU32(pPlrData + 0x9c, m.alloc(0x40))
+    const pQuestCtrl = m.alloc(0x100)
+    const pQuest6 = m.alloc(0x100)
+    m.setU32(pQuest6 + 0x00, 6)
+    m.setU32(pQuest6 + 0x18, m.alloc(0x200))
+    m.setU32(pQuestCtrl, pQuest6)
+    m.setU32(pGame + 0x10f4, pQuestCtrl)
     const pArg = m.alloc(0x40)
     ACT1Q6_SyncCompletionForPlayerOutsideAct1_6FC83000_113c(m, pGame, pPlayer, pArg)
     expect(ACT1Q6_SyncCompletionInCatacombs4_6FC830D0_113c(m, pGame, pPlayer, pArg)).toBe(0)
@@ -304,7 +313,7 @@ describe('K2 Wave 4 Batch 3 (w4b3): 45 D2Game.dll VAs', () => {
     m.setU32(pGame + 0xf0, m.alloc(0x40))
     m.setU32(pGame + 0x10f0, pObjCtrl)
     OBJ_SpawnRandomMonsterTrapFromObject_6FC8A4E0_113c(m, pGame, pObj)
-    expect(OBJ_TryOperateObjectIfInRange_6FC8A720_113c(m, 2, pPlayer, 999, pGame)).toBe(0)
+    expect(OBJ_TryOperateObjectIfInRange_6FC8A720_113c(m, 2, pPlayer, pGame, 999)).toBe(0)
 
     const pOp = m.alloc(0x30)
     m.setU32(pOp + 0x00, pGame)

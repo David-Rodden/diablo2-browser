@@ -13,6 +13,7 @@
  */
 
 import { DRLG_ResolveMonsterSubClassIdForRoom113c } from '../common/drlg/drlg-ver.ts'
+import { D2CommonAssertError } from '../common/inline-helpers.ts'
 import { DRLG_GetActNoFromLevelId113c } from '../common/drlg/drlg.ts'
 import { DRLGPRESET_FreeSaveHeaderBlock113c } from '../common/drlg/preset.ts'
 import {
@@ -93,11 +94,16 @@ import {
   AI_Stall113c,
   ITEMS_FinalizeCreatedItem113c,
   ITEMS_GetDropItemLevel113c,
-  ITEMS_GetQualityBonusDivisor113c,
-  ITEMS_GetQualityMinValue113c,
   MONSTER_StartMode113c,
 } from './combat-a1c-113c.ts'
 import { SUNIT_GetServerUnit113c } from './game-strc.ts'
+import {
+  D2GAME_CreateItemEx_6FC31490_113c,
+  ITEMS_ScheduleReplenishDurabilityEvent_6FC2EA70_113c,
+  ITEMS_ScheduleReplenishQuantityEvent_6FC2EA10_113c,
+  isItemRatioTableLoaded113c,
+  isSgptDataTablesLoaded113c,
+} from './k2-real-itemdrop-113c.ts'
 import { SUNIT_IsDeadOrDying113c } from './monster-events.ts'
 import {
   AI_InitMonsterAiThinkFn113c,
@@ -259,7 +265,7 @@ function executeMonsterModeTransition(
     if (world !== undefined) {
       return MONSTER_StartModeWorld113c(world, pMonster, mode, pTarget, 0, 0) ? 1 : 0
     }
-    return MONSTER_StartMode113c(m, pGame, pMonster, mode, pTarget, 0, 0) | 0
+    return MONSTER_StartMode113c(m, pGame, pMonster, mode, pTarget, 0, 0, byte15 & 0xff, 1) | 0
   } finally {
     k2LaneIStackPtr = savedSp
   }
@@ -358,6 +364,9 @@ function createItemFromDropRecord(
 ): number {
   if (hooks !== undefined && hooks.onCreateItemEx !== undefined) {
     return hooks.onCreateItemEx(m, pGame, pDrop, bSendClient) >>> 0
+  }
+  if (isSgptDataTablesLoaded113c(m) && isItemRatioTableLoaded113c(m)) {
+    return D2GAME_CreateItemEx_6FC31490_113c(m, pGame, pDrop, bSendClient) >>> 0
   }
   const nClassId = m.u32((pDrop + 0x14) >>> 0) | 0
   if (m.u32((pGame + 0x70) >>> 0) === 0) {
@@ -624,12 +633,12 @@ export function ITEMS_GetVendorManaPotionCode_6FC2E310_113c(
   const unit = pUnit >>> 0
   const pRoom = UNITS_GetRoom113c(m, unit) >>> 0
   if (pRoom === 0) {
-    throw new Error('ITEMS_GetVendorManaPotionCode: UNITS_GetRoom == NULL (line 3424)')
+    throw new D2CommonAssertError('Items.cpp', 3424)
   }
   const nLevelId = DUNGEON_GetLevelIdFromRoom113c(m, pRoom) | 0
   let actIdx = DRLG_GetActNoFromLevelId113c(m, nLevelId) & 0xff
   if (unit === 0) {
-    throw new Error('ITEMS_GetVendorManaPotionCode: pUnit == NULL (line 2602)')
+    throw new D2CommonAssertError('Items.cpp', 2602)
   }
   const pGame = m.u32((unit + 0x80) >>> 0) >>> 0
   if (pGame !== 0) {
@@ -658,12 +667,12 @@ export function ITEMS_GetVendorHealthPotionCode_6FC2E390_113c(
   const unit = pUnit >>> 0
   const pRoom = UNITS_GetRoom113c(m, unit) >>> 0
   if (pRoom === 0) {
-    throw new Error('ITEMS_GetVendorHealthPotionCode: UNITS_GetRoom == NULL (line 3393)')
+    throw new D2CommonAssertError('Items.cpp', 3393)
   }
   const nLevelId = DUNGEON_GetLevelIdFromRoom113c(m, pRoom) | 0
   let actIdx = DRLG_GetActNoFromLevelId113c(m, nLevelId) & 0xff
   if (unit === 0) {
-    throw new Error('ITEMS_GetVendorHealthPotionCode: pUnit == NULL (line 2602)')
+    throw new D2CommonAssertError('Items.cpp', 2602)
   }
   const pGame = m.u32((unit + 0x80) >>> 0) >>> 0
   if (pGame !== 0) {
@@ -880,10 +889,8 @@ export function ITEMS_AllocAndLoadFromBitstream_6FC2EAE0_113c(
 
   ITEMS_SetOrClearCommandFlags113c(m, pItem, 0x80000, 1)
   ITEMS_SetOrClearCommandFlags113c(m, pItem, 0x2000, 0)
-  void ITEMS_GetQualityMinValue113c(m, 0, 0)
-  void ITEMS_GetQualityBonusDivisor113c(m, 0, 0)
-  scheduleReplenishStatEvent(m, game, pItem, 0xfc)
-  scheduleReplenishStatEvent(m, game, pItem, 0xfd)
+  ITEMS_ScheduleReplenishDurabilityEvent_6FC2EA70_113c(m, game, pItem)
+  ITEMS_ScheduleReplenishQuantityEvent_6FC2EA10_113c(m, game, pItem)
   return pItem
 }
 
@@ -1325,8 +1332,14 @@ export function AI_InitClearFreezeAndStall_6FC36060_113c(
   if (STATES_CheckState113c(m, mon, 0x0c) !== 0) {
     STATES_ToggleGfxStateFlag113c(m, mon, 0x0c, 0)
   }
-  void m.u32(pAiGen)
-  AI_InitMonsterAiThinkFn113c(m, mon)
+  const nAiIdx = pAiGen !== 0 ? m.u32(pAiGen) | 0 : 0
+  AI_InitMonsterAiThinkFn113c(
+    m,
+    mon,
+    pGame >>> 0,
+    pAiGen !== 0 ? pAiGen : undefined,
+    pAiGen !== 0 ? nAiIdx : undefined,
+  )
   executeAiStall(m, pGame >>> 0, mon, 1, world)
 }
 
@@ -1521,7 +1534,7 @@ export function AI_ThinkSpecialGuard_6FC39640_113c(
     if (world !== undefined) {
       AI_IdleWanderWorld113c(world, mon, 5)
     } else {
-      AI_IdleWander113c(m, game, mon)
+      AI_IdleWander113c(m, game, mon, 5)
     }
     return
   }
@@ -1611,13 +1624,13 @@ export function MONREG_IsMonsterDeadAtCoords_6FC3EE50_113c(
   const x = nX | 0
   const y = nY | 0
   if (game === 0) {
-    throw new Error('MONREG_IsMonsterDeadAtCoords: pGame == NULL (line 1755)')
+    throw new D2CommonAssertError('0x6fd19ff9', 0x6db)
   }
   if (originRoom === 0) {
-    throw new Error('MONREG_IsMonsterDeadAtCoords: pOriginRoom == NULL (line 1756)')
+    throw new D2CommonAssertError('0x6fd19ff9', 0x6dc)
   }
   if (x === 0 || y === 0) {
-    throw new Error('MONREG_IsMonsterDeadAtCoords: nX == 0 || nY == 0 (line 1757)')
+    throw new D2CommonAssertError('0x6fd19ff9', 0x6dd)
   }
 
   let pRoom = ROOM_FindRoomContainingSubtile113c(m, originRoom, x, y) >>> 0

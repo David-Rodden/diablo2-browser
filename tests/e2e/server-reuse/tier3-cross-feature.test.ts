@@ -309,7 +309,7 @@ describe('Tier 3 — Cross-Feature Pairwise Interactions (CF1–CF16, 16 tests)'
   })
 
   it('CF9 (F6 × F8): LocalLobbyProvider & LocalLoopbackAdapter × .d2s character persistence across multiple SP sessions', async () => {
-    const lobby = new Server.LocalLobbyProvider()
+    const lobby = new Server.LocalLobbyProvider({ backend: 'legacy' })
     await lobby.createCharacter({
       name: 'CampaignDruid',
       classId: 'dru',
@@ -340,7 +340,7 @@ describe('Tier 3 — Cross-Feature Pairwise Interactions (CF1–CF16, 16 tests)'
   })
 
   it('CF10 (F7 × F8): Netproto createLocalServerSession & getLocalLobbyProvider × LocalLoopbackAdapter & PauseGameCommand', async () => {
-    const lobby = new Server.LocalLobbyProvider()
+    const lobby = new Server.LocalLobbyProvider({ backend: 'legacy' })
     Netproto.registerLocalLobbyProvider(lobby)
 
     const retrievedLobby = Netproto.getLocalLobbyProvider()

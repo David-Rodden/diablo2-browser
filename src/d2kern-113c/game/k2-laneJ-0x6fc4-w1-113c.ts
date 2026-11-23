@@ -23,6 +23,7 @@ import {
   DUNGEON_SetRoomFlag2_113c,
 } from '../common/dungeon.ts'
 import { imul32 } from '../common/int-math.ts'
+import { D2CommonAssertError } from '../common/inline-helpers.ts'
 import { DRLGWARP_TestRoomTileBit113c } from '../common/items.ts'
 import {
   DUNGEON_CheckRoomIsTownMemPort113c,
@@ -64,7 +65,7 @@ import {
   UNITS_SetSeqFrameFromLowByte113c,
   UNIT_GetAlignment113c,
 } from '../common/unit.ts'
-import type { Memory113c } from '../mem/sparse-memory.ts'
+import type { Memory113c, SparseMemory113c } from '../mem/sparse-memory.ts'
 import {
   ROOM_RefreshUnitsAndLoadSaved113c,
   ROOM_TickSeedAndAmbientSpawn113c,
@@ -128,6 +129,55 @@ import {
   OBJECTS_SpawnDensityWithSecondaryTorch113c,
   SUNIT_FreeUnit113c,
 } from './replay-final11-113c.ts'
+import { ACT4_IntroCallback08Noop_6FC80180_113c } from './k2-w2b1-113c.ts'
+import { ACT2Q4_Callback00_Noop_6FCE1980_113c } from './k2-w2b6-113c.ts'
+import { ACT2Q2_NoOp_6FCE2450_113c } from './k2-w2b7-113c.ts'
+import { ACT4Q2_DropHellforgeHammerAtUnit_6FCDA810_113c } from './k2-w4b8-113c.ts'
+import {
+  ACT2Q2_Callback_ClearDroppedStaffItemQuestFlags_6FCE3E10_113c,
+  ACT2Q2_Callback_ItemPickedUpUpdateStaffQuest_6FCE5F30_113c,
+} from './k2-w5b5-113c.ts'
+import { ACT3Q3_OnKhalimRelicPickedUp_6FD06190_113c } from './k2-w5b8-113c.ts'
+import {
+  ACT1Q4_Callback02_OnGriswoldDeath_6FC85A70_113c,
+  ACT1Q5_OnMoldyTomeActivated_6FC83730_113c,
+  ACT5Q1_OnShenkKilledCompleteQuest_6FC7BDB0_113c,
+  ACT5Q2_Callback02_MonsterKilled_6FC7A310_113c,
+} from './k2-w6b4-113c.ts'
+import { QUESTS_Act1AndarielOnDeath_6FC7B690_113c } from './k2-w7b1-113c.ts'
+import {
+  ACT1Q2_OnBloodRavenKilled_6FC85620_113c,
+  ACT1Q4_OnQuestActivatedUpdatePlayers_6FC83570_113c,
+  ACT1Q5_OnAndarielKilled_6FC88B90_113c,
+} from './k2-w7b2-113c.ts'
+import {
+  ACT2Q5_OnSummonerKilled_6FCE66B0_113c,
+  ACT4Q1_OnIzualKilled_6FCDABF0_113c,
+} from './k2-w7b3-113c.ts'
+import {
+  ACT2Q1_OnRadamentKilled_6FCE7540_113c,
+  ACT2Q6_OnDurielKilled_6FCE97D0_113c,
+  ACT3Q2_OnGidbinnBossKilled_6FD08140_113c,
+  ACT3Q4_OnLamEsensTomeDropped_6FD07A40_113c,
+  ACT3Q4_OnLamEsensTomePickedUp_6FD07AF0_113c,
+} from './k2-w7b4-113c.ts'
+import {
+  ACT1Q1_OnMonsterKilled_6FC85760_113c,
+  ACT4Q1_OnPlayerChangeLevel_6FCDA330_113c,
+} from './k2-w8b2-113c.ts'
+import {
+  ACT3Q1_OnBossKilledDropJadeFigurine_6FD08010_113c,
+  ACT3Q1_OnQuestItemPickedUp_6FD07640_113c,
+  ACT3Q2_OnGidbinnPickedUp_6FD07770_113c,
+  ACT3Q5_OnCouncilMemberKilled_6FD07DB0_113c,
+  ACT3Q7_OnMephistoKilled_6FD09A10_113c,
+} from './k2-w8b4-113c.ts'
+import { ACT1Q6_OnAndarielKilled_6FC87E00_113c } from './k2-w9b1-113c.ts'
+import { ACT5Q5_Callback02_OnAncientKilled_6FC7EED0_113c } from './k2-w10b1-113c.ts'
+import {
+  ACT4Q3_OnSealBossOrDiabloKilled_6FCDC2C0_113c,
+  ACT5Q6_OnBaalKilledCompleteQuestAndSpawnPortal_6FC7FE30_113c,
+} from './k2-w16b1-113c.ts'
 import { ROOM_SpawnMonsterPreset113c, ROOM_SpawnPresetUnits113c } from './room-presets-113c.ts'
 import { EVENT_FreeNode113c, EVENT_SetEventFull113c } from './timer-wheel.ts'
 import { hitD2GameVa113c } from '../va-trace-113c.ts'
@@ -360,16 +410,118 @@ function dispatchQuestCallback113c(
   hooks?: LaneJKernHooks113c,
 ): void {
   const fnVa = pfnCallback >>> 0
-  if (fnVa === 0x6fd02ef0) {
-    ACT3Q7_Callback11_Noop113c(m, pQuest, pQuestArg)
-    return
-  }
-  if (fnVa === 0x6fd049e0) {
-    ACT3Q7_Callback14_PlayerJoined113c(m, pQuest, pQuestArg)
-    return
-  }
-  if (hooks !== undefined && hooks.onQuestCallback !== undefined) {
-    hooks.onQuestCallback(m, fnVa, pQuest, pQuestArg)
+  const sm = m as SparseMemory113c
+  switch (fnVa) {
+    case 0x6fc7a310:
+      ACT5Q2_Callback02_MonsterKilled_6FC7A310_113c(sm, pQuest, pQuestArg)
+      return
+    case 0x6fc7b690:
+      QUESTS_Act1AndarielOnDeath_6FC7B690_113c(sm, pQuest, pQuestArg)
+      return
+    case 0x6fc7bdb0:
+      ACT5Q1_OnShenkKilledCompleteQuest_6FC7BDB0_113c(sm, pQuest, pQuestArg)
+      return
+    case 0x6fc7eed0:
+      ACT5Q5_Callback02_OnAncientKilled_6FC7EED0_113c(sm, pQuest, pQuestArg)
+      return
+    case 0x6fc7fe30:
+      ACT5Q6_OnBaalKilledCompleteQuestAndSpawnPortal_6FC7FE30_113c(sm, pQuest, pQuestArg)
+      return
+    case 0x6fc80180:
+      ACT4_IntroCallback08Noop_6FC80180_113c(m, pQuest, pQuestArg)
+      return
+    case 0x6fc83570:
+      ACT1Q4_OnQuestActivatedUpdatePlayers_6FC83570_113c(sm, pQuest)
+      return
+    case 0x6fc83730:
+      ACT1Q5_OnMoldyTomeActivated_6FC83730_113c(sm, pQuest, pQuestArg)
+      return
+    case 0x6fc85620:
+      ACT1Q2_OnBloodRavenKilled_6FC85620_113c(sm, pQuest, pQuestArg)
+      return
+    case 0x6fc85760:
+      ACT1Q1_OnMonsterKilled_6FC85760_113c(sm, pQuest, pQuestArg)
+      return
+    case 0x6fc85a70:
+      ACT1Q4_Callback02_OnGriswoldDeath_6FC85A70_113c(sm, pQuest, pQuestArg)
+      return
+    case 0x6fc87e00:
+      ACT1Q6_OnAndarielKilled_6FC87E00_113c(sm, pQuest, pQuestArg)
+      return
+    case 0x6fc88b90:
+      ACT1Q5_OnAndarielKilled_6FC88B90_113c(sm, pQuest, pQuestArg)
+      return
+    case 0x6fcda330:
+      ACT4Q1_OnPlayerChangeLevel_6FCDA330_113c(sm, pQuest, pQuestArg)
+      return
+    case 0x6fcda810:
+      ACT4Q2_DropHellforgeHammerAtUnit_6FCDA810_113c(sm, pQuest, pQuestArg)
+      return
+    case 0x6fcdabf0:
+      ACT4Q1_OnIzualKilled_6FCDABF0_113c(sm, pQuest, pQuestArg)
+      return
+    case 0x6fcdc2c0:
+      ACT4Q3_OnSealBossOrDiabloKilled_6FCDC2C0_113c(sm, pQuest, pQuestArg)
+      return
+    case 0x6fce1980:
+      ACT2Q4_Callback00_Noop_6FCE1980_113c(m, pQuest, pQuestArg)
+      return
+    case 0x6fce2450:
+      ACT2Q2_NoOp_6FCE2450_113c(m)
+      return
+    case 0x6fce3e10:
+      ACT2Q2_Callback_ClearDroppedStaffItemQuestFlags_6FCE3E10_113c(sm, pQuest, pQuestArg)
+      return
+    case 0x6fce5f30:
+      ACT2Q2_Callback_ItemPickedUpUpdateStaffQuest_6FCE5F30_113c(sm, pQuest, pQuestArg)
+      return
+    case 0x6fce66b0:
+      ACT2Q5_OnSummonerKilled_6FCE66B0_113c(sm, pQuest, pQuestArg)
+      return
+    case 0x6fce7540:
+      ACT2Q1_OnRadamentKilled_6FCE7540_113c(sm, pQuest, pQuestArg)
+      return
+    case 0x6fce97d0:
+      ACT2Q6_OnDurielKilled_6FCE97D0_113c(sm, pQuest, pQuestArg)
+      return
+    case 0x6fd02ef0:
+      ACT3Q7_Callback11_Noop113c(m, pQuest, pQuestArg)
+      return
+    case 0x6fd049e0:
+      ACT3Q7_Callback14_PlayerJoined113c(m, pQuest, pQuestArg)
+      return
+    case 0x6fd06190:
+      ACT3Q3_OnKhalimRelicPickedUp_6FD06190_113c(sm, pQuest, pQuestArg)
+      return
+    case 0x6fd07640:
+      ACT3Q1_OnQuestItemPickedUp_6FD07640_113c(sm, pQuest, pQuestArg)
+      return
+    case 0x6fd07770:
+      ACT3Q2_OnGidbinnPickedUp_6FD07770_113c(sm, pQuest, pQuestArg)
+      return
+    case 0x6fd07a40:
+      ACT3Q4_OnLamEsensTomeDropped_6FD07A40_113c(sm, pQuest, pQuestArg)
+      return
+    case 0x6fd07af0:
+      ACT3Q4_OnLamEsensTomePickedUp_6FD07AF0_113c(sm, pQuest, pQuestArg)
+      return
+    case 0x6fd07db0:
+      ACT3Q5_OnCouncilMemberKilled_6FD07DB0_113c(sm, pQuest, pQuestArg)
+      return
+    case 0x6fd08010:
+      ACT3Q1_OnBossKilledDropJadeFigurine_6FD08010_113c(sm, pQuest, pQuestArg)
+      return
+    case 0x6fd08140:
+      ACT3Q2_OnGidbinnBossKilled_6FD08140_113c(sm, pQuest, pQuestArg)
+      return
+    case 0x6fd09a10:
+      ACT3Q7_OnMephistoKilled_6FD09A10_113c(sm, pQuest, pQuestArg)
+      return
+    default:
+      if (hooks !== undefined && hooks.onQuestCallback !== undefined) {
+        hooks.onQuestCallback(m, fnVa, pQuest, pQuestArg)
+      }
+      return
   }
 }
 
@@ -805,11 +957,11 @@ export function GAME_LeaveGameCriticalSection_6FC49BA0_113c(
   hitD2GameVa113c(0x6FC49BA0)
   const game = pGame >>> 0
   if (game === 0) {
-    throw new Error('GAME_LeaveGameCriticalSection_6FC49BA0_113c: pGame == NULL (line 4110)')
+    throw new D2CommonAssertError('Game.cpp', 4110)
   }
   const pLock = m.u32((game + 0x18) >>> 0) >>> 0
   if (pLock === 0) {
-    throw new Error('GAME_LeaveGameCriticalSection_6FC49BA0_113c: pLock == NULL (line 4111)')
+    throw new D2CommonAssertError('Game.cpp', 4111)
   }
   if (hooks !== undefined && hooks.onLeaveCriticalSection !== undefined) {
     hooks.onLeaveCriticalSection(m, pLock)
@@ -884,7 +1036,7 @@ export function GAME_CommitGlobalGameSlot_6FC4A2D0_113c(
   const slot = wSlotIndex & 0xffff
   const addr = (D2GAME_GLOBAL_GAME_SLOTS_VA_113C + slot * 4) >>> 0
   if (m.u32(addr) !== 0xffffffff) {
-    throw new Error('GAME_CommitGlobalGameSlot_6FC4A2D0_113c: slot != -1 (line 389)')
+    throw new D2CommonAssertError('Game.cpp', 389)
   }
   m.setU32(addr, dwGameValue >>> 0)
   if (hooks !== undefined && hooks.onLeaveCriticalSection !== undefined) {
@@ -907,7 +1059,7 @@ export function CLIENT_SelectFlag20ClientCallback_6FC4A700_113c(
   hitD2GameVa113c(0x6FC4A700)
   const client = pClient >>> 0
   if (client === 0) {
-    throw new Error('CLIENT_SelectFlag20ClientCallback_6FC4A700_113c: pClient == NULL (line 2982)')
+    throw new D2CommonAssertError('Clients.cpp', 2982)
   }
   if ((m.u8((client + 0x3d4) >>> 0) & 0x20) !== 0) {
     m.setU32(ppOutClient >>> 0, client)
@@ -934,9 +1086,7 @@ export function CLIENT_SendUnitRemoveIfInNearRoom_6FC4A9F0_113c(
   const pUnitRoom = UNITS_GetRoom113c(m, unit) >>> 0
   const pClientRoom = m.u32((client + 0x1b4) >>> 0) >>> 0
   if (pClientRoom === 0) {
-    throw new Error(
-      'CLIENT_SendUnitRemoveIfInNearRoom_6FC4A9F0_113c: pClient->pRoom == NULL (line 5483)',
-    )
+    throw new D2CommonAssertError('Clients.cpp', 5483)
   }
 
   const savedSp = k2LaneJStackPtr
@@ -953,9 +1103,7 @@ export function CLIENT_SendUnitRemoveIfInNearRoom_6FC4A9F0_113c(
     for (let i = 0; i < nNear; i++) {
       const pAdj = m.u32((pRoomsArr + i * 4) >>> 0) >>> 0
       if (pAdj === 0) {
-        throw new Error(
-          'CLIENT_SendUnitRemoveIfInNearRoom_6FC4A9F0_113c: ppRoomsNear[i] == NULL (line 5488)',
-        )
+        throw new D2CommonAssertError('Clients.cpp', 5488)
       }
       if (pUnitRoom === pAdj) {
         found = true
@@ -993,9 +1141,7 @@ export function CLIENT_BroadcastPlayerLeftPacket5C_6FC4BED0_113c(
   hitD2GameVa113c(0x6FC4BED0)
   const client = pLeavingClient >>> 0
   if (client === 0) {
-    throw new Error(
-      'CLIENT_BroadcastPlayerLeftPacket5C_6FC4BED0_113c: pLeavingClient == NULL (line 251)',
-    )
+    throw new D2CommonAssertError('Clients.cpp', 251)
   }
   let pPlayerUnit = 0
   if ((m.u8((client + 0x3d4) >>> 0) & 1) !== 0) {
@@ -1254,7 +1400,7 @@ export function OBJECTS_InitFn57_InitSpecialChest_6FC4EF50_113c(
   OBJECTS_InitChestLockAndSeed113c(m, initPtr)
   const pObject = m.u32((initPtr + 0x04) >>> 0) >>> 0
   if (pObject === 0) {
-    throw new Error('OBJECTS_InitFn57_InitSpecialChest_6FC4EF50_113c: pObject == NULL (line 2632)')
+    throw new D2CommonAssertError('ObjMode.cpp', 2632)
   }
   m.setU8((pObject + 0x78) >>> 0, 1)
 }
@@ -1281,9 +1427,7 @@ export function OBJECTS_SpawnSingleDensityObjectInRoom_6FC52BC0_113c(
   hitD2GameVa113c(0x6FC52BC0)
   const densByte = nDensity & 0xff
   if (densByte > 0x80) {
-    throw new Error(
-      'OBJECTS_SpawnSingleDensityObjectInRoom_6FC52BC0_113c: nDensity > 128 (line 2195)',
-    )
+    throw new D2CommonAssertError('ObjMode.cpp', 2195)
   }
   const game = pGame >>> 0
   const room = pRoom >>> 0
@@ -1396,7 +1540,7 @@ export function OBJECTS_InitFn11_InitTownPortal_6FC53330_113c(
   const actNo = DRLG_GetActNoFromLevelId113c(m, levelId) & 0xff
   const townLevelId = DUNGEON_GetActLevelId113c(m, actNo) | 0
   if (townLevelId > 0xff) {
-    throw new Error('OBJECTS_InitFn11_InitTownPortal_6FC53330_113c: townLevelId > 255 (line 1135)')
+    throw new D2CommonAssertError('ObjMode.cpp', 1135)
   }
   const pObject0 = m.u32((initPtr + 0x04) >>> 0) >>> 0
   const pObjData = m.u32((pObject0 + 0x14) >>> 0) >>> 0
@@ -1564,7 +1708,7 @@ export function QUESTS_CheckGlobalQuestState_6FC538D0_113c(
   hitD2GameVa113c(0x6FC538D0)
   const pQuestCtrl = m.u32(((pGame >>> 0) + 0x10f4) >>> 0) >>> 0
   if (m.u32((pQuestCtrl + 0x08) >>> 0) === 0) {
-    throw new Error('QUESTS_CheckGlobalQuestState_6FC538D0_113c: bInitialized == 0 (line 2092)')
+    throw new D2CommonAssertError('Quests.cpp', 2092)
   }
   const pQuestFlags = m.u32((pQuestCtrl + 0x0c) >>> 0) >>> 0
   return DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, nQuestId | 0, nState | 0)
@@ -1585,7 +1729,7 @@ export function QUESTS_SetGlobalQuestState_6FC53920_113c(
   hitD2GameVa113c(0x6FC53920)
   const pQuestCtrl = m.u32(((pGame >>> 0) + 0x10f4) >>> 0) >>> 0
   if (m.u32((pQuestCtrl + 0x08) >>> 0) === 0) {
-    throw new Error('QUESTS_SetGlobalQuestState_6FC53920_113c: bInitialized == 0 (line 2080)')
+    throw new D2CommonAssertError('Quests.cpp', 2080)
   }
   const pQuestFlags = m.u32((pQuestCtrl + 0x0c) >>> 0) >>> 0
   QUESTRECORD_SetQuestState113c(m, pQuestFlags, nQuestId | 0, nState | 0)
@@ -1606,11 +1750,11 @@ export function QUESTS_CheckNotIntro_6FC53970_113c(
   hitD2GameVa113c(0x6FC53970)
   const game = pGame >>> 0
   if (game === 0) {
-    throw new Error('QUESTS_CheckNotIntro_6FC53970_113c: pGame == NULL (line 1987)')
+    throw new D2CommonAssertError('Quests.cpp', 1987)
   }
   const pQuestCtrl = m.u32((game + 0x10f4) >>> 0) >>> 0
   if (m.u32((pQuestCtrl + 0x08) >>> 0) === 0) {
-    throw new Error('QUESTS_CheckNotIntro_6FC53970_113c: bInitialized == 0 (line 1989)')
+    throw new D2CommonAssertError('Quests.cpp', 1989)
   }
   let pQuest = m.u32(pQuestCtrl) >>> 0
   const target = nQuestNo >>> 0
@@ -1667,7 +1811,7 @@ export function QUESTS_ResolveDefaultStatusByte_6FC53A30_113c(
   const hasState0D = DRLGWARP_TestRoomTileBit113c(m, qFlags, seqId1, 0x0d)
   if (hasState0D === 1) {
     if ((m.u32((quest + 0xe0) >>> 0) | 0) >= 0x29) {
-      throw new Error('QUESTS_ResolveDefaultStatusByte_6FC53A30_113c: nQuestNo >= 41 (line 1109)')
+      throw new D2CommonAssertError('Quests.cpp', 1109)
     }
     m.setU8(outPtr, m.u8((quest + 0x0b) >>> 0))
     return
@@ -1712,7 +1856,7 @@ export function QUESTS_AppendQuestTimer_6FC53AF0_113c(
   const pQuestCtrl = m.u32((pGame + 0x10f4) >>> 0) >>> 0
   if (pQuestCtrl === 0) return
   if (m.u32((pQuestCtrl + 0x04) >>> 0) !== 0) {
-    throw new Error('QUESTS_AppendQuestTimer_6FC53AF0_113c: bExecuting != 0 (line 1047)')
+    throw new D2CommonAssertError('Quests.cpp', 1047)
   }
   m.u32((pGame + 0x1c) >>> 0)
   const oldHead = m.u32((pQuestCtrl + 0x10) >>> 0) >>> 0
@@ -1754,9 +1898,7 @@ export function QUESTS_DispatchUnitChainCallbacks_6FC53C70_113c(
     if (pfn !== 0) {
       if (m.u8((pQuest + 0x0a) >>> 0) === 1 || force !== 0) {
         if (checkIsBadCodePtr113c(pfn, hooks) !== 0) {
-          throw new Error(
-            'QUESTS_DispatchUnitChainCallbacks_6FC53C70_113c: IsBadCodePtr (line 574)',
-          )
+          throw new D2CommonAssertError('Quests.cpp', 574)
         }
         const pQuestCall = m.u32(pNode) >>> 0
         const cbIdxCall = m.u32((argPtr + 0x04) >>> 0) >>> 0
@@ -1781,7 +1923,7 @@ export function QUESTS_GetQuestSeedPtr_6FC53D90_113c(
   hitD2GameVa113c(0x6FC53D90)
   const pQuestCtrl = m.u32(((pGame >>> 0) + 0x10f4) >>> 0) >>> 0
   if (pQuestCtrl === 0) {
-    throw new Error('QUESTS_GetQuestSeedPtr_6FC53D90_113c: pQuestControl == NULL (line 507)')
+    throw new D2CommonAssertError('Quests.cpp', 507)
   }
   return (pQuestCtrl + 0x18) >>> 0
 }
@@ -1801,7 +1943,7 @@ export function QUESTS_GetQuestData_6FC53F30_113c(
   hitD2GameVa113c(0x6FC53F30)
   const pQuestCtrl = m.u32(((pGame >>> 0) + 0x10f4) >>> 0) >>> 0
   if ((nQuestId | 0) < 0) {
-    throw new Error('QUESTS_GetQuestData_6FC53F30_113c: nQuestId < 0 (line 119)')
+    throw new D2CommonAssertError('Quests.cpp', 119)
   }
   if (pQuestCtrl === 0) return 0
   let pQuest = m.u32(pQuestCtrl) >>> 0
@@ -1834,7 +1976,7 @@ export function QUESTS_AttachQuestToUnit_6FC53F80_113c(
   const unit = pUnit >>> 0
   let pCur = m.u32((unit + 0x74) >>> 0) >>> 0
   if (quest === 0) {
-    throw new Error('QUESTS_AttachQuestToUnit_6FC53F80_113c: pQuest == NULL (line 93)')
+    throw new D2CommonAssertError('Quests.cpp', 93)
   }
   while (pCur !== 0) {
     const curQuest = m.u32(pCur) >>> 0
@@ -1897,9 +2039,7 @@ export function OBJECTS_InitFn23_SyncQuest0FObjectAnimMode_6FC54370_113c(
     pQuest = m.u32((pQuest + 0xf4) >>> 0) >>> 0
   }
   if (pQuest === 0) {
-    throw new Error(
-      'OBJECTS_InitFn23_SyncQuest0FObjectAnimMode_6FC54370_113c: quest 15 not found (line 2435)',
-    )
+    throw new D2CommonAssertError('ObjMode.cpp', 2435)
   }
   const bNotIntro = m.u8((pQuest + 0x09) >>> 0)
   const pObject = m.u32((initPtr + 0x04) >>> 0) >>> 0
@@ -1944,10 +2084,10 @@ export function QUESTS_TriggerItemPickedUp_6FC54510_113c(
     while (pNode !== 0) {
       const pQuest = m.u32(pNode) >>> 0
       const cbIdx = m.u32((pQuestArg + 0x04) >>> 0) >>> 0
-      const pfn = m.u32((pQuest + cbIdx * 4 + 0xa0) >>> 0) >>> 0
+      const pfn = pQuest !== 0 ? (m.u32((pQuest + cbIdx * 4 + 0xa0) >>> 0) >>> 0) : 0
       if (pfn !== 0 && m.u8((pQuest + 0x0a) >>> 0) === 1) {
         if (checkIsBadCodePtr113c(pfn, hooks) !== 0) {
-          throw new Error('QUESTS_TriggerItemPickedUp_6FC54510_113c: IsBadCodePtr (line 574)')
+          throw new D2CommonAssertError('Quests.cpp', 574)
         }
         const pQuestCall = m.u32(pNode) >>> 0
         const cbIdxCall = m.u32((pQuestArg + 0x04) >>> 0) >>> 0
@@ -1994,10 +2134,10 @@ export function QUESTS_TriggerItemDropped_6FC545A0_113c(
     while (pNode !== 0) {
       const pQuest = m.u32(pNode) >>> 0
       const cbIdx = m.u32((pQuestArg + 0x04) >>> 0) >>> 0
-      const pfn = m.u32((pQuest + cbIdx * 4 + 0xa0) >>> 0) >>> 0
+      const pfn = pQuest !== 0 ? (m.u32((pQuest + cbIdx * 4 + 0xa0) >>> 0) >>> 0) : 0
       if (pfn !== 0 && m.u8((pQuest + 0x0a) >>> 0) === 1) {
         if (checkIsBadCodePtr113c(pfn, hooks) !== 0) {
-          throw new Error('QUESTS_TriggerItemDropped_6FC545A0_113c: IsBadCodePtr (line 574)')
+          throw new D2CommonAssertError('Quests.cpp', 574)
         }
         const pQuestCall = m.u32(pNode) >>> 0
         const cbIdxCall = m.u32((pQuestArg + 0x04) >>> 0) >>> 0

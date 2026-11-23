@@ -42,6 +42,10 @@ import { SKILLS_StartUsedSkill113c } from './a1c-post150-f786-f1040-113c.js'
 import { SUNITDMG_FreeAttackerCombatList113c } from './ai-fallen-113c.js'
 import { NET_QueuePacketToClientBuffer113c } from './boot-init-gap-a-113c.js'
 import { AI_Stall113c, MONSTER_DropTreasureOnDeath113c } from './combat-a1c-113c.js'
+import {
+  isSgptDataTablesLoaded113c,
+  MONSTER_DropTreasureOnDeath_6FC95680_113c,
+} from './k2-real-itemdrop-113c.js'
 import { MONSTER_ClearModeEvents113c, UNITS_ChangeAnimMode113c } from './monster-events.js'
 import {
   AI_InitMonsterAiThinkFn113c,
@@ -52,6 +56,20 @@ import {
 import { EVENT_SetEventFull113c } from './timer-wheel.js'
 import { SUNIT_UpdateUnitPositionAndRoom113c } from './town-runtime-gap-113c.js'
 import { hitD2GameVa113c } from '../va-trace-113c.js'
+
+let k2W2B3StackPtr = 0x7e120000
+
+function withK2W2B3Stack113c<T>(m: Memory113c, size: number, fn: (pBuf: number) => T): T {
+  const aligned = ((size + 15) & ~15) >>> 0
+  const pBuf = k2W2B3StackPtr >>> 0
+  k2W2B3StackPtr = (pBuf + aligned) >>> 0
+  try {
+    m.fill(pBuf, aligned, 0)
+    return fn(pBuf)
+  } finally {
+    k2W2B3StackPtr = pBuf
+  }
+}
 
 /**
  * Pure-memory helper for `D2Game:0x6FD01930` (`MONSTER_StepPath`):
@@ -428,6 +446,18 @@ export function MONMODE_DropTreasureOnDeathWrapper_6FC958D0_113c(
   allocateUnitInMem = false,
 ): number {
   hitD2GameVa113c(0x6FC958D0)
+  // 0x6FC958D7: `push 1` passes bNoUpgrade = 1 to MONSTER_DropTreasureOnDeath_6FC95680
+  if (isSgptDataTablesLoaded113c(m)) {
+    return (
+      MONSTER_DropTreasureOnDeath_6FC95680_113c(
+        m,
+        pGame >>> 0,
+        pMonster >>> 0,
+        pKiller >>> 0,
+        1,
+      ) | 0
+    )
+  }
   return (
     MONSTER_DropTreasureOnDeath113c(
       m,
@@ -639,10 +669,14 @@ export function AI_ClearState12InitThinkFnAndStall1_6FC9C8C0_113c(
   if ((STATES_CheckState113c(m, pUnit >>> 0, 0x0c) | 0) !== 0) {
     STATES_ToggleGfxStateFlag113c(m, pUnit >>> 0, 0x0c, 0)
   }
-  if (pAiEntry !== 0) {
-    m.u32(pAiEntry)
-  }
-  AI_InitMonsterAiThinkFn113c(m, pUnit >>> 0)
+  const nAiIdx = pAiEntry !== 0 ? m.u32(pAiEntry) | 0 : 0
+  AI_InitMonsterAiThinkFn113c(
+    m,
+    pUnit >>> 0,
+    pGame >>> 0,
+    pAiEntry !== 0 ? pAiEntry : undefined,
+    pAiEntry !== 0 ? nAiIdx : undefined,
+  )
   AI_Stall113c(m, pGame >>> 0, pUnit >>> 0, 1)
 }
 
@@ -696,11 +730,12 @@ export function NET_SendPacket9B_MercReviveInfo_6FCAA690_113c(
   pClient: number,
 ): number {
   hitD2GameVa113c(0x6FCAA690)
-  const pPkt = m.alloc(8) >>> 0
-  m.setU8(pPkt, 0x9b)
-  m.setU16((pPkt + 0x01) >>> 0, wMercNameId & 0xffff)
-  m.setU32((pPkt + 0x03) >>> 0, dwReviveCost >>> 0)
-  return NET_QueuePacketToClientBuffer113c(m, pClient >>> 0, 1, pPkt, 7) | 0
+  return withK2W2B3Stack113c(m, 8, (pPkt) => {
+    m.setU8(pPkt, 0x9b)
+    m.setU16((pPkt + 0x01) >>> 0, wMercNameId & 0xffff)
+    m.setU32((pPkt + 0x03) >>> 0, dwReviveCost >>> 0)
+    return NET_QueuePacketToClientBuffer113c(m, pClient >>> 0, 1, pPkt, 7) | 0
+  })
 }
 
 /**
@@ -719,11 +754,12 @@ export function NET_SendPacket98_UnitWordValue_6FCAA6C0_113c(
   pClient: number,
 ): number {
   hitD2GameVa113c(0x6FCAA6C0)
-  const pPkt = m.alloc(8) >>> 0
-  m.setU8(pPkt, 0x98)
-  m.setU32((pPkt + 0x01) >>> 0, dwUnitGuid >>> 0)
-  m.setU16((pPkt + 0x05) >>> 0, wValue & 0xffff)
-  return NET_QueuePacketToClientBuffer113c(m, pClient >>> 0, 1, pPkt, 7) | 0
+  return withK2W2B3Stack113c(m, 8, (pPkt) => {
+    m.setU8(pPkt, 0x98)
+    m.setU32((pPkt + 0x01) >>> 0, dwUnitGuid >>> 0)
+    m.setU16((pPkt + 0x05) >>> 0, wValue & 0xffff)
+    return NET_QueuePacketToClientBuffer113c(m, pClient >>> 0, 1, pPkt, 7) | 0
+  })
 }
 
 /**
@@ -743,14 +779,15 @@ export function NET_SendPacket74_PlayerCorpseAssign_6FCAA9C0_113c(
   bAssign: number,
 ): number {
   hitD2GameVa113c(0x6FCAA9C0)
-  const pPkt = m.alloc(0x0c) >>> 0
-  m.setU8(pPkt, 0x74)
-  m.setU8((pPkt + 0x01) >>> 0, bAssign & 0xff)
-  const dwOwnerGuid = pOwnerUnit === 0 ? 0xffffffff : m.u32((pOwnerUnit + 0x0c) >>> 0) >>> 0
-  m.setU32((pPkt + 0x02) >>> 0, dwOwnerGuid)
-  const dwCorpseGuid = pCorpseUnit === 0 ? 0xffffffff : m.u32((pCorpseUnit + 0x0c) >>> 0) >>> 0
-  m.setU32((pPkt + 0x06) >>> 0, dwCorpseGuid)
-  return NET_QueuePacketToClientBuffer113c(m, pClient >>> 0, 1, pPkt, 0x0a) | 0
+  return withK2W2B3Stack113c(m, 0x0c, (pPkt) => {
+    m.setU8(pPkt, 0x74)
+    m.setU8((pPkt + 0x01) >>> 0, bAssign & 0xff)
+    const dwOwnerGuid = pOwnerUnit === 0 ? 0xffffffff : m.u32((pOwnerUnit + 0x0c) >>> 0) >>> 0
+    m.setU32((pPkt + 0x02) >>> 0, dwOwnerGuid)
+    const dwCorpseGuid = pCorpseUnit === 0 ? 0xffffffff : m.u32((pCorpseUnit + 0x0c) >>> 0) >>> 0
+    m.setU32((pPkt + 0x06) >>> 0, dwCorpseGuid)
+    return NET_QueuePacketToClientBuffer113c(m, pClient >>> 0, 1, pPkt, 0x0a) | 0
+  })
 }
 
 /**
@@ -768,12 +805,13 @@ export function NET_SendPacketBuffer32B_6FCAAA10_113c(
   pClient: number,
 ): number {
   hitD2GameVa113c(0x6FCAAA10)
-  const pPkt = m.alloc(0x20) >>> 0
-  for (let i = 0; i < 8; i = (i + 1) | 0) {
-    const off = (i << 2) >>> 0
-    m.setU32((pPkt + off) >>> 0, m.u32((pSrc + off) >>> 0) >>> 0)
-  }
-  return NET_QueuePacketToClientBuffer113c(m, pClient >>> 0, 1, pPkt, 0x20) | 0
+  return withK2W2B3Stack113c(m, 0x20, (pPkt) => {
+    for (let i = 0; i < 8; i = (i + 1) | 0) {
+      const off = (i << 2) >>> 0
+      m.setU32((pPkt + off) >>> 0, m.u32((pSrc + off) >>> 0) >>> 0)
+    }
+    return NET_QueuePacketToClientBuffer113c(m, pClient >>> 0, 1, pPkt, 0x20) | 0
+  })
 }
 
 /**
@@ -791,14 +829,15 @@ export function NET_SendPacketBuffer21B_6FCAAA70_113c(
   pClient: number,
 ): number {
   hitD2GameVa113c(0x6FCAAA70)
-  const pPkt = m.alloc(0x18) >>> 0
-  m.setU32(pPkt, m.u32(pSrc >>> 0) >>> 0)
-  m.setU32((pPkt + 0x04) >>> 0, m.u32((pSrc + 0x04) >>> 0) >>> 0)
-  m.setU32((pPkt + 0x08) >>> 0, m.u32((pSrc + 0x08) >>> 0) >>> 0)
-  m.setU32((pPkt + 0x0c) >>> 0, m.u32((pSrc + 0x0c) >>> 0) >>> 0)
-  m.setU32((pPkt + 0x10) >>> 0, m.u32((pSrc + 0x10) >>> 0) >>> 0)
-  m.setU8((pPkt + 0x14) >>> 0, m.u8((pSrc + 0x14) >>> 0))
-  return NET_QueuePacketToClientBuffer113c(m, pClient >>> 0, 1, pPkt, 0x15) | 0
+  return withK2W2B3Stack113c(m, 0x18, (pPkt) => {
+    m.setU32(pPkt, m.u32(pSrc >>> 0) >>> 0)
+    m.setU32((pPkt + 0x04) >>> 0, m.u32((pSrc + 0x04) >>> 0) >>> 0)
+    m.setU32((pPkt + 0x08) >>> 0, m.u32((pSrc + 0x08) >>> 0) >>> 0)
+    m.setU32((pPkt + 0x0c) >>> 0, m.u32((pSrc + 0x0c) >>> 0) >>> 0)
+    m.setU32((pPkt + 0x10) >>> 0, m.u32((pSrc + 0x10) >>> 0) >>> 0)
+    m.setU8((pPkt + 0x14) >>> 0, m.u8((pSrc + 0x14) >>> 0))
+    return NET_QueuePacketToClientBuffer113c(m, pClient >>> 0, 1, pPkt, 0x15) | 0
+  })
 }
 
 /**
@@ -816,10 +855,11 @@ export function NET_SendPacket61_ByteParam_6FCAAAC0_113c(
   pClient: number,
 ): number {
   hitD2GameVa113c(0x6FCAAAC0)
-  const pPkt = m.alloc(4) >>> 0
-  m.setU8(pPkt, 0x61)
-  m.setU8((pPkt + 0x01) >>> 0, bParam & 0xff)
-  return NET_QueuePacketToClientBuffer113c(m, pClient >>> 0, 1, pPkt, 2) | 0
+  return withK2W2B3Stack113c(m, 4, (pPkt) => {
+    m.setU8(pPkt, 0x61)
+    m.setU8((pPkt + 0x01) >>> 0, bParam & 0xff)
+    return NET_QueuePacketToClientBuffer113c(m, pClient >>> 0, 1, pPkt, 2) | 0
+  })
 }
 
 /**
@@ -838,16 +878,17 @@ export function NET_SendPacket60_PortalInfo_6FCAAAE0_113c(
   pClient: number,
 ): number {
   hitD2GameVa113c(0x6FCAAAE0)
-  const pPkt = m.alloc(8) >>> 0
-  m.setU8(pPkt, 0x60)
-  const bPortalFlags = UNITS_GetObjectPortalFlags113c(m, pPortalObject >>> 0) & 0xff
-  const dwUnitId = m.u32((pPortalObject + 0x0c) >>> 0) >>> 0
-  m.setU8((pPkt + 0x01) >>> 0, bPortalFlags)
-  const pObjectData = m.u32((pPortalObject + 0x14) >>> 0) >>> 0
-  const bDestLevel = m.u8((pObjectData + 0x04) >>> 0)
-  m.setU8((pPkt + 0x02) >>> 0, bDestLevel)
-  m.setU32((pPkt + 0x03) >>> 0, dwUnitId)
-  return NET_QueuePacketToClientBuffer113c(m, pClient >>> 0, 1, pPkt, 7) | 0
+  return withK2W2B3Stack113c(m, 8, (pPkt) => {
+    m.setU8(pPkt, 0x60)
+    const bPortalFlags = UNITS_GetObjectPortalFlags113c(m, pPortalObject >>> 0) & 0xff
+    const dwUnitId = m.u32((pPortalObject + 0x0c) >>> 0) >>> 0
+    m.setU8((pPkt + 0x01) >>> 0, bPortalFlags)
+    const pObjectData = m.u32((pPortalObject + 0x14) >>> 0) >>> 0
+    const bDestLevel = m.u8((pObjectData + 0x04) >>> 0)
+    m.setU8((pPkt + 0x02) >>> 0, bDestLevel)
+    m.setU32((pPkt + 0x03) >>> 0, dwUnitId)
+    return NET_QueuePacketToClientBuffer113c(m, pClient >>> 0, 1, pPkt, 7) | 0
+  })
 }
 
 /**
@@ -865,11 +906,12 @@ export function NET_SendPacketBuffer7B_6FCAAB20_113c(
   pClient: number,
 ): number {
   hitD2GameVa113c(0x6FCAAB20)
-  const pPkt = m.alloc(8) >>> 0
-  m.setU32(pPkt, m.u32(pSrc >>> 0) >>> 0)
-  m.setU16((pPkt + 0x04) >>> 0, m.u16((pSrc + 0x04) >>> 0))
-  m.setU8((pPkt + 0x06) >>> 0, m.u8((pSrc + 0x06) >>> 0))
-  return NET_QueuePacketToClientBuffer113c(m, pClient >>> 0, 1, pPkt, 7) | 0
+  return withK2W2B3Stack113c(m, 8, (pPkt) => {
+    m.setU32(pPkt, m.u32(pSrc >>> 0) >>> 0)
+    m.setU16((pPkt + 0x04) >>> 0, m.u16((pSrc + 0x04) >>> 0))
+    m.setU8((pPkt + 0x06) >>> 0, m.u8((pSrc + 0x06) >>> 0))
+    return NET_QueuePacketToClientBuffer113c(m, pClient >>> 0, 1, pPkt, 7) | 0
+  })
 }
 
 /**
@@ -887,13 +929,14 @@ export function NET_SendPacketBuffer15B_6FCAABF0_113c(
   pClient: number,
 ): number {
   hitD2GameVa113c(0x6FCAABF0)
-  const pPkt = m.alloc(0x10) >>> 0
-  m.setU32(pPkt, m.u32(pSrc >>> 0) >>> 0)
-  m.setU32((pPkt + 0x04) >>> 0, m.u32((pSrc + 0x04) >>> 0) >>> 0)
-  m.setU32((pPkt + 0x08) >>> 0, m.u32((pSrc + 0x08) >>> 0) >>> 0)
-  m.setU16((pPkt + 0x0c) >>> 0, m.u16((pSrc + 0x0c) >>> 0))
-  m.setU8((pPkt + 0x0e) >>> 0, m.u8((pSrc + 0x0e) >>> 0))
-  return NET_QueuePacketToClientBuffer113c(m, pClient >>> 0, 1, pPkt, 0x0f) | 0
+  return withK2W2B3Stack113c(m, 0x10, (pPkt) => {
+    m.setU32(pPkt, m.u32(pSrc >>> 0) >>> 0)
+    m.setU32((pPkt + 0x04) >>> 0, m.u32((pSrc + 0x04) >>> 0) >>> 0)
+    m.setU32((pPkt + 0x08) >>> 0, m.u32((pSrc + 0x08) >>> 0) >>> 0)
+    m.setU16((pPkt + 0x0c) >>> 0, m.u16((pSrc + 0x0c) >>> 0))
+    m.setU8((pPkt + 0x0e) >>> 0, m.u8((pSrc + 0x0e) >>> 0))
+    return NET_QueuePacketToClientBuffer113c(m, pClient >>> 0, 1, pPkt, 0x0f) | 0
+  })
 }
 
 /**
@@ -916,13 +959,14 @@ export function NET_SendPacket15B_TransactionResult_6FCAAC90_113c(
   bByte1: number,
 ): number {
   hitD2GameVa113c(0x6FCAAC90)
-  const pPkt = m.alloc(0x10) >>> 0
-  m.setU8(pPkt, bPacketId & 0xff)
-  m.setU8((pPkt + 0x01) >>> 0, bByte1 & 0xff)
-  m.setU8((pPkt + 0x02) >>> 0, bResult & 0xff)
-  m.setU32((pPkt + 0x07) >>> 0, dwParam7 >>> 0)
-  m.setU32((pPkt + 0x0b) >>> 0, dwParam11 >>> 0)
-  return NET_QueuePacketToClientBuffer113c(m, pClient >>> 0, 1, pPkt, 0x0f) | 0
+  return withK2W2B3Stack113c(m, 0x10, (pPkt) => {
+    m.setU8(pPkt, bPacketId & 0xff)
+    m.setU8((pPkt + 0x01) >>> 0, bByte1 & 0xff)
+    m.setU8((pPkt + 0x02) >>> 0, bResult & 0xff)
+    m.setU32((pPkt + 0x07) >>> 0, dwParam7 >>> 0)
+    m.setU32((pPkt + 0x0b) >>> 0, dwParam11 >>> 0)
+    return NET_QueuePacketToClientBuffer113c(m, pClient >>> 0, 1, pPkt, 0x0f) | 0
+  })
 }
 
 /**
@@ -940,10 +984,11 @@ export function NET_SendPacketBuffer6B_6FCAACD0_113c(
   pClient: number,
 ): number {
   hitD2GameVa113c(0x6FCAACD0)
-  const pPkt = m.alloc(8) >>> 0
-  m.setU32(pPkt, m.u32(pSrc >>> 0) >>> 0)
-  m.setU16((pPkt + 0x04) >>> 0, m.u16((pSrc + 0x04) >>> 0))
-  return NET_QueuePacketToClientBuffer113c(m, pClient >>> 0, 1, pPkt, 6) | 0
+  return withK2W2B3Stack113c(m, 8, (pPkt) => {
+    m.setU32(pPkt, m.u32(pSrc >>> 0) >>> 0)
+    m.setU16((pPkt + 0x04) >>> 0, m.u16((pSrc + 0x04) >>> 0))
+    return NET_QueuePacketToClientBuffer113c(m, pClient >>> 0, 1, pPkt, 6) | 0
+  })
 }
 
 /**
@@ -963,11 +1008,12 @@ export function NET_SendPacket7B_ByteAndDword_6FCAAD10_113c(
   pClient: number,
 ): number {
   hitD2GameVa113c(0x6FCAAD10)
-  const pPkt = m.alloc(8) >>> 0
-  m.setU8(pPkt, bPacketId & 0xff)
-  m.setU8((pPkt + 0x01) >>> 0, bByte1 & 0xff)
-  m.setU32((pPkt + 0x02) >>> 0, dwParam2 >>> 0)
-  return NET_QueuePacketToClientBuffer113c(m, pClient >>> 0, 1, pPkt, 7) | 0
+  return withK2W2B3Stack113c(m, 8, (pPkt) => {
+    m.setU8(pPkt, bPacketId & 0xff)
+    m.setU8((pPkt + 0x01) >>> 0, bByte1 & 0xff)
+    m.setU32((pPkt + 0x02) >>> 0, dwParam2 >>> 0)
+    return NET_QueuePacketToClientBuffer113c(m, pClient >>> 0, 1, pPkt, 7) | 0
+  })
 }
 
 /**
@@ -991,13 +1037,14 @@ export function NET_SendPacket103B_QuestRecord_6FCAAD40_113c(
   bByte6: number,
 ): number {
   hitD2GameVa113c(0x6FCAAD40)
-  const pPkt = m.alloc(0x68) >>> 0
-  m.setU8(pPkt, bPacketId & 0xff)
-  m.setU8((pPkt + 0x01) >>> 0, bByte1 & 0xff)
-  m.setU32((pPkt + 0x02) >>> 0, dwUnitGuid >>> 0)
-  m.setU8((pPkt + 0x06) >>> 0, bByte6 & 0xff)
-  QUESTRECORD_CopyRecordToBuffer113c(m, pQuestData >>> 0, (pPkt + 0x07) >>> 0, 0x60, 0)
-  return NET_QueuePacketToClientBuffer113c(m, pClient >>> 0, 1, pPkt, 0x67) | 0
+  return withK2W2B3Stack113c(m, 0x68, (pPkt) => {
+    m.setU8(pPkt, bPacketId & 0xff)
+    m.setU8((pPkt + 0x01) >>> 0, bByte1 & 0xff)
+    m.setU32((pPkt + 0x02) >>> 0, dwUnitGuid >>> 0)
+    m.setU8((pPkt + 0x06) >>> 0, bByte6 & 0xff)
+    QUESTRECORD_CopyRecordToBuffer113c(m, pQuestData >>> 0, (pPkt + 0x07) >>> 0, 0x60, 0)
+    return NET_QueuePacketToClientBuffer113c(m, pClient >>> 0, 1, pPkt, 0x67) | 0
+  })
 }
 
 /**
@@ -1017,15 +1064,16 @@ export function NET_SendPacket48_UnitRequestStatus_6FCAAE60_113c(
   bResult: number,
 ): number {
   hitD2GameVa113c(0x6FCAAE60)
-  const pPkt = m.alloc(0x0c) >>> 0
-  m.setU8(pPkt, 0x48)
-  const bUnitType = pUnit === 0 ? 6 : m.u32(pUnit >>> 0) & 0xff
-  m.setU8((pPkt + 0x01) >>> 0, bUnitType)
-  m.setU8((pPkt + 0x02) >>> 0, bResult & 0xff)
-  const dwUnitGuid = pUnit === 0 ? 0xffffffff : m.u32((pUnit + 0x0c) >>> 0) >>> 0
-  m.setU32((pPkt + 0x03) >>> 0, dwUnitGuid)
-  m.setU32((pPkt + 0x07) >>> 0, 0)
-  return NET_QueuePacketToClientBuffer113c(m, pClient >>> 0, 1, pPkt, 0x0b) | 0
+  return withK2W2B3Stack113c(m, 0x0c, (pPkt) => {
+    m.setU8(pPkt, 0x48)
+    const bUnitType = pUnit === 0 ? 6 : m.u32(pUnit >>> 0) & 0xff
+    m.setU8((pPkt + 0x01) >>> 0, bUnitType)
+    m.setU8((pPkt + 0x02) >>> 0, bResult & 0xff)
+    const dwUnitGuid = pUnit === 0 ? 0xffffffff : m.u32((pUnit + 0x0c) >>> 0) >>> 0
+    m.setU32((pPkt + 0x03) >>> 0, dwUnitGuid)
+    m.setU32((pPkt + 0x07) >>> 0, 0)
+    return NET_QueuePacketToClientBuffer113c(m, pClient >>> 0, 1, pPkt, 0x0b) | 0
+  })
 }
 
 /**
@@ -1044,15 +1092,16 @@ export function NET_SendPacket47_UnitRelator1_6FCAAEC0_113c(
   pClient: number,
 ): number {
   hitD2GameVa113c(0x6FCAAEC0)
-  const pPkt = m.alloc(0x0c) >>> 0
-  m.setU8(pPkt, 0x47)
-  const bUnitType = pUnit === 0 ? 6 : m.u32(pUnit >>> 0) & 0xff
-  m.setU8((pPkt + 0x01) >>> 0, bUnitType)
-  m.setU8((pPkt + 0x02) >>> 0, 0)
-  const dwUnitGuid = pUnit === 0 ? 0xffffffff : m.u32((pUnit + 0x0c) >>> 0) >>> 0
-  m.setU32((pPkt + 0x03) >>> 0, dwUnitGuid)
-  m.setU32((pPkt + 0x07) >>> 0, 0)
-  return NET_QueuePacketToClientBuffer113c(m, pClient >>> 0, 1, pPkt, 0x0b) | 0
+  return withK2W2B3Stack113c(m, 0x0c, (pPkt) => {
+    m.setU8(pPkt, 0x47)
+    const bUnitType = pUnit === 0 ? 6 : m.u32(pUnit >>> 0) & 0xff
+    m.setU8((pPkt + 0x01) >>> 0, bUnitType)
+    m.setU8((pPkt + 0x02) >>> 0, 0)
+    const dwUnitGuid = pUnit === 0 ? 0xffffffff : m.u32((pUnit + 0x0c) >>> 0) >>> 0
+    m.setU32((pPkt + 0x03) >>> 0, dwUnitGuid)
+    m.setU32((pPkt + 0x07) >>> 0, 0)
+    return NET_QueuePacketToClientBuffer113c(m, pClient >>> 0, 1, pPkt, 0x0b) | 0
+  })
 }
 
 /**
@@ -1070,13 +1119,14 @@ export function NET_SendPacket42_ClearCursor_6FCAAF10_113c(
   pClient: number,
 ): number {
   hitD2GameVa113c(0x6FCAAF10)
-  const pPkt = m.alloc(8) >>> 0
-  m.setU8(pPkt, 0x42)
-  const bUnitType = pUnit === 0 ? 6 : m.u32(pUnit >>> 0) & 0xff
-  m.setU8((pPkt + 0x01) >>> 0, bUnitType)
-  const dwUnitGuid = pUnit === 0 ? 0xffffffff : m.u32((pUnit + 0x0c) >>> 0) >>> 0
-  m.setU32((pPkt + 0x02) >>> 0, dwUnitGuid)
-  return NET_QueuePacketToClientBuffer113c(m, pClient >>> 0, 1, pPkt, 6) | 0
+  return withK2W2B3Stack113c(m, 8, (pPkt) => {
+    m.setU8(pPkt, 0x42)
+    const bUnitType = pUnit === 0 ? 6 : m.u32(pUnit >>> 0) & 0xff
+    m.setU8((pPkt + 0x01) >>> 0, bUnitType)
+    const dwUnitGuid = pUnit === 0 ? 0xffffffff : m.u32((pUnit + 0x0c) >>> 0) >>> 0
+    m.setU32((pPkt + 0x02) >>> 0, dwUnitGuid)
+    return NET_QueuePacketToClientBuffer113c(m, pClient >>> 0, 1, pPkt, 6) | 0
+  })
 }
 
 /**
@@ -1095,11 +1145,12 @@ export function NET_SendPacket79_GoldInTrade_6FCAB1F0_113c(
   pClient: number,
 ): number {
   hitD2GameVa113c(0x6FCAB1F0)
-  const pPkt = m.alloc(8) >>> 0
-  m.setU8(pPkt, 0x79)
-  m.setU8((pPkt + 0x01) >>> 0, bOwnerFlag & 0xff)
-  m.setU32((pPkt + 0x02) >>> 0, dwGoldAmount >>> 0)
-  return NET_QueuePacketToClientBuffer113c(m, pClient >>> 0, 1, pPkt, 6) | 0
+  return withK2W2B3Stack113c(m, 8, (pPkt) => {
+    m.setU8(pPkt, 0x79)
+    m.setU8((pPkt + 0x01) >>> 0, bOwnerFlag & 0xff)
+    m.setU32((pPkt + 0x02) >>> 0, dwGoldAmount >>> 0)
+    return NET_QueuePacketToClientBuffer113c(m, pClient >>> 0, 1, pPkt, 6) | 0
+  })
 }
 
 /**
@@ -1124,15 +1175,16 @@ export function NET_SendPacket81_AssignMerc_6FCAB220_113c(
   dwWParam: number,
 ): number {
   hitD2GameVa113c(0x6FCAB220)
-  const pPkt = m.alloc(0x14) >>> 0
-  m.setU8(pPkt, 0x81)
-  m.setU8((pPkt + 0x01) >>> 0, bByte1 & 0xff)
-  m.setU16((pPkt + 0x02) >>> 0, wWord2 & 0xffff)
-  m.setU32((pPkt + 0x04) >>> 0, dwOwnerGuid >>> 0)
-  m.setU32((pPkt + 0x08) >>> 0, dwMercGuid >>> 0)
-  m.setU32((pPkt + 0x0c) >>> 0, dwSeed >>> 0)
-  m.setU32((pPkt + 0x10) >>> 0, dwWParam >>> 0)
-  return NET_QueuePacketToClientBuffer113c(m, pClient >>> 0, 1, pPkt, 0x14) | 0
+  return withK2W2B3Stack113c(m, 0x14, (pPkt) => {
+    m.setU8(pPkt, 0x81)
+    m.setU8((pPkt + 0x01) >>> 0, bByte1 & 0xff)
+    m.setU16((pPkt + 0x02) >>> 0, wWord2 & 0xffff)
+    m.setU32((pPkt + 0x04) >>> 0, dwOwnerGuid >>> 0)
+    m.setU32((pPkt + 0x08) >>> 0, dwMercGuid >>> 0)
+    m.setU32((pPkt + 0x0c) >>> 0, dwSeed >>> 0)
+    m.setU32((pPkt + 0x10) >>> 0, dwWParam >>> 0)
+    return NET_QueuePacketToClientBuffer113c(m, pClient >>> 0, 1, pPkt, 0x14) | 0
+  })
 }
 
 /**
@@ -1156,14 +1208,15 @@ export function NET_SendPacket7A_SummonChange_6FCAB290_113c(
   wSummonArg: number,
 ): number {
   hitD2GameVa113c(0x6FCAB290)
-  const pPkt = m.alloc(0x10) >>> 0
-  m.setU8(pPkt, 0x7a)
-  m.setU8((pPkt + 0x01) >>> 0, bAction & 0xff)
-  m.setU8((pPkt + 0x02) >>> 0, bSkillTree & 0xff)
-  m.setU16((pPkt + 0x03) >>> 0, wSummonArg & 0xffff)
-  m.setU32((pPkt + 0x05) >>> 0, dwOwnerGuid >>> 0)
-  m.setU32((pPkt + 0x09) >>> 0, dwPetGuid >>> 0)
-  return NET_QueuePacketToClientBuffer113c(m, pClient >>> 0, 1, pPkt, 0x0d) | 0
+  return withK2W2B3Stack113c(m, 0x10, (pPkt) => {
+    m.setU8(pPkt, 0x7a)
+    m.setU8((pPkt + 0x01) >>> 0, bAction & 0xff)
+    m.setU8((pPkt + 0x02) >>> 0, bSkillTree & 0xff)
+    m.setU16((pPkt + 0x03) >>> 0, wSummonArg & 0xffff)
+    m.setU32((pPkt + 0x05) >>> 0, dwOwnerGuid >>> 0)
+    m.setU32((pPkt + 0x09) >>> 0, dwPetGuid >>> 0)
+    return NET_QueuePacketToClientBuffer113c(m, pClient >>> 0, 1, pPkt, 0x0d) | 0
+  })
 }
 
 /**
@@ -1181,14 +1234,15 @@ export function NET_SendPacketBuffer21B_Alt_6FCAB2F0_113c(
   pClient: number,
 ): number {
   hitD2GameVa113c(0x6FCAB2F0)
-  const pPkt = m.alloc(0x18) >>> 0
-  m.setU32(pPkt, m.u32(pSrc >>> 0) >>> 0)
-  m.setU32((pPkt + 0x04) >>> 0, m.u32((pSrc + 0x04) >>> 0) >>> 0)
-  m.setU32((pPkt + 0x08) >>> 0, m.u32((pSrc + 0x08) >>> 0) >>> 0)
-  m.setU32((pPkt + 0x0c) >>> 0, m.u32((pSrc + 0x0c) >>> 0) >>> 0)
-  m.setU32((pPkt + 0x10) >>> 0, m.u32((pSrc + 0x10) >>> 0) >>> 0)
-  m.setU8((pPkt + 0x14) >>> 0, m.u8((pSrc + 0x14) >>> 0))
-  return NET_QueuePacketToClientBuffer113c(m, pClient >>> 0, 1, pPkt, 0x15) | 0
+  return withK2W2B3Stack113c(m, 0x18, (pPkt) => {
+    m.setU32(pPkt, m.u32(pSrc >>> 0) >>> 0)
+    m.setU32((pPkt + 0x04) >>> 0, m.u32((pSrc + 0x04) >>> 0) >>> 0)
+    m.setU32((pPkt + 0x08) >>> 0, m.u32((pSrc + 0x08) >>> 0) >>> 0)
+    m.setU32((pPkt + 0x0c) >>> 0, m.u32((pSrc + 0x0c) >>> 0) >>> 0)
+    m.setU32((pPkt + 0x10) >>> 0, m.u32((pSrc + 0x10) >>> 0) >>> 0)
+    m.setU8((pPkt + 0x14) >>> 0, m.u8((pSrc + 0x14) >>> 0))
+    return NET_QueuePacketToClientBuffer113c(m, pClient >>> 0, 1, pPkt, 0x15) | 0
+  })
 }
 
 /**
@@ -1206,10 +1260,11 @@ export function NET_SendPacket77_ButtonAction_6FCAB340_113c(
   pClient: number,
 ): number {
   hitD2GameVa113c(0x6FCAB340)
-  const pPkt = m.alloc(4) >>> 0
-  m.setU8(pPkt, 0x77)
-  m.setU8((pPkt + 0x01) >>> 0, bAction & 0xff)
-  return NET_QueuePacketToClientBuffer113c(m, pClient >>> 0, 1, pPkt, 2) | 0
+  return withK2W2B3Stack113c(m, 4, (pPkt) => {
+    m.setU8(pPkt, 0x77)
+    m.setU8((pPkt + 0x01) >>> 0, bAction & 0xff)
+    return NET_QueuePacketToClientBuffer113c(m, pClient >>> 0, 1, pPkt, 2) | 0
+  })
 }
 
 /**
@@ -1227,12 +1282,13 @@ export function NET_SendPacketBuffer40B_6FCAB3D0_113c(
   pClient: number,
 ): number {
   hitD2GameVa113c(0x6FCAB3D0)
-  const pPkt = m.alloc(0x28) >>> 0
-  for (let i = 0; i < 10; i = (i + 1) | 0) {
-    const off = (i << 2) >>> 0
-    m.setU32((pPkt + off) >>> 0, m.u32((pSrc + off) >>> 0) >>> 0)
-  }
-  return NET_QueuePacketToClientBuffer113c(m, pClient >>> 0, 1, pPkt, 0x28) | 0
+  return withK2W2B3Stack113c(m, 0x28, (pPkt) => {
+    for (let i = 0; i < 10; i = (i + 1) | 0) {
+      const off = (i << 2) >>> 0
+      m.setU32((pPkt + off) >>> 0, m.u32((pSrc + off) >>> 0) >>> 0)
+    }
+    return NET_QueuePacketToClientBuffer113c(m, pClient >>> 0, 1, pPkt, 0x28) | 0
+  })
 }
 
 /**
@@ -1258,12 +1314,13 @@ export function NET_SendPacket10B_UnitByteStat_6FCAB9B0_113c(
   if ((wStatId & 0xffff) >= 0xff) {
     throw new D2CommonAssertError('SUnitNet.cpp', 0x4b8)
   }
-  const pPkt = m.alloc(0x0c) >>> 0
-  m.setU8(pPkt, bPacketId & 0xff)
-  m.setU32((pPkt + 0x01) >>> 0, dwUnitGuid >>> 0)
-  m.setU8((pPkt + 0x05) >>> 0, wStatId & 0xff)
-  m.setU32((pPkt + 0x06) >>> 0, dwStatVal >>> 0)
-  return NET_QueuePacketToClientBuffer113c(m, pClient >>> 0, 1, pPkt, 0x0a) | 0
+  return withK2W2B3Stack113c(m, 0x0c, (pPkt) => {
+    m.setU8(pPkt, bPacketId & 0xff)
+    m.setU32((pPkt + 0x01) >>> 0, dwUnitGuid >>> 0)
+    m.setU8((pPkt + 0x05) >>> 0, wStatId & 0xff)
+    m.setU32((pPkt + 0x06) >>> 0, dwStatVal >>> 0)
+    return NET_QueuePacketToClientBuffer113c(m, pClient >>> 0, 1, pPkt, 0x0a) | 0
+  })
 }
 
 /**
@@ -1283,12 +1340,13 @@ export function NET_SendPacketA5_StateSkill_6FCABA10_113c(
   wSkillId: number,
 ): number {
   hitD2GameVa113c(0x6FCABA10)
-  const pPkt = m.alloc(8) >>> 0
-  m.setU8(pPkt, 0xa5)
-  m.setU8((pPkt + 0x01) >>> 0, bUnitType & 0xff)
-  m.setU32((pPkt + 0x02) >>> 0, dwUnitGuid >>> 0)
-  m.setU16((pPkt + 0x06) >>> 0, wSkillId & 0xffff)
-  return NET_QueuePacketToClientBuffer113c(m, pClient >>> 0, 1, pPkt, 8) | 0
+  return withK2W2B3Stack113c(m, 8, (pPkt) => {
+    m.setU8(pPkt, 0xa5)
+    m.setU8((pPkt + 0x01) >>> 0, bUnitType & 0xff)
+    m.setU32((pPkt + 0x02) >>> 0, dwUnitGuid >>> 0)
+    m.setU16((pPkt + 0x06) >>> 0, wSkillId & 0xffff)
+    return NET_QueuePacketToClientBuffer113c(m, pClient >>> 0, 1, pPkt, 8) | 0
+  })
 }
 
 /**
@@ -1310,20 +1368,21 @@ export function NET_SendPacket1A1B1C_StatUpdate_6FCABDA0_113c(
 ): number {
   hitD2GameVa113c(0x6FCABDA0)
   const nDelta = ((nNewVal | 0) - (nOldVal | 0)) | 0
-  const pPkt = m.alloc(8) >>> 0
-  if (nDelta >= 0 && nDelta < 0xffff) {
-    if (nDelta < 0xff) {
-      m.setU8(pPkt, 0x1a)
-      m.setU8((pPkt + 0x01) >>> 0, nDelta & 0xff)
-      return NET_QueuePacketToClientBuffer113c(m, pClient >>> 0, 1, pPkt, 2) | 0
+  return withK2W2B3Stack113c(m, 8, (pPkt) => {
+    if (nDelta >= 0 && nDelta < 0xffff) {
+      if (nDelta < 0xff) {
+        m.setU8(pPkt, 0x1a)
+        m.setU8((pPkt + 0x01) >>> 0, nDelta & 0xff)
+        return NET_QueuePacketToClientBuffer113c(m, pClient >>> 0, 1, pPkt, 2) | 0
+      }
+      m.setU8(pPkt, 0x1b)
+      m.setU16((pPkt + 0x01) >>> 0, nDelta & 0xffff)
+      return NET_QueuePacketToClientBuffer113c(m, pClient >>> 0, 1, pPkt, 3) | 0
     }
-    m.setU8(pPkt, 0x1b)
-    m.setU16((pPkt + 0x01) >>> 0, nDelta & 0xffff)
-    return NET_QueuePacketToClientBuffer113c(m, pClient >>> 0, 1, pPkt, 3) | 0
-  }
-  m.setU8(pPkt, 0x1c)
-  m.setU32((pPkt + 0x01) >>> 0, nNewVal >>> 0)
-  return NET_QueuePacketToClientBuffer113c(m, pClient >>> 0, 1, pPkt, 5) | 0
+    m.setU8(pPkt, 0x1c)
+    m.setU32((pPkt + 0x01) >>> 0, nNewVal >>> 0)
+    return NET_QueuePacketToClientBuffer113c(m, pClient >>> 0, 1, pPkt, 5) | 0
+  })
 }
 
 /**
@@ -1343,10 +1402,11 @@ export function NET_SendPacket07_RoomTileCoords_6FCABF50_113c(
   bAct: number,
 ): number {
   hitD2GameVa113c(0x6FCABF50)
-  const pPkt = m.alloc(8) >>> 0
-  m.setU8(pPkt, 0x07)
-  m.setU16((pPkt + 0x01) >>> 0, wTileX & 0xffff)
-  m.setU16((pPkt + 0x03) >>> 0, wTileY & 0xffff)
-  m.setU8((pPkt + 0x05) >>> 0, bAct & 0xff)
-  return NET_QueuePacketToClientBuffer113c(m, pClient >>> 0, 1, pPkt, 6) | 0
+  return withK2W2B3Stack113c(m, 8, (pPkt) => {
+    m.setU8(pPkt, 0x07)
+    m.setU16((pPkt + 0x01) >>> 0, wTileX & 0xffff)
+    m.setU16((pPkt + 0x03) >>> 0, wTileY & 0xffff)
+    m.setU8((pPkt + 0x05) >>> 0, bAct & 0xff)
+    return NET_QueuePacketToClientBuffer113c(m, pClient >>> 0, 1, pPkt, 6) | 0
+  })
 }
