@@ -16,7 +16,9 @@ import {
   computeMeshSkinJointMatrices,
   meshSkinBillboardBasis,
   meshSkinCameraRotation,
+  resolveMeshSkinLook,
   skinMeshSkinGeoset,
+  type MeshSkinLook,
   type MeshSkinModel,
   type MeshSkinPose,
 } from '../../common/units/mesh-skin-model.ts'
@@ -47,13 +49,93 @@ interface GpuGeoset {
   readonly indexCount: number
 }
 
+/** A paper-doll image kept on the CPU side so looks can be composited after the upload. */
+type RetainedImage =
+  | { readonly kind: 'pixels'; readonly pixels: Uint8Array; readonly width: number; readonly height: number }
+  | { readonly kind: 'canvas'; readonly canvas: HTMLCanvasElement | OffscreenCanvas }
+
 export interface MeshSkinGpuModel {
   readonly model: MeshSkinModel
   readonly textures: readonly WebGLTexture[]
   readonly geosets: readonly GpuGeoset[]
   readonly globals: Float32Array
   readonly joints: Float32Array
+  /** Look worn when the caller passes none (`null` for a model without a paper-doll). */
+  readonly defaultLook: MeshSkinLook | null
+  /** Paper-doll canvas and layer images by image index. */
+  readonly retained: ReadonlyMap<number, RetainedImage>
+  /** Composited canvas textures by {@link MeshSkinLook.canvasKey}. */
+  readonly canvasTextures: Map<string, WebGLTexture>
   disposed: boolean
+}
+
+function createScratchCanvas(width: number, height: number): HTMLCanvasElement | OffscreenCanvas {
+  if (typeof OffscreenCanvas === 'function') return new OffscreenCanvas(width, height)
+  if (typeof document !== 'undefined') {
+    const canvas = document.createElement('canvas')
+    canvas.width = width
+    canvas.height = height
+    return canvas
+  }
+  throw new Error('Mesh skin renderer: no 2D canvas is available to composite paper-doll textures')
+}
+
+function context2d(
+  canvas: HTMLCanvasElement | OffscreenCanvas,
+): CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D {
+  const ctx = canvas.getContext('2d') as CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D | null
+  if (ctx === null) throw new Error('Mesh skin renderer: 2D canvas context unavailable')
+  return ctx
+}
+
+function retainImage(src: MeshSkinTextureSource): RetainedImage {
+  if ('pixels' in src) return { kind: 'pixels', pixels: src.pixels, width: src.width, height: src.height }
+  const size = src as { readonly width: number; readonly height: number }
+  const canvas = createScratchCanvas(size.width, size.height)
+  context2d(canvas).drawImage(src as CanvasImageSource, 0, 0)
+  return { kind: 'canvas', canvas }
+}
+
+/**
+ * Source-over composite of `layers` onto a copy of `base` (straight alpha, nearest scaling).
+ * Exported for tests; the browser path uses a 2D canvas instead.
+ */
+export function compositeMeshSkinCanvasPixels(
+  base: { readonly pixels: Uint8Array; readonly width: number; readonly height: number },
+  layers: readonly {
+    readonly pixels: Uint8Array
+    readonly width: number
+    readonly height: number
+    readonly x: number
+    readonly y: number
+    readonly w: number
+    readonly h: number
+  }[],
+): Uint8Array {
+  const out = new Uint8Array(base.pixels)
+  for (const layer of layers) {
+    for (let j = 0; j < layer.h; j += 1) {
+      const dy = layer.y + j
+      if (dy < 0 || dy >= base.height) continue
+      const sy = Math.min(layer.height - 1, Math.floor((j * layer.height) / layer.h))
+      for (let i = 0; i < layer.w; i += 1) {
+        const dx = layer.x + i
+        if (dx < 0 || dx >= base.width) continue
+        const sx = Math.min(layer.width - 1, Math.floor((i * layer.width) / layer.w))
+        const s = (sy * layer.width + sx) * 4
+        const d = (dy * base.width + dx) * 4
+        const a = layer.pixels[s + 3]! / 255
+        if (a <= 0) continue
+        const da = out[d + 3]! / 255
+        const oa = a + da * (1 - a)
+        for (let k = 0; k < 3; k += 1) {
+          out[d + k] = Math.round((layer.pixels[s + k]! * a + out[d + k]! * da * (1 - a)) / oa)
+        }
+        out[d + 3] = Math.round(oa * 255)
+      }
+    }
+  }
+  return out
 }
 
 /** Side length of the per-frame impostor atlas and of the supersampled scratch target. */
@@ -63,6 +145,14 @@ const CELL_MARGIN = 1
 const MAX_TEXEL_SCALE = 4
 const DEPTH_RANGE_UNITS = 2048
 const GLOW_DEPTH_BIAS = 0.004
+/** Item glow: additive strength on the item itself, and of each of the offset halo taps around it. */
+const ITEM_GLOW_CORE = 0.08
+const ITEM_GLOW_HALO = 0.05
+/** Halo radius in scene pixels and its tap directions. */
+const ITEM_GLOW_RADIUS_PX = 1.8
+const ITEM_GLOW_TAPS: readonly (readonly [number, number])[] = [
+  [1, 0], [-1, 0], [0, 1], [0, -1], [0.7071, 0.7071], [-0.7071, 0.7071], [0.7071, -0.7071], [-0.7071, -0.7071],
+]
 
 const MESH_VS = `#version 300 es
 layout(location = 0) in vec3 a_position;
@@ -112,8 +202,12 @@ void main() {
     outColor = vec4(rgb, a);
   } else if (u_mode == 3) {
     outColor = vec4(rgb * u_color.a, 1.0);
-  } else {
+  } else if (u_mode == 4) {
     outColor = vec4(rgb * texel.a * u_color.a, 1.0);
+  } else {
+    // Flat emissive silhouette (item quality glow): the texture only cuts the shape out.
+    if (texel.a < 0.5) discard;
+    outColor = vec4(u_color.rgb * u_color.a, 1.0);
   }
 }`
 
@@ -337,7 +431,16 @@ export class MeshSkinRenderer {
     this.renderer.flush()
     const textures: WebGLTexture[] = []
     const geosets: GpuGeoset[] = []
+    const retained = new Map<number, RetainedImage>()
     try {
+      const doll = model.paperdoll
+      if (doll !== null) {
+        const keep = new Set<number>([doll.canvas])
+        for (const options of Object.values(doll.slots)) {
+          for (const option of Object.values(options)) for (const layer of option.layers) keep.add(layer.image)
+        }
+        for (const index of keep) retained.set(index, retainImage(images[index]!))
+      }
       gl.activeTexture(gl.TEXTURE0)
       gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false)
       gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false)
@@ -392,6 +495,9 @@ export class MeshSkinRenderer {
       geosets,
       globals: new Float32Array(model.nodeCount * 12),
       joints: new Float32Array(model.nodeCount * 12),
+      defaultLook: resolveMeshSkinLook(model, {}),
+      retained,
+      canvasTextures: new Map(),
       disposed: false,
     }
     this.models.add(gpu)
@@ -405,11 +511,66 @@ export class MeshSkinRenderer {
     if (this.renderer.isDisposed) return
     const gl = this.renderer.gl
     for (const tex of gpu.textures) gl.deleteTexture(tex)
+    for (const tex of gpu.canvasTextures.values()) gl.deleteTexture(tex)
+    gpu.canvasTextures.clear()
     for (const g of gpu.geosets) {
       gl.deleteVertexArray(g.vao)
       gl.deleteBuffer(g.vbo)
       gl.deleteBuffer(g.ibo)
     }
+  }
+
+  /**
+   * Texture of the paper-doll canvas dressed with `look`'s layers (composited once per distinct
+   * layer set and cached for the life of the model).
+   */
+  private canvasTextureFor(gpu: MeshSkinGpuModel, look: MeshSkinLook): WebGLTexture {
+    const doll = gpu.model.paperdoll
+    if (doll === null || look.layers.length === 0) return gpu.textures[doll?.canvas ?? 0]!
+    const cached = gpu.canvasTextures.get(look.canvasKey)
+    if (cached) return cached
+    const base = gpu.retained.get(doll.canvas)
+    if (!base) throw new Error('Mesh skin renderer: paper-doll canvas image was not retained')
+    const sources = look.layers.map((layer) => {
+      const img = gpu.retained.get(layer.image)
+      if (!img) throw new Error('Mesh skin renderer: paper-doll layer image was not retained')
+      return { layer, img }
+    })
+    const gl = this.renderer.gl
+    this.renderer.flush()
+    const tex = gl.createTexture()
+    if (tex === null) throw new Error('Mesh skin renderer: texture allocation failed')
+    gl.activeTexture(gl.TEXTURE0)
+    gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false)
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false)
+    gl.bindTexture(gl.TEXTURE_2D, tex)
+    if (base.kind === 'pixels') {
+      const pixels = compositeMeshSkinCanvasPixels(
+        base,
+        sources.map(({ layer, img }) => {
+          if (img.kind !== 'pixels') throw new Error('Mesh skin renderer: mixed paper-doll image sources')
+          return { pixels: img.pixels, width: img.width, height: img.height, x: layer.x, y: layer.y, w: layer.w, h: layer.h }
+        }),
+      )
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, base.width, base.height, 0, gl.RGBA, gl.UNSIGNED_BYTE, pixels)
+    } else {
+      const canvas = createScratchCanvas(base.canvas.width, base.canvas.height)
+      const ctx = context2d(canvas)
+      ctx.drawImage(base.canvas, 0, 0)
+      for (const { layer, img } of sources) {
+        if (img.kind !== 'canvas') throw new Error('Mesh skin renderer: mixed paper-doll image sources')
+        ctx.drawImage(img.canvas, layer.x, layer.y, layer.w, layer.h)
+      }
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, canvas)
+    }
+    gl.generateMipmap(gl.TEXTURE_2D)
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR)
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT)
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT)
+    gl.bindTexture(gl.TEXTURE_2D, null)
+    gpu.canvasTextures.set(look.canvasKey, tex)
+    return tex
   }
 
   /** Number of models whose GPU resources are currently alive. */
@@ -481,6 +642,7 @@ export class MeshSkinRenderer {
    * Render `gpu` in `pose` facing `dir64` into a fresh atlas cell.
    *
    * @param pxPerUnit - scene pixels per model unit.
+   * @param look - paper-doll state to wear; `null` wears the model's default look.
    * @returns the impostor frames, or `null` when the atlas is full or the context is lost.
    */
   drawImpostor(
@@ -489,12 +651,19 @@ export class MeshSkinRenderer {
     dir64: number,
     pxPerUnit: number,
     box: MeshSkinBox,
+    look: MeshSkinLook | null = null,
   ): MeshSkinImpostor | null {
     if (this.disposed || gpu.disposed || this.renderer.isDisposed) return null
     const gl = this.renderer.gl
     if (typeof gl.isContextLost === 'function' && gl.isContextLost()) return null
     const targets = this.ensureTargets()
     const model = gpu.model
+    const worn = model.paperdoll === null ? null : (look ?? gpu.defaultLook)
+    if (worn !== null && worn.visible.length !== model.geosets.length) {
+      throw new Error('Mesh skin renderer: look does not belong to this model')
+    }
+    const canvasImage = model.paperdoll?.canvas ?? -1
+    const canvasTexture = worn !== null ? this.canvasTextureFor(gpu, worn) : null
 
     const fullScale = Math.min(MAX_TEXEL_SCALE, Math.max(1, this.renderer.getSceneTexelScale()))
     this.frameDemand += (box.width * fullScale + 2 * CELL_MARGIN) * (box.height * fullScale + 2 * CELL_MARGIN)
@@ -544,6 +713,7 @@ export class MeshSkinRenderer {
       const visible: number[] = []
       for (let g = 0; g < model.geosets.length; g += 1) {
         if (!(pose.geosetAlpha[g]! > 0.02)) continue
+        if (worn !== null && worn.visible[g] !== 1) continue
         const geo = model.geosets[g]!
         const floats = (geo.positions.length / 3) * 8
         skinMeshSkinGeoset(geo, gpu.joints, this.skinScratch)
@@ -579,7 +749,14 @@ export class MeshSkinRenderer {
             } else {
               gl.uniform2f(u.u_uvOffset!, 0, 0)
             }
-            gl.bindTexture(gl.TEXTURE_2D, layer.image >= 0 ? gpu.textures[layer.image]! : targets.whiteTexture)
+            gl.bindTexture(
+              gl.TEXTURE_2D,
+              layer.image < 0
+                ? targets.whiteTexture
+                : canvasTexture !== null && layer.image === canvasImage
+                  ? canvasTexture
+                  : gpu.textures[layer.image]!,
+            )
             gl.bindVertexArray(gpu.geosets[g]!.vao)
             gl.drawElements(gl.TRIANGLES, gpu.geosets[g]!.indexCount, gl.UNSIGNED_SHORT, 0)
             drew = true
@@ -616,6 +793,40 @@ export class MeshSkinRenderer {
       gl.uniform1f(u.u_depthBias!, GLOW_DEPTH_BIAS)
       gl.blendFunc(gl.ONE, gl.ONE)
       glowDrawn = drawPass(2)
+
+      // Item quality glow: the glowing item's silhouette, once in place and once per halo tap.
+      if (worn !== null) {
+        const footX = box.footX * texelsPerPxX
+        const footY = box.footY * texelsPerPxY
+        gl.uniform1i(u.u_mode!, 5)
+        gl.uniform1f(u.u_unshaded!, 1)
+        gl.uniform2f(u.u_uvOffset!, 0, 0)
+        for (const item of worn.glow) {
+          for (const g of item.geosets) {
+            if (!visible.includes(g)) continue
+            const layer = model.geosets[g]!.layers[0]
+            if (!layer) continue
+            gl.bindTexture(
+              gl.TEXTURE_2D,
+              layer.image < 0 ? targets.whiteTexture : gpu.textures[layer.image]!,
+            )
+            gl.bindVertexArray(gpu.geosets[g]!.vao)
+            gl.uniform4f(u.u_color!, item.color[0], item.color[1], item.color[2], ITEM_GLOW_CORE)
+            gl.drawElements(gl.TRIANGLES, gpu.geosets[g]!.indexCount, gl.UNSIGNED_SHORT, 0)
+            gl.uniform4f(u.u_color!, item.color[0], item.color[1], item.color[2], ITEM_GLOW_HALO)
+            for (const [dx, dy] of ITEM_GLOW_TAPS) {
+              gl.uniform2f(
+                u.u_foot!,
+                footX + dx * ITEM_GLOW_RADIUS_PX * texelsPerPxX,
+                footY + dy * ITEM_GLOW_RADIUS_PX * texelsPerPxY,
+              )
+              gl.drawElements(gl.TRIANGLES, gpu.geosets[g]!.indexCount, gl.UNSIGNED_SHORT, 0)
+            }
+            gl.uniform2f(u.u_foot!, footX, footY)
+            glowDrawn = true
+          }
+        }
+      }
 
       // Resolve the supersampled scratch into this frame's atlas cell (plus a transparent margin).
       gl.disable(gl.DEPTH_TEST)

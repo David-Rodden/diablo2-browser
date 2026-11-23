@@ -60,6 +60,7 @@ import {
   ITEMS_GetItemTypeQuiverFromItem113c,
   ITEMS_GetItemTypeShootsFromItem113c,
   ITEMS_GetInvWidthFromItem113c,
+  ITEMS_Is2Handed113c,
   ITEMS_GetTotalMaxStack113c,
   ITEMS_IsBeltable113c,
   ITEMS_IsTome113c,
@@ -1351,13 +1352,14 @@ export function ITEMS_CheckItemFlagCompactSaveByClassId113c(
 }
 
 /**
- * `@va D2Common:0x6FD72E70` (`D2Common.#10599` `ITEMS_GetInvWidthFromId`,
+ * `@va D2Common:0x6FD72E70` (`D2Common.#10599`, misnamed `ITEMS_GetInvWidthFromId` in earlier exports —
+ * `D2Common.dll` BinField table at `0x6FDC91E1` maps `D2ItemsTxt + 0x11C` to `'2handed'`, NOT `nInvWidth` at `+0x10F`;
  * stdcall `[esp+4] = nItemId`, `ret 4` -> `m.u8(pRec + 0x11C)`).
  *
  * Looks up `pItemsTxt[nItemId]` (asserting `(nItemId >>> 0) < nItemsTxtRecordCount` at `line 0x907`
- * and `pItemsTxt != 0` at `line 0x1EF`) and returns `m.u8(pRec + 0x11C)`.
+ * and `pItemsTxt != 0` at `line 0x1EF`) and returns `m.u8(pRec + 0x11C)` (`2handed` flag).
  */
-export function ITEMS_GetInvWidthFromId113c(m: Memory113c, nItemId: number): number {
+export function ITEMS_Is2HandedById113c(m: Memory113c, nItemId: number): number {
   hitD2CommonVa113c(0x6FD72E70)
   const id = nItemId >>> 0
   if (id >= (m.u32(D2COMMON_ITEMS_TXT_COUNT_VA_113C) >>> 0)) {
@@ -1373,6 +1375,8 @@ export function ITEMS_GetInvWidthFromId113c(m: Memory113c, nItemId: number): num
   }
   return m.u8((pRec + 0x11c) >>> 0)
 }
+
+export const ITEMS_GetInvWidthFromId113c = ITEMS_Is2HandedById113c
 
 /**
  * `@va D2Common:0x6FD731E0` (`D2Common.#10505` `ITEMS_GetComponentFromItem`,
@@ -1572,7 +1576,7 @@ export function COMPOSIT_GetItemPageLimitByBodyLoc113c(
 }
 
 export const D2COMMON_GRID0_INFO_VA_113C = 0x6fded378
-const D2COMMON_GRID1_INFO_VA_113C = 0x6fded390
+export const D2COMMON_GRID1_INFO_VA_113C = 0x6fded390
 
 /**
  * Memory port of `D2Common 0x6FD6E1B0` (`INVENTORY_GetOrInitGrid`, usercall `ebx = pInventory`,
@@ -2556,6 +2560,13 @@ export function INVENTORY_AppendItemGuidNode113c(
 /**
  * `@va D2Common:0x6FD6FB80` (`D2Common.#10051` `INVENTORY_GetEquippedWeaponHandClass`,
  * stdcall `[esp+4] = pPlayer`, `[esp+8] = pInventory`, `ret 8` -> `int32` `-1 | 1 | 2`).
+ *
+ * Disassembly (`D2Common.dll@0x6FD6FB80..0x6FD6FC6A`):
+ * - Reads grid `0` (`D2COMMON_GRID0_INFO_VA_113C`) slots `5` (`edi = [ppItems+0x14]`) and `4` (`esi = [ppItems+0x10]`).
+ * - Both slots non-null: `ITEMS_CanPlayerClassUseItem(pPlayer, edi|esi)` (`0x6FD72310`) -> `1`;
+ *   else `ITEMS_Is2Handed(edi)` (`0x6FD74BF0`) -> `2`; else `ITEMS_Is2Handed(esi)` (`0x6FD74BF0`) -> `2`, else `-1`.
+ * - Single non-null slot (`edi` or `esi`): if `UNIT_ITEM (4)` and `ITEMS_Is2HandedById(dwClassId)` (`0x6FD72E70`,
+ *   `D2ItemsTxt + 0x11C` `'2handed'`) -> `2`; else `ITEMS_CanPlayerClassUseItem(pPlayer, slot) ? 2 : -1`.
  */
 export function INVENTORY_GetEquippedWeaponHandClass113c(
   m: Memory113c,
@@ -2584,17 +2595,17 @@ export function INVENTORY_GetEquippedWeaponHandClass113c(
     if (esi !== 0) {
       if (ITEMS_CanPlayerClassUseItem113c(m, plr, edi) !== 0) return 1
       if (ITEMS_CanPlayerClassUseItem113c(m, plr, esi) !== 0) return 1
-      if (ITEMS_GetInvWidthFromItem113c(m, edi) !== 0) return 2
-      return ITEMS_GetInvWidthFromItem113c(m, esi) !== 0 ? 2 : 0xffffffff
+      if (ITEMS_Is2Handed113c(m, edi) !== 0) return 2
+      return ITEMS_Is2Handed113c(m, esi) !== 0 ? 2 : 0xffffffff
     }
     if (m.u32(edi) === UNIT_ITEM) {
-      if (ITEMS_GetInvWidthFromId113c(m, m.u32((edi + 0x04) >>> 0)) !== 0) return 2
+      if (ITEMS_Is2HandedById113c(m, m.u32((edi + 0x04) >>> 0)) !== 0) return 2
     }
     return ITEMS_CanPlayerClassUseItem113c(m, plr, edi) !== 0 ? 2 : 0xffffffff
   }
   if (esi !== 0) {
     if (m.u32(esi) === UNIT_ITEM) {
-      if (ITEMS_GetInvWidthFromId113c(m, m.u32((esi + 0x04) >>> 0)) !== 0) return 2
+      if (ITEMS_Is2HandedById113c(m, m.u32((esi + 0x04) >>> 0)) !== 0) return 2
     }
     return ITEMS_CanPlayerClassUseItem113c(m, plr, esi) !== 0 ? 2 : 0xffffffff
   }

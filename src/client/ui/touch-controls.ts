@@ -6,8 +6,11 @@
 import type { D2FontRenderer } from './font.ts'
 import type { MonsterTargetHudInfo } from './world-panels.ts'
 import {
+  DEFAULT_MOBILE_JOYSTICK_MODE,
   DEFAULT_SKILL_WHEEL_BANK_MODE,
+  normalizeMobileJoystickMode,
   type HudLayoutMode,
+  type MobileJoystickMode,
   type SkillWheelBankMode,
 } from '../settings/client-settings.ts'
 import { isUsableRightClickItem, type EquipSlotId, type UiInventoryItem } from './inventory.ts'
@@ -25,6 +28,20 @@ export const JOYSTICK_WALK_RADIUS = 44
 export const JOYSTICK_KNOB_RADIUS = 23
 export const JOYSTICK_DEADZONE_RATIO = 0.12
 export const JOYSTICK_AUTORUN_RATIO = 0.65
+/** Extra radial hit tolerance around the outer ring when left joystick is locked (`fixed`). */
+export const JOYSTICK_FIXED_HIT_PADDING = 24
+/** Visual radius (logical px) of the on-canvas joystick lock medallion button. */
+export const JOYSTICK_LOCK_BTN_RADIUS = 16
+/** Touch hit radius (logical px) of the lock medallion (`44x44` touch target). */
+export const JOYSTICK_LOCK_BTN_HIT_RADIUS = 22
+/** Placement angle for the lock medallion on the upper-left shoulder of the joystick ring. */
+export const JOYSTICK_LOCK_BTN_ANGLE_RAD = (-125 * Math.PI) / 180
+/** Radial distance from joystick origin to lock medallion center (`84px`). */
+export const JOYSTICK_LOCK_BTN_DIST = JOYSTICK_OUTER_RADIUS + 16
+/** Duration (ms) of the transient lock/unlock toast pill above the joystick. */
+export const JOYSTICK_LOCK_FEEDBACK_MS = 1400
+/** Duration (ms) of the converging gold lock pulse ring when locking the joystick. */
+export const JOYSTICK_LOCK_PULSE_MS = 350
 
 export const DEFAULT_CONE_HALF_ANGLE_RAD = Math.PI / 4 // ±45°
 export const DEFAULT_CONE_MAX_SCREEN_RANGE = 380
@@ -317,6 +334,165 @@ export interface VectorAimState {
   readonly originY: number
   readonly targetScreenX: number
   readonly targetScreenY: number
+}
+
+export interface JoystickLockButtonMetrics {
+  readonly cx: number
+  readonly cy: number
+  readonly r: number
+  readonly hitR: number
+}
+
+export interface JoystickLockChangeEvent {
+  readonly mode: MobileJoystickMode
+  readonly anchorRx?: number | undefined
+  readonly anchorRy?: number | undefined
+}
+
+export function clampJoystickAnchor(
+  x: number,
+  y: number,
+  logicalWidth: number = 1068,
+  logicalHeight: number = 600,
+  compactHudActive: boolean = true,
+  safeInsets: { readonly top: number; readonly right: number; readonly bottom: number; readonly left: number } = readSafeAreaInsetsLogical(
+    logicalWidth,
+    logicalHeight,
+  ),
+): { readonly x: number; readonly y: number } {
+  const minX = JOYSTICK_OUTER_RADIUS + 14 + safeInsets.left
+  const maxX = Math.max(minX, Math.round(logicalWidth * 0.3))
+  const maxY = Math.max(
+    JOYSTICK_OUTER_RADIUS + 20,
+    logicalHeight - JOYSTICK_OUTER_RADIUS - 20 - safeInsets.bottom,
+  )
+  const minY = Math.min(
+    maxY,
+    Math.max(JOYSTICK_OUTER_RADIUS + 56 + safeInsets.top, Math.round(logicalHeight * 0.42)),
+  )
+  let cx = Math.max(minX, Math.min(maxX, Math.round(x)))
+  let cy = Math.max(minY, Math.min(maxY, Math.round(y)))
+  if (compactHudActive) {
+    const m = computeCompactD2rHudMetrics(logicalWidth, logicalHeight)
+    const clearance = JOYSTICK_OUTER_RADIUS + 8
+    const verticalClearance = JOYSTICK_OUTER_RADIUS + 18
+    if (cx + clearance > m.barX && cy + verticalClearance > m.barY) {
+      if (m.barX - clearance >= minX) {
+        cx = Math.round(m.barX - clearance)
+      } else {
+        cy = Math.max(
+          JOYSTICK_OUTER_RADIUS + 56 + safeInsets.top,
+          Math.min(cy, Math.round(m.barY - verticalClearance)),
+        )
+      }
+    }
+  }
+  return { x: cx, y: cy }
+}
+
+export function computeDefaultJoystickAnchor(
+  logicalWidth: number = 1068,
+  logicalHeight: number = 600,
+  compactHudActive: boolean = true,
+  safeInsets: { readonly top: number; readonly right: number; readonly bottom: number; readonly left: number } = readSafeAreaInsetsLogical(
+    logicalWidth,
+    logicalHeight,
+  ),
+): { readonly x: number; readonly y: number } {
+  const isNarrow4x3 = logicalWidth < 960
+  if (compactHudActive && isNarrow4x3) {
+    const barY = logicalHeight - COMPACT_HUD_HEIGHT
+    const rawX = Math.round(Math.max(JOYSTICK_OUTER_RADIUS + 18 + safeInsets.left, logicalWidth * 0.155))
+    const rawY = Math.max(
+      JOYSTICK_OUTER_RADIUS + 56 + safeInsets.top,
+      barY - JOYSTICK_OUTER_RADIUS - 12,
+    )
+    return clampJoystickAnchor(rawX, rawY, logicalWidth, logicalHeight, compactHudActive, safeInsets)
+  }
+  const rawX =
+    Math.round(Math.max(JOYSTICK_OUTER_RADIUS + 20, Math.min(144, logicalWidth * 0.124))) +
+    safeInsets.left
+  const rawY = logicalHeight - 148 - safeInsets.bottom
+  return clampJoystickAnchor(rawX, rawY, logicalWidth, logicalHeight, compactHudActive, safeInsets)
+}
+
+export function computeJoystickLockButtonMetrics(
+  originX: number,
+  originY: number,
+  logicalWidth: number = 1068,
+  logicalHeight: number = 600,
+  hitRadius: number = JOYSTICK_LOCK_BTN_HIT_RADIUS,
+): JoystickLockButtonMetrics {
+  const dx = Math.cos(JOYSTICK_LOCK_BTN_ANGLE_RAD) * JOYSTICK_LOCK_BTN_DIST
+  const dy = Math.sin(JOYSTICK_LOCK_BTN_ANGLE_RAD) * JOYSTICK_LOCK_BTN_DIST
+  let rawCx = Math.round(originX + dx)
+  const rawCy = Math.round(originY + dy)
+  if (rawCx - JOYSTICK_LOCK_BTN_RADIUS < 8) {
+    rawCx = Math.round(originX - dx)
+  }
+  const margin = JOYSTICK_LOCK_BTN_RADIUS + 6
+  const cx = Math.max(margin, Math.min(Math.max(margin, logicalWidth - margin), rawCx))
+  const cy = Math.max(margin, Math.min(Math.max(margin, logicalHeight - margin), rawCy))
+  return {
+    cx,
+    cy,
+    r: JOYSTICK_LOCK_BTN_RADIUS,
+    hitR: hitRadius,
+  }
+}
+
+export function hitTestJoystickLockButton(
+  x: number,
+  y: number,
+  originX: number,
+  originY: number,
+  logicalWidth: number = 1068,
+  logicalHeight: number = 600,
+  hitRadius: number = JOYSTICK_LOCK_BTN_HIT_RADIUS,
+): boolean {
+  const m = computeJoystickLockButtonMetrics(originX, originY, logicalWidth, logicalHeight, hitRadius)
+  return Math.hypot(x - m.cx, y - m.cy) <= m.hitR
+}
+
+function drawJoystickPadlockIcon(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  locked: boolean,
+): void {
+  // Shackle
+  ctx.beginPath()
+  if (locked) {
+    ctx.arc(cx, cy - 3.5, 4.2, Math.PI, 0, false)
+    ctx.lineTo(cx + 4.2, cy - 0.5)
+    ctx.moveTo(cx - 4.2, cy - 3.5)
+    ctx.lineTo(cx - 4.2, cy - 0.5)
+  } else {
+    ctx.arc(cx + 2.4, cy - 5.2, 4.2, Math.PI * 1.05, -0.15, false)
+    ctx.moveTo(cx - 1.8, cy - 5.2)
+    ctx.lineTo(cx - 1.8, cy - 0.5)
+  }
+  ctx.strokeStyle = locked ? '#ffe082' : 'rgba(196, 168, 118, 0.85)'
+  ctx.lineWidth = 1.9
+  ctx.stroke()
+
+  // Lock body
+  const bodyW = 12
+  const bodyH = 9
+  const bx = Math.round(cx - bodyW / 2)
+  const by = Math.round(cy - 1)
+  ctx.fillStyle = locked ? '#e8b949' : 'rgba(156, 132, 88, 0.78)'
+  ctx.fillRect(bx, by, bodyW, bodyH)
+  ctx.strokeStyle = locked ? '#fff3c4' : 'rgba(210, 184, 134, 0.75)'
+  ctx.lineWidth = 1
+  ctx.strokeRect(bx + 0.5, by + 0.5, bodyW - 1, bodyH - 1)
+
+  // Keyhole
+  ctx.beginPath()
+  ctx.arc(cx, by + 3.6, 1.4, 0, Math.PI * 2)
+  ctx.fillStyle = locked ? '#221506' : '#18130d'
+  ctx.fill()
+  ctx.fillRect(cx - 0.7, by + 4.4, 1.4, 2.8)
 }
 
 export function createIdleJoystickState(defaultX = 148, defaultY = 456): DynamicJoystickState {
@@ -1277,7 +1453,10 @@ export class TouchControlsHud {
    */
   resetTransientState(): void {
     if (this.joystick.active || this.joystick.pointerId !== null || this.joystick.locomotionMode !== 'idle') {
-      this.joystick = createIdleJoystickState()
+      this.joystick =
+        this._joystickMode === 'fixed'
+          ? createIdleJoystickState(this.joystick.originX, this.joystick.originY)
+          : createIdleJoystickState()
     }
     this.vectorAim = null
     this.lockedMonster = null
@@ -1453,10 +1632,238 @@ export class TouchControlsHud {
   hapticsEnabled = true
 
   joystick: DynamicJoystickState = createIdleJoystickState()
+  private _joystickMode: MobileJoystickMode = DEFAULT_MOBILE_JOYSTICK_MODE
+  private _fixedAnchorRatio: { readonly rx: number; readonly ry: number } | null = null
+  private _hasUserMovedJoystick = false
+  private _lastViewportWidth = 1068
+  private _lastViewportHeight = 600
+  lockChangedAtMs = -Infinity
+  lockFeedbackUntilMs = -Infinity
+  onJoystickLockChange?: ((event: JoystickLockChangeEvent) => void) | undefined
   lastFacingAngleRad: number = -Math.PI / 5
   lockedMonster: ScoredMonsterTarget | null = null
   lockedInteractable: ConeInteractableCandidate | null = null
   coneHalfAngleRad: number = DEFAULT_CONE_HALF_ANGLE_RAD
+
+  get joystickMode(): MobileJoystickMode {
+    return this._joystickMode
+  }
+
+  set joystickMode(mode: MobileJoystickMode) {
+    this._joystickMode = normalizeMobileJoystickMode(mode, DEFAULT_MOBILE_JOYSTICK_MODE)
+  }
+
+  get fixedAnchorRatio(): { readonly rx: number; readonly ry: number } | null {
+    return this._fixedAnchorRatio
+  }
+
+  isLockFeedbackActive(nowMs: number = performance.now()): boolean {
+    return Number.isFinite(this.lockFeedbackUntilMs) && nowMs < this.lockFeedbackUntilMs
+  }
+
+  private resolveFixedAnchor(
+    logicalWidth: number,
+    logicalHeight: number,
+  ): { readonly x: number; readonly y: number } {
+    if (this._fixedAnchorRatio !== null) {
+      return clampJoystickAnchor(
+        this._fixedAnchorRatio.rx * logicalWidth,
+        this._fixedAnchorRatio.ry * logicalHeight,
+        logicalWidth,
+        logicalHeight,
+        this.compactHudActive,
+      )
+    }
+    return computeDefaultJoystickAnchor(logicalWidth, logicalHeight, this.compactHudActive)
+  }
+
+  syncViewport(logicalWidth: number, logicalHeight: number): void {
+    if (!Number.isFinite(logicalWidth) || !Number.isFinite(logicalHeight) || logicalWidth <= 0 || logicalHeight <= 0) {
+      return
+    }
+    this._lastViewportWidth = logicalWidth
+    this._lastViewportHeight = logicalHeight
+    if (this._joystickMode === 'fixed') {
+      const anchor = this.resolveFixedAnchor(logicalWidth, logicalHeight)
+      if (this.joystick.active && this.joystick.pointerId !== null) {
+        this.joystick = computeJoystickVector(
+          anchor.x,
+          anchor.y,
+          this.joystick.currentX,
+          this.joystick.currentY,
+          this.joystick.pointerId,
+          JOYSTICK_OUTER_RADIUS,
+          this.lastFacingAngleRad,
+        )
+      } else {
+        this.joystick = {
+          ...createIdleJoystickState(anchor.x, anchor.y),
+          angleRad: this.lastFacingAngleRad,
+        }
+      }
+      return
+    }
+    if (!this._hasUserMovedJoystick && !this.joystick.active) {
+      const anchor = computeDefaultJoystickAnchor(logicalWidth, logicalHeight, this.compactHudActive)
+      this.joystick = {
+        ...createIdleJoystickState(anchor.x, anchor.y),
+        angleRad: this.lastFacingAngleRad,
+      }
+    }
+  }
+
+  applyJoystickSettings(
+    mode: MobileJoystickMode | undefined,
+    anchorRx: number | undefined,
+    anchorRy: number | undefined,
+    logicalWidth: number = this._lastViewportWidth,
+    logicalHeight: number = this._lastViewportHeight,
+    nowMs: number = performance.now(),
+    showFeedback: boolean = false,
+  ): JoystickLockChangeEvent {
+    if (Number.isFinite(logicalWidth) && logicalWidth > 0) this._lastViewportWidth = logicalWidth
+    if (Number.isFinite(logicalHeight) && logicalHeight > 0) this._lastViewportHeight = logicalHeight
+    const prevMode = this._joystickMode
+    const nextMode = normalizeMobileJoystickMode(mode, DEFAULT_MOBILE_JOYSTICK_MODE)
+    if (
+      typeof anchorRx === 'number' &&
+      Number.isFinite(anchorRx) &&
+      typeof anchorRy === 'number' &&
+      Number.isFinite(anchorRy)
+    ) {
+      this._fixedAnchorRatio = { rx: anchorRx, ry: anchorRy }
+    } else if (anchorRx === undefined && anchorRy === undefined && nextMode === 'floating') {
+      this._fixedAnchorRatio = null
+    }
+    this._joystickMode = nextMode
+    if (nextMode === 'fixed') {
+      let target: { readonly x: number; readonly y: number }
+      if (prevMode !== 'fixed' && this._hasUserMovedJoystick) {
+        target = clampJoystickAnchor(
+          this.joystick.originX,
+          this.joystick.originY,
+          this._lastViewportWidth,
+          this._lastViewportHeight,
+          this.compactHudActive,
+        )
+        this._fixedAnchorRatio = {
+          rx: Math.round((target.x / Math.max(1, this._lastViewportWidth)) * 10000) / 10000,
+          ry: Math.round((target.y / Math.max(1, this._lastViewportHeight)) * 10000) / 10000,
+        }
+      } else if (this._fixedAnchorRatio !== null) {
+        target = this.resolveFixedAnchor(this._lastViewportWidth, this._lastViewportHeight)
+      } else {
+        target = computeDefaultJoystickAnchor(
+          this._lastViewportWidth,
+          this._lastViewportHeight,
+          this.compactHudActive,
+        )
+        this._fixedAnchorRatio = {
+          rx: Math.round((target.x / Math.max(1, this._lastViewportWidth)) * 10000) / 10000,
+          ry: Math.round((target.y / Math.max(1, this._lastViewportHeight)) * 10000) / 10000,
+        }
+      }
+      if (!this.joystick.active) {
+        this.joystick = {
+          ...createIdleJoystickState(target.x, target.y),
+          angleRad: this.lastFacingAngleRad,
+        }
+      }
+    } else if (prevMode === 'fixed') {
+      this._hasUserMovedJoystick = false
+    }
+    if (showFeedback && nextMode !== prevMode) {
+      this.lockChangedAtMs = nowMs
+      this.lockFeedbackUntilMs = nowMs + JOYSTICK_LOCK_FEEDBACK_MS
+    }
+    return {
+      mode: this._joystickMode,
+      ...(this._fixedAnchorRatio !== null
+        ? { anchorRx: this._fixedAnchorRatio.rx, anchorRy: this._fixedAnchorRatio.ry }
+        : {}),
+    }
+  }
+
+  toggleJoystickLock(
+    logicalWidth: number = this._lastViewportWidth,
+    logicalHeight: number = this._lastViewportHeight,
+    nowMs: number = performance.now(),
+  ): JoystickLockChangeEvent {
+    if (Number.isFinite(logicalWidth) && logicalWidth > 0) this._lastViewportWidth = logicalWidth
+    if (Number.isFinite(logicalHeight) && logicalHeight > 0) this._lastViewportHeight = logicalHeight
+    const nextMode: MobileJoystickMode = this._joystickMode === 'fixed' ? 'floating' : 'fixed'
+    if (nextMode === 'fixed') {
+      const target = this._hasUserMovedJoystick
+        ? clampJoystickAnchor(
+            this.joystick.originX,
+            this.joystick.originY,
+            this._lastViewportWidth,
+            this._lastViewportHeight,
+            this.compactHudActive,
+          )
+        : this._fixedAnchorRatio !== null
+          ? this.resolveFixedAnchor(this._lastViewportWidth, this._lastViewportHeight)
+          : computeDefaultJoystickAnchor(
+              this._lastViewportWidth,
+              this._lastViewportHeight,
+              this.compactHudActive,
+            )
+      this._fixedAnchorRatio = {
+        rx: Math.round((target.x / Math.max(1, this._lastViewportWidth)) * 10000) / 10000,
+        ry: Math.round((target.y / Math.max(1, this._lastViewportHeight)) * 10000) / 10000,
+      }
+      this._joystickMode = 'fixed'
+      this.joystick = {
+        ...createIdleJoystickState(target.x, target.y),
+        angleRad: this.lastFacingAngleRad,
+      }
+    } else {
+      this._joystickMode = 'floating'
+      this._hasUserMovedJoystick = false
+    }
+    this.lockChangedAtMs = nowMs
+    this.lockFeedbackUntilMs = nowMs + JOYSTICK_LOCK_FEEDBACK_MS
+    const event: JoystickLockChangeEvent = {
+      mode: this._joystickMode,
+      ...(this._fixedAnchorRatio !== null
+        ? { anchorRx: this._fixedAnchorRatio.rx, anchorRy: this._fixedAnchorRatio.ry }
+        : {}),
+    }
+    this.onJoystickLockChange?.(event)
+    return event
+  }
+
+  hitTestLockButton(
+    x: number,
+    y: number,
+    logicalWidth: number,
+    logicalHeight: number,
+    leftPanelOpen: boolean,
+    beltExpanded = false,
+  ): boolean {
+    if (!this.enabled || leftPanelOpen || this.joystick.active) return false
+    if (this.compactHudActive) {
+      const m = computeCompactD2rHudMetrics(logicalWidth, logicalHeight)
+      if (x >= m.barX && x <= m.barX + m.barWidth && y >= m.barY + 16) return false
+      if (
+        beltExpanded &&
+        x >= m.popbeltDrawer.x &&
+        x <= m.popbeltDrawer.x + m.popbeltDrawer.width &&
+        y >= m.popbeltDrawer.y &&
+        y <= m.popbeltDrawer.y + m.popbeltDrawer.height
+      ) {
+        return false
+      }
+    }
+    return hitTestJoystickLockButton(
+      x,
+      y,
+      this.joystick.originX,
+      this.joystick.originY,
+      logicalWidth,
+      logicalHeight,
+    )
+  }
 
   /** Whether the D2R 524px Compact Center Bar & 6x2 Skill Wheel should replace the 800px PC bottom bar. */
   get compactHudActive(): boolean {
@@ -1575,6 +1982,19 @@ export class TouchControlsHud {
         return false
       }
     }
+    if (this._joystickMode === 'fixed') {
+      const anchor = clampJoystickAnchor(
+        this.joystick.originX,
+        this.joystick.originY,
+        logicalWidth,
+        logicalHeight,
+        this.compactHudActive,
+      )
+      return (
+        Math.hypot(x - anchor.x, y - anchor.y) <=
+        JOYSTICK_OUTER_RADIUS + JOYSTICK_FIXED_HIT_PADDING
+      )
+    }
     return (
       x >= 0 &&
       x <= logicalWidth * 0.35 &&
@@ -1595,6 +2015,28 @@ export class TouchControlsHud {
     if (!this.isInLeftJoystickZone(x, y, logicalWidth, logicalHeight, leftPanelOpen, beltExpanded)) {
       return false
     }
+    if (this._joystickMode === 'fixed') {
+      const anchor = clampJoystickAnchor(
+        this.joystick.originX,
+        this.joystick.originY,
+        logicalWidth,
+        logicalHeight,
+        this.compactHudActive,
+      )
+      this.joystick = computeJoystickVector(
+        anchor.x,
+        anchor.y,
+        x,
+        y,
+        pointerId,
+        JOYSTICK_OUTER_RADIUS,
+        this.lastFacingAngleRad,
+      )
+      if (this.joystick.magnitude > 0) {
+        this.lastFacingAngleRad = this.joystick.angleRad
+      }
+      return true
+    }
     const clampedOriginX = Math.max(
       JOYSTICK_OUTER_RADIUS + 14,
       Math.min(logicalWidth * 0.3, x),
@@ -1603,6 +2045,7 @@ export class TouchControlsHud {
       logicalHeight * 0.42,
       Math.min(logicalHeight - JOYSTICK_OUTER_RADIUS - 20, y),
     )
+    this._hasUserMovedJoystick = true
     this.joystick = computeJoystickVector(
       clampedOriginX,
       clampedOriginY,
@@ -1764,25 +2207,64 @@ export class TouchControlsHud {
     ctx.restore()
   }
 
-  drawJoystick(ctx: CanvasRenderingContext2D, font: D2FontRenderer, lang: string = 'CHI'): void {
+  drawJoystick(
+    ctx: CanvasRenderingContext2D,
+    font: D2FontRenderer,
+    lang: string = 'CHI',
+    logicalWidth: number = this._lastViewportWidth,
+    logicalHeight: number = this._lastViewportHeight,
+    nowMs: number = performance.now(),
+  ): void {
     if (!this.enabled) return
     const { active, originX, originY, knobX, knobY, angleRad, locomotionMode } = this.joystick
     const outerR = JOYSTICK_OUTER_RADIUS
     const walkR = JOYSTICK_WALK_RADIUS
     const knobR = JOYSTICK_KNOB_RADIUS
     const isZh = lang !== 'ENG'
+    const isFixed = this._joystickMode === 'fixed'
 
     ctx.save()
     if (!active) {
-      ctx.globalAlpha = 0.28
+      ctx.globalAlpha = isFixed ? 0.48 : 0.28
     }
+
+    // Fixed-mode outer anchor flange + 4 cardinal rivet brackets
+    if (isFixed) {
+      ctx.beginPath()
+      ctx.arc(originX, originY, outerR + 4, 0, Math.PI * 2)
+      ctx.strokeStyle = active ? 'rgba(255, 213, 79, 0.72)' : 'rgba(216, 178, 92, 0.62)'
+      ctx.lineWidth = 1.5
+      ctx.stroke()
+
+      for (let i = 0; i < 4; i += 1) {
+        const a = (i * Math.PI) / 2
+        const cos = Math.cos(a)
+        const sin = Math.sin(a)
+        ctx.beginPath()
+        ctx.moveTo(originX + cos * (outerR - 3), originY + sin * (outerR - 3))
+        ctx.lineTo(originX + cos * (outerR + 8), originY + sin * (outerR + 8))
+        ctx.strokeStyle = '#ffd54f'
+        ctx.lineWidth = 2.2
+        ctx.stroke()
+
+        ctx.beginPath()
+        ctx.arc(originX + cos * (outerR + 4), originY + sin * (outerR + 4), 2.6, 0, Math.PI * 2)
+        ctx.fillStyle = '#ffe082'
+        ctx.fill()
+      }
+    }
+
     ctx.beginPath()
     ctx.arc(originX, originY, outerR, 0, Math.PI * 2)
-    ctx.fillStyle = 'rgba(10, 8, 6, 0.45)'
+    ctx.fillStyle = isFixed ? 'rgba(14, 11, 7, 0.56)' : 'rgba(10, 8, 6, 0.45)'
     ctx.fill()
     ctx.strokeStyle =
-      locomotionMode === 'run' ? 'rgba(255, 213, 79, 0.88)' : 'rgba(199, 161, 88, 0.58)'
-    ctx.lineWidth = 2
+      locomotionMode === 'run'
+        ? 'rgba(255, 213, 79, 0.88)'
+        : isFixed
+          ? 'rgba(232, 196, 108, 0.86)'
+          : 'rgba(199, 161, 88, 0.58)'
+    ctx.lineWidth = isFixed ? 2.2 : 2
     ctx.stroke()
 
     ctx.beginPath()
@@ -1790,11 +2272,23 @@ export class TouchControlsHud {
     if (typeof ctx.setLineDash === 'function') {
       ctx.setLineDash([4, 4])
     }
-    ctx.strokeStyle = 'rgba(199, 161, 88, 0.32)'
+    ctx.strokeStyle = isFixed ? 'rgba(224, 186, 102, 0.44)' : 'rgba(199, 161, 88, 0.32)'
     ctx.lineWidth = 1
     ctx.stroke()
     if (typeof ctx.setLineDash === 'function') {
       ctx.setLineDash([])
+    }
+
+    // Fixed-mode center anchor pin crosshair (stays visible while knob is deflected)
+    if (isFixed) {
+      ctx.beginPath()
+      ctx.moveTo(originX - 5, originY)
+      ctx.lineTo(originX + 5, originY)
+      ctx.moveTo(originX, originY - 5)
+      ctx.lineTo(originX, originY + 5)
+      ctx.strokeStyle = 'rgba(255, 224, 130, 0.65)'
+      ctx.lineWidth = 1.2
+      ctx.stroke()
     }
 
     if (active && locomotionMode === 'run') {
@@ -1827,7 +2321,19 @@ export class TouchControlsHud {
         ctx,
         isZh ? '奔跑' : 'RUN',
         Math.round(originX),
-        Math.round(originY + outerR + 13),
+        Math.round(originY + outerR + 14),
+        {
+          font: 'font6',
+          color: 'gold',
+          align: 'center',
+        },
+      )
+    } else if (isFixed) {
+      font.drawText(
+        ctx,
+        isZh ? '已固定' : 'LOCKED',
+        Math.round(originX),
+        Math.round(originY + outerR + 15),
         {
           font: 'font6',
           color: 'gold',
@@ -1835,6 +2341,75 @@ export class TouchControlsHud {
         },
       )
     }
+
+    // Converging gold lock pulse ring right after locking
+    const pulseElapsed = nowMs - this.lockChangedAtMs
+    if (isFixed && pulseElapsed >= 0 && pulseElapsed < JOYSTICK_LOCK_PULSE_MS) {
+      const t = pulseElapsed / JOYSTICK_LOCK_PULSE_MS
+      const pulseR = outerR + 14 - t * 10
+      ctx.save()
+      ctx.globalAlpha = (1 - t) * 0.85
+      ctx.beginPath()
+      ctx.arc(originX, originY, pulseR, 0, Math.PI * 2)
+      ctx.strokeStyle = '#ffd54f'
+      ctx.lineWidth = 2.4
+      ctx.stroke()
+      ctx.restore()
+    }
+
+    // On-canvas interactive padlock medallion button
+    const lockBtn = computeJoystickLockButtonMetrics(originX, originY, logicalWidth, logicalHeight)
+    ctx.save()
+    ctx.globalAlpha = active ? 0.3 : isFixed ? 0.94 : 0.62
+    ctx.beginPath()
+    ctx.arc(lockBtn.cx, lockBtn.cy, lockBtn.r, 0, Math.PI * 2)
+    ctx.fillStyle = isFixed ? 'rgba(42, 30, 12, 0.92)' : 'rgba(14, 12, 10, 0.72)'
+    ctx.fill()
+    ctx.strokeStyle = isFixed ? '#ffd54f' : 'rgba(176, 148, 96, 0.58)'
+    ctx.lineWidth = isFixed ? 1.8 : 1.2
+    ctx.stroke()
+    drawJoystickPadlockIcon(ctx, lockBtn.cx, lockBtn.cy + 1, isFixed)
+    ctx.restore()
+
+    // Transient mode-switch toast pill above the joystick ring
+    if (this.isLockFeedbackActive(nowMs)) {
+      const remaining = this.lockFeedbackUntilMs - nowMs
+      const toastAlpha = Math.max(0, Math.min(1, remaining / 320))
+      const toastText = isFixed
+        ? isZh
+          ? '摇杆已固定'
+          : 'JOYSTICK LOCKED'
+        : isZh
+          ? '浮动摇杆'
+          : 'FLOATING STICK'
+      const pillW = isZh ? 84 : 114
+      const pillH = 20
+      const pillX = Math.max(
+        6,
+        Math.min(Math.max(6, logicalWidth - pillW - 6), Math.round(originX - pillW / 2)),
+      )
+      const pillY = Math.max(
+        58,
+        Math.min(
+          Math.round(originY - outerR - 34),
+          Math.round(lockBtn.cy - lockBtn.r - pillH - 6),
+        ),
+      )
+      ctx.save()
+      ctx.globalAlpha = toastAlpha * 0.94
+      ctx.fillStyle = isFixed ? 'rgba(28, 20, 8, 0.9)' : 'rgba(14, 12, 10, 0.86)'
+      ctx.fillRect(pillX, pillY, pillW, pillH)
+      ctx.strokeStyle = isFixed ? '#ffd54f' : 'rgba(196, 174, 128, 0.72)'
+      ctx.lineWidth = 1.2
+      ctx.strokeRect(pillX + 0.5, pillY + 0.5, pillW - 1, pillH - 1)
+      font.drawText(ctx, toastText, Math.round(pillX + pillW / 2), Math.round(pillY + 13), {
+        font: 'font6',
+        color: isFixed ? 'gold' : 'white',
+        align: 'center',
+      })
+      ctx.restore()
+    }
+
     ctx.restore()
   }
 

@@ -74,6 +74,7 @@ export type WeatherOverrideSetting = 'off' | 'rain' | 'snow'
  */
 export type LightQualitySetting = 0 | 1 | 2
 export type HudLayoutMode = 'auto' | 'classic' | 'compact-d2r'
+export type MobileJoystickMode = 'floating' | 'fixed'
 export type SkillWheelBankMode = 'toggle' | 'hold'
 export type MultiboxAudioFocusPolicy = 'focus-only' | 'all'
 
@@ -128,6 +129,9 @@ export interface ClientSettings
   readonly extraItemContext: boolean // default: true
   readonly keyBindings: KeyBindingsConfig
   readonly hudLayoutMode?: HudLayoutMode | undefined
+  readonly mobileJoystickMode?: MobileJoystickMode | undefined
+  readonly mobileJoystickAnchorRx?: number | undefined
+  readonly mobileJoystickAnchorRy?: number | undefined
   readonly skillWheelBankMode?: SkillWheelBankMode | undefined
   readonly mobileAutoPickupGoldAndPotions?: boolean | undefined
   readonly mobileHapticsEnabled?: boolean | undefined
@@ -196,6 +200,10 @@ export const VALID_HUD_LAYOUT_MODES: readonly HudLayoutMode[] = [
   'classic',
   'compact-d2r',
 ] as const
+export const VALID_MOBILE_JOYSTICK_MODES: readonly MobileJoystickMode[] = [
+  'floating',
+  'fixed',
+] as const
 
 export const DEFAULT_LIGHT_QUALITY: LightQualitySetting = 2
 export const DEFAULT_GAMMA_113C: number = GAMMA_DEFAULT_113C
@@ -203,6 +211,7 @@ export const DEFAULT_CONTRAST_113C: number = CONTRAST_DEFAULT_113C
 export const DEFAULT_AUDIO_MUTED = false
 export const DEFAULT_MASTER_VOLUME = 0.8
 export const DEFAULT_HUD_LAYOUT_MODE: HudLayoutMode = 'auto'
+export const DEFAULT_MOBILE_JOYSTICK_MODE: MobileJoystickMode = 'floating'
 export const DEFAULT_SKILL_WHEEL_BANK_MODE: SkillWheelBankMode = 'toggle'
 export const DEFAULT_MULTIBOX_ENABLED = false
 export const DEFAULT_MULTIBOX_AUDIO_FOCUS_POLICY: MultiboxAudioFocusPolicy = 'focus-only'
@@ -243,6 +252,7 @@ export function createDefaultClientSettings(defaultLang?: GameLang): ClientSetti
     extraItemContext: true,
     keyBindings: createDefaultKeyBindings(),
     hudLayoutMode: DEFAULT_HUD_LAYOUT_MODE,
+    mobileJoystickMode: DEFAULT_MOBILE_JOYSTICK_MODE,
     skillWheelBankMode: DEFAULT_SKILL_WHEEL_BANK_MODE,
     multiboxEnabled: DEFAULT_MULTIBOX_ENABLED,
     multiboxAudioFocusPolicy: DEFAULT_MULTIBOX_AUDIO_FOCUS_POLICY,
@@ -282,6 +292,7 @@ export const DEFAULT_CLIENT_SETTINGS: ClientSettings = {
   extraItemContext: true,
   keyBindings: DEFAULT_KEY_BINDINGS,
   hudLayoutMode: DEFAULT_HUD_LAYOUT_MODE,
+  mobileJoystickMode: DEFAULT_MOBILE_JOYSTICK_MODE,
   skillWheelBankMode: DEFAULT_SKILL_WHEEL_BANK_MODE,
   multiboxEnabled: DEFAULT_MULTIBOX_ENABLED,
   multiboxAudioFocusPolicy: DEFAULT_MULTIBOX_AUDIO_FOCUS_POLICY,
@@ -544,6 +555,28 @@ export function normalizeHudLayoutMode(
   return fallback
 }
 
+export function normalizeMobileJoystickMode(
+  value: unknown,
+  fallback: MobileJoystickMode = DEFAULT_MOBILE_JOYSTICK_MODE,
+): MobileJoystickMode {
+  if (typeof value !== 'string') return fallback
+  const clean = value.trim().toLowerCase()
+  if ((VALID_MOBILE_JOYSTICK_MODES as readonly string[]).includes(clean)) {
+    return clean as MobileJoystickMode
+  }
+  return fallback
+}
+
+export function normalizeJoystickAnchorRatio(
+  value: unknown,
+  min: number,
+  max: number,
+): number | undefined {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return undefined
+  const clamped = Math.max(min, Math.min(max, value))
+  return Math.round(clamped * 10000) / 10000
+}
+
 /**
  * Sanitize an arbitrary input value into a strictly valid `ClientSettings` object.
  * Never throws; strips unknown fields and replaces corrupt fields with defaults.
@@ -686,6 +719,12 @@ export function sanitizeClientSettings(
     rec.hudLayoutMode,
     defaults.hudLayoutMode ?? DEFAULT_HUD_LAYOUT_MODE,
   )
+  const mobileJoystickMode: MobileJoystickMode = normalizeMobileJoystickMode(
+    rec.mobileJoystickMode,
+    defaults.mobileJoystickMode ?? DEFAULT_MOBILE_JOYSTICK_MODE,
+  )
+  const mobileJoystickAnchorRx = normalizeJoystickAnchorRatio(rec.mobileJoystickAnchorRx, 0.02, 0.45)
+  const mobileJoystickAnchorRy = normalizeJoystickAnchorRatio(rec.mobileJoystickAnchorRy, 0.25, 0.95)
   const skillWheelBankMode: SkillWheelBankMode =
     rec.skillWheelBankMode === 'toggle' || rec.skillWheelBankMode === 'hold'
       ? rec.skillWheelBankMode
@@ -743,6 +782,10 @@ export function sanitizeClientSettings(
     extraItemContext,
     keyBindings,
     hudLayoutMode,
+    mobileJoystickMode,
+    ...(mobileJoystickAnchorRx !== undefined && mobileJoystickAnchorRy !== undefined
+      ? { mobileJoystickAnchorRx, mobileJoystickAnchorRy }
+      : {}),
     multiboxEnabled,
     multiboxAudioFocusPolicy,
     multiboxAlertSoundEnabled,

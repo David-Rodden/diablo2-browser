@@ -14,6 +14,7 @@ import {
   DUNGEON_GetCollisionGridFromRoomFast113c,
   DUNGEON_GetLevelIdFromRoom113c,
 } from '../common/dungeon.ts';
+import { D2CommonAssertError } from '../common/inline-helpers.ts';
 import { ITEMS_GetItemTypeFromItem113c } from '../common/items.ts';
 import {
   INVENTORY_GetItemFromBodyLocMemPort113c,
@@ -100,6 +101,7 @@ import {
 import {
   ITEMS_CheckNotBrokenOrUnequipping113c,
   UNITS_CanDualWield113c,
+  applyPlayerPacket113c,
 } from './replay-kernel-113c.ts';
 import {
   SUNIT_InitUnitAnimData113c,
@@ -566,9 +568,22 @@ export function PLAYER_StartModeOnUnit113c(
   bForce = 0,
   calleesOrSkill?: C2SPacketCallees113c | number,
   calleesArg?: C2SPacketCallees113c,
+  dwTargetType?: number,
+  dwTargetId?: number,
 ): number {
   hitD2GameVa113c(0x6FC98430);
-  if (pPlayer === 0 || pGame === 0 || pTargetUnit === 0) return 0;
+  if (pGame === 0) {
+    if (calleesArg === undefined && (typeof calleesOrSkill !== 'object' || calleesOrSkill === null)) {
+      throw new D2CommonAssertError('0x6fd19ff9', 2100);
+    }
+    return 0;
+  }
+
+  let resolvedTarget = pTargetUnit >>> 0;
+  if (resolvedTarget === 0 && dwTargetType !== undefined && dwTargetId !== undefined) {
+    resolvedTarget = SUNIT_GetServerUnit113c(mem, pGame, dwTargetType >>> 0, dwTargetId >>> 0) >>> 0;
+  }
+  if (pPlayer === 0 || resolvedTarget === 0) return 0;
 
   let pSkill = 0;
   let callees: C2SPacketCallees113c | undefined = calleesArg;
@@ -583,7 +598,7 @@ export function PLAYER_StartModeOnUnit113c(
       mem,
       pGame,
       pPlayer,
-      pTargetUnit,
+      resolvedTarget,
       nPlrMode,
       nX,
       nY,
@@ -622,7 +637,7 @@ export function PLAYER_StartModeOnUnit113c(
       pGame,
       pPlayer,
       0,
-      pTargetUnit,
+      resolvedTarget,
     );
     callees?.onAfterModeStarted?.(mem, pPlayer);
     return 1;
@@ -642,19 +657,19 @@ export function PLAYER_StartModeOnUnit113c(
   if (mode === 2 || mode === 3 || mode === 6 || mode === 19) {
     // 0x6FC98760 (`PLAYER_SetPathTargetUnitAndWalk`)
     if (callees?.onStartWalkOrRun !== undefined) {
-      callees.onStartWalkOrRun(mem, pGame, pPlayer, mode, 0, 0, pTargetUnit);
+      callees.onStartWalkOrRun(mem, pGame, pPlayer, mode, 0, 0, resolvedTarget);
     } else if (hasHydratedPathGrid) {
-      PLAYER_ScheduleAttackActionFrameEvents113c(mem, pGame, pPlayer, -2, mode, pTargetUnit);
+      PLAYER_ScheduleAttackActionFrameEvents113c(mem, pGame, pPlayer, -2, mode, resolvedTarget);
     } else {
       if (mode === 19 && mem.get(pPlayer, D2UnitStrc.dwAnimMode) === 19) {
         return 1;
       }
       if (pPath !== 0) {
-        const targetX = getUnitPosXByType113c(mem, pTargetUnit);
-        const targetY = getUnitPosYByType113c(mem, pTargetUnit);
+        const targetX = getUnitPosXByType113c(mem, resolvedTarget);
+        const targetY = getUnitPosYByType113c(mem, resolvedTarget);
         mem.set(pPath, D2DynamicPathStrc.wTargetX, targetX & 0xffff);
         mem.set(pPath, D2DynamicPathStrc.wTargetY, targetY & 0xffff);
-        mem.set(pPath, D2DynamicPathStrc.pTargetUnit, pTargetUnit >>> 0);
+        mem.set(pPath, D2DynamicPathStrc.pTargetUnit, resolvedTarget >>> 0);
       }
       mem.set(pPlayer, D2UnitStrc.dwAnimMode, mode >>> 0);
       if (mem.get(pGame, D2GameStrc.pTimer) !== 0) {
@@ -667,26 +682,20 @@ export function PLAYER_StartModeOnUnit113c(
 
   // Modes 7, 8, 10..16, 18 -> 0x6FC987C0 (`PLAYER_StartModeAttackWithTarget`)
   if (callees?.onStartAttackOnUnit !== undefined) {
-    callees.onStartAttackOnUnit(mem, pGame, pPlayer, pTargetUnit, mode);
+    callees.onStartAttackOnUnit(mem, pGame, pPlayer, resolvedTarget, mode);
     callees.onAfterModeStarted?.(mem, pPlayer);
     return 1;
   }
-  hitD2GameVa113c(0x6fc987c0);
   if (mem.get(pGame, D2GameStrc.pTimer) !== 0 && getSgptDataTablesPtr113c(mem) !== 0) {
-    SUNITDMG_FreeAttackerCombatList113c(mem, pPlayer, pGame);
-    UNITS_ChangeAnimMode113c(mem, pPlayer, mode);
-    UNITS_SetTargetUnitForDynamicUnit113c(mem, pPlayer, pTargetUnit);
-    SUNIT_InitUnitAnimData113c(mem, pPlayer);
-    MONSTER_ClearModeEvents113c(mem, pGame, pPlayer);
-    mem.setU32((pPlayer + 0xc4) >>> 0, (mem.u32((pPlayer + 0xc4) >>> 0) & 0xffffffbf) >>> 0);
-    SKILLS_StartUsedSkill113c(mem, pPlayer, pGame);
+    applyPlayerPacket113c(mem, pGame, pPlayer, mode, resolvedTarget);
   } else {
+    hitD2GameVa113c(0x6fc987c0);
     if (pPath !== 0) {
-      const targetX = getUnitPosXByType113c(mem, pTargetUnit);
-      const targetY = getUnitPosYByType113c(mem, pTargetUnit);
+      const targetX = getUnitPosXByType113c(mem, resolvedTarget);
+      const targetY = getUnitPosYByType113c(mem, resolvedTarget);
       mem.set(pPath, D2DynamicPathStrc.wTargetX, targetX & 0xffff);
       mem.set(pPath, D2DynamicPathStrc.wTargetY, targetY & 0xffff);
-      mem.set(pPath, D2DynamicPathStrc.pTargetUnit, pTargetUnit >>> 0);
+      mem.set(pPath, D2DynamicPathStrc.pTargetUnit, resolvedTarget >>> 0);
     }
     mem.set(pPlayer, D2UnitStrc.dwAnimMode, mode >>> 0);
   }

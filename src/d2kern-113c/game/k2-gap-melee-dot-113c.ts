@@ -140,9 +140,11 @@ import {
   SUNIT_DispatchItemEventCallbacks113c,
 } from './a1c-post150-f786-f1040-113c.ts'
 import {
+  MONSTER_StartMode113c,
   rollPassiveAvoidanceMask0x6FCFB030,
   SUNITDMG_ApplyDamage113c,
   SUNITDMG_ApplySideEffectsAndKill113c,
+  SUNITDMG_SelectDeathOverlayFlag113c,
   type SUnitDmgHooks113c,
 } from './k2-real-s2c-combat-113c.ts'
 import {
@@ -155,7 +157,12 @@ import { D2GAME_SUNIT_GetGameFromUnit113c } from './boot-init-gap-b-113c.ts'
 import { SUNITDMG_GetDefenderColdEffect113c } from './k2-combat-core-w1-113c.ts'
 import { SKILLS_ActivateAuraSkillOnUnit113c } from './k2-gap-itemdef-113c.ts'
 import { MONUMOD_DispatchOnKillEvent5_113c } from './k2-items-tc-w1-113c.ts'
+import {
+  SKILLS_OnCurseExpireResetAlignmentA_6FC6EB90_113c,
+  SKILLS_OnCurseExpireResetAlignmentB_6FC6EBE0_113c,
+} from './k2-laneL-0x6fc6-w1-113c.ts'
 import { SUNIT_GetOwnerUnit113c } from './k2-sunit-spawn-w1-113c.ts'
+import { STATES_OnStateRemovedResetMonsterAi_6FC70130_113c } from './k2-w3b5-113c.ts'
 import { STATES_RemoveMorphStateAndClampVitals_6FCB8450_113c } from './k2-w5b2-113c.ts'
 import { SUNIT_GetServerUnit113c } from './game-strc.ts'
 import {
@@ -207,6 +214,7 @@ export const D2GAME_SRVDMG_MISSILE_COUNT_VA_113C = 0x6fd2dbe4
 
 export const D2GAME_FP_REMOVE_CLEAR_STATE_GFX_VA_113C = 0x6fc58e60
 export const D2GAME_FP_REMOVE_TIMED_STATE_VA_113C = 0x6fcbf7a0
+const D2GAME_DEATH_OVERLAY_ROTOR_VA_113C = 0x6fd31f98
 
 /** `0x6FD1A3DC` (`6` dwords): unitType `0..5` -> timer persistent list partition index. */
 export const D2GAME_EVENT_PARTITION_MAP_113C: readonly number[] = [
@@ -339,6 +347,44 @@ export interface K2GapMeleeDotHooks113c {
   stepMissilePath?: (m: Memory113c, pGame: number, pMissile: number) => number
   scheduleModeAnimEvents?: (m: Memory113c, pGame: number, pUnit: number) => void
   despawnExcessPet?: (m: Memory113c, pGame: number, pPlayer: number, nPetType: number, nCap: number) => void
+}
+
+let scopedMeleeDotHooks113c: K2GapMeleeDotHooks113c | undefined
+
+export function withScopedMeleeDotHooks113c<T>(
+  hooks: K2GapMeleeDotHooks113c | undefined,
+  fn: () => T,
+): T {
+  const prev = scopedMeleeDotHooks113c
+  scopedMeleeDotHooks113c = hooks !== undefined ? hooks : prev
+  try {
+    return fn()
+  } finally {
+    scopedMeleeDotHooks113c = prev
+  }
+}
+
+function resolveMeleeDotHooks113c(
+  hooks?: K2GapMeleeDotHooks113c,
+): K2GapMeleeDotHooks113c | undefined {
+  return hooks !== undefined ? hooks : scopedMeleeDotHooks113c
+}
+
+function isDeathOverlayRotorMapped113c(m: Memory113c): boolean {
+  try {
+    m.u8(D2GAME_DEATH_OVERLAY_ROTOR_VA_113C)
+    return true
+  } catch {
+    return false
+  }
+}
+
+function hasHydratedAnimDataTableK2E_113c(m: Memory113c): boolean {
+  try {
+    return m.u32(0x6fdf0b4c) !== 0
+  } catch {
+    return false
+  }
 }
 
 // ============================================================================
@@ -922,15 +968,28 @@ function applyPoison0x6FCFCAB0(
 }
 
 function buildMeleeDotCombatHooks(hooks?: K2GapMeleeDotHooks113c): SUnitDmgHooks113c {
+  const effHooks = resolveMeleeDotHooks113c(hooks)
   return {
     suppressDirectS2c: true,
     onApplyPoison: (mem, _pg, att, def, poisDmg, poisLen) => {
       applyPoison0x6FCFCAB0(mem, att, def, poisDmg, poisLen)
     },
     onKillUnit: (mem, pg, def, att, bAwardExp) => {
-      killUnit0x6FCFEEE0(mem, pg, def, att, bAwardExp, hooks)
+      killUnit0x6FCFEEE0(mem, pg, def, att, bAwardExp, effHooks)
     },
-    onMonsterStartMode: (mem, pg, def, mode) => {
+    onMonsterStartMode: (mem, pg, def, mode, pTarget) => {
+      if (hasHydratedAnimDataTableK2E_113c(mem)) {
+        MONSTER_StartMode113c(
+          mem,
+          pg,
+          def,
+          mode,
+          mode === 6 || mode === 13 ? (pTarget !== undefined ? pTarget : 0) : 0,
+          0,
+          0,
+        )
+        return
+      }
       if (mode === 3) {
         const pModeScratch = allocStackScratch113c(mem, 0x24)
         try {
@@ -958,10 +1017,14 @@ function applyDamage0x6FCFE0C0(
   pDamage: number,
   hooks?: K2GapMeleeDotHooks113c,
 ): void {
-  if (hooks !== undefined && hooks.applyDamage !== undefined) {
-    hooks.applyDamage(m, pGame, pAttacker, pDefender, bApplyResists, pDamage)
+  const effHooks = resolveMeleeDotHooks113c(hooks)
+  if (effHooks !== undefined && effHooks.applyDamage !== undefined) {
+    effHooks.applyDamage(m, pGame, pAttacker, pDefender, bApplyResists, pDamage)
     return
   }
+  const dmg = pDamage >>> 0
+  const savedHitClass = dmg !== 0 ? m.u32((dmg + 0x60) >>> 0) : 0
+  const savedHitClassActiveSet = dmg !== 0 ? m.u8((dmg + 0x64) >>> 0) : 0
   SUNITDMG_ApplyDamage113c(
     m,
     pGame,
@@ -969,9 +1032,13 @@ function applyDamage0x6FCFE0C0(
     pDefender,
     pDamage,
     bApplyResists,
-    buildMeleeDotCombatHooks(hooks),
+    buildMeleeDotCombatHooks(effHooks),
     1,
   )
+  if (dmg !== 0) {
+    m.setU32((dmg + 0x60) >>> 0, savedHitClass)
+    m.setU8((dmg + 0x64) >>> 0, savedHitClassActiveSet)
+  }
 }
 
 /** Internal `0x6FCFEEE0` (`ecx = pGame`, `edx = pDefender`, `[esp+4] = pAttacker`, `[esp+8] = bAwardExp`): transitions dead unit to death mode. */
@@ -983,8 +1050,9 @@ function killUnit0x6FCFEEE0(
   bAwardExp: number,
   hooks?: K2GapMeleeDotHooks113c,
 ): void {
-  if (hooks !== undefined && hooks.killUnit !== undefined) {
-    hooks.killUnit(m, pGame, pDefender, pAttacker, bAwardExp)
+  const effHooks = resolveMeleeDotHooks113c(hooks)
+  if (effHooks !== undefined && effHooks.killUnit !== undefined) {
+    effHooks.killUnit(m, pGame, pDefender, pAttacker, bAwardExp)
     return
   }
   const def = pDefender >>> 0
@@ -1034,18 +1102,83 @@ function executePostDamage0x6FCFCF20(
   pDamage: number,
   hooks?: K2GapMeleeDotHooks113c,
 ): void {
-  if (hooks !== undefined && hooks.executePostDamage !== undefined) {
-    hooks.executePostDamage(m, pGame, pAttacker, pDefender, pDamage)
+  const effHooks = resolveMeleeDotHooks113c(hooks)
+  if (effHooks !== undefined && effHooks.executePostDamage !== undefined) {
+    effHooks.executePostDamage(m, pGame, pAttacker, pDefender, pDamage)
     return
   }
-  SUNITDMG_ApplySideEffectsAndKill113c(
-    m,
-    pGame,
-    pAttacker,
-    pDefender,
-    pDamage,
-    buildMeleeDotCombatHooks(hooks),
-  )
+  const dmg = pDamage >>> 0
+  let lockedOverlayRotor = false
+  if (
+    dmg !== 0 &&
+    (m.u8((dmg + 0x04) >>> 0) & 0x01) !== 0 &&
+    m.u8((dmg + 0x64) >>> 0) === 0 &&
+    (m.u32((dmg + 0x60) >>> 0) & 0xf0) === 0 &&
+    isDeathOverlayRotorMapped113c(m)
+  ) {
+    const resolvedHitClass = SUNITDMG_SelectDeathOverlayFlag113c(
+      m,
+      m.u32((dmg + 0x60) >>> 0) | 0,
+      dmg,
+      true,
+    ) >>> 0
+    m.setU32((dmg + 0x60) >>> 0, resolvedHitClass)
+    m.setU8((dmg + 0x64) >>> 0, 1)
+    lockedOverlayRotor = true
+  }
+  try {
+    SUNITDMG_ApplySideEffectsAndKill113c(
+      m,
+      pGame,
+      pAttacker,
+      pDefender,
+      pDamage,
+      buildMeleeDotCombatHooks(effHooks),
+    )
+  } finally {
+    if (lockedOverlayRotor) {
+      m.setU8((dmg + 0x64) >>> 0, 0)
+    }
+  }
+}
+
+/**
+ * Dispatches `fpRemove(pUnit, dwStateNo, pOldSubList)` for an unlinked statlist
+ * matching `D2Common:0x6FD8A5A7` (`0x6FC58E60`, `0x6FCBF7A0`, `0x6FC70130`, `0x6FC6EB90`, `0x6FC6EBE0`, `0x6FCB8450`).
+ */
+export function dispatchUnlinkedCurseRemoveProc113c(
+  m: Memory113c,
+  pTargetUnit: number,
+  dwStateNo: number,
+  fpRemove: number,
+  pOldSubList: number,
+  hooks?: K2GapMeleeDotHooks113c,
+): void {
+  const unit = pTargetUnit >>> 0
+  const fn = fpRemove >>> 0
+  const sub = pOldSubList >>> 0
+  const state = dwStateNo | 0
+  if (unit === 0 || fn === 0) return
+  if (fn === D2GAME_FP_REMOVE_CLEAR_STATE_GFX_VA_113C) {
+    MISSILE_ClearStateGfxRemoveProc113c(m, unit, state, sub)
+  } else if (fn === D2GAME_FP_REMOVE_TIMED_STATE_VA_113C) {
+    STATES_OnTimedStateRemoved113c(m, unit, state, sub, hooks)
+  } else if (fn === 0x6fc70130) {
+    STATES_OnStateRemovedResetMonsterAi_6FC70130_113c(m, unit, state, sub)
+  } else if (fn === 0x6fc6eb90) {
+    SKILLS_OnCurseExpireResetAlignmentA_6FC6EB90_113c(m, unit, state, sub)
+  } else if (fn === 0x6fc6ebe0) {
+    SKILLS_OnCurseExpireResetAlignmentB_6FC6EBE0_113c(m, unit, state, sub)
+  } else if (fn === 0x6fcb8450) {
+    STATES_RemoveMorphStateAndClampVitals_6FCB8450_113c(
+      m as SparseMemory113c,
+      unit,
+      state,
+      sub,
+    )
+  } else if (hooks !== undefined && hooks.onStatRemoveProc !== undefined) {
+    hooks.onStatRemoveProc(m, fn, unit, state, sub)
+  }
 }
 
 /** Unlinks `pSub` via `STATLIST_UnlinkSubList113c` AND executes `D2Common:0x6FD8A5A7` `fpRemove(pUnit, dwStateNo, pSub)`. */
@@ -1061,22 +1194,7 @@ function unlinkSubListWithRemoveProc113c(
   const fpRemove = m.get(s, D2StatListStrc.fpRemove)
   const dwStateNo = m.get(s, D2StatListStrc.dwStateNo) | 0
   STATLIST_UnlinkSubList113c(m, pTargetUnit, s)
-  if (savedUnit !== 0 && fpRemove !== 0) {
-    if (fpRemove === D2GAME_FP_REMOVE_CLEAR_STATE_GFX_VA_113C) {
-      MISSILE_ClearStateGfxRemoveProc113c(m, savedUnit, dwStateNo, s)
-    } else if (fpRemove === D2GAME_FP_REMOVE_TIMED_STATE_VA_113C) {
-      STATES_OnTimedStateRemoved113c(m, savedUnit, dwStateNo, s, hooks)
-    } else if (fpRemove === 0x6fcb8450) {
-      STATES_RemoveMorphStateAndClampVitals_6FCB8450_113c(
-        m as SparseMemory113c,
-        savedUnit,
-        dwStateNo,
-        s,
-      )
-    } else if (hooks !== undefined && hooks.onStatRemoveProc !== undefined) {
-      hooks.onStatRemoveProc(m, fpRemove, savedUnit, dwStateNo, s)
-    }
-  }
+  dispatchUnlinkedCurseRemoveProc113c(m, savedUnit, dwStateNo, fpRemove, s, hooks)
 }
 
 /**
@@ -1754,11 +1872,14 @@ export function MISSILE_DispatchFrameTick113c(
   }
 
   let doRes = 1
+  const effHooks = resolveMeleeDotHooks113c(hooks)
   const fnVa = resolveMissileTableFnVa113c(m, 0x6fd2d970, DEFAULT_MISSILE_SRVDO_TABLE_6FD2D970, wSrvDoFunc)
-  if (hooks !== undefined && hooks.srvDoMissile !== undefined) {
-    doRes = hooks.srvDoMissile(m, wSrvDoFunc, fnVa, ediGame, esi) | 0
+  if (effHooks !== undefined && effHooks.srvDoMissile !== undefined) {
+    doRes = withScopedMeleeDotHooks113c(effHooks, () =>
+      effHooks.srvDoMissile!(m, wSrvDoFunc, fnVa, ediGame, esi),
+    ) | 0
   } else if (fnVa === 0x6fc5f540) {
-    doRes = MISSILE_SrvDo01_FastcallThunk113c(m, ediGame, esi, hooks) | 0
+    doRes = MISSILE_SrvDo01_FastcallThunk113c(m, ediGame, esi, effHooks) | 0
   }
 
   if (doRes === 2) {
@@ -1870,24 +1991,25 @@ export function MISSILE_ProcessTargetCollisionHit113c(
   }
 
   let runHitAndDmg = true
+  const effHooks = resolveMeleeDotHooks113c(hooks)
   if (ebp !== 0) {
     if (m.u8((pMisTxt + 0x18b) >>> 0) !== 0) {
       const arBonus = edi !== 0 ? STATLIST_GetUnitStat113c(m, edi, 0x13, 0) | 0 : 0
-      if (checkToHit0x6FCFDE90(m, pOwner, ebp, arBonus, 1, hooks) === 0) {
+      if (checkToHit0x6FCFDE90(m, pOwner, ebp, arBonus, 1, effHooks) === 0) {
         MISSILE_ApplyNextHitDelayState113c(m, edi, ebp)
         SUNIT_DispatchItemEventCallbacks113c(m, ebp, g, 0, edi, 0)
         if (m.u8((pMisTxt + 0x18c) >>> 0) !== 0) {
           const wSrvHit = s16SignExt113c(m.u16((pMisTxt + 0x0e) >>> 0))
           const hitLimit = tryReadStaticU32_113c(m, 0x6fd2db64) | 0
           const maxSrvHit = hitLimit > 0 ? hitLimit : 71
-          if (wSrvHit > 0 && wSrvHit < maxSrvHit && hooks !== undefined && hooks.srvHitMissile !== undefined) {
+          if (wSrvHit > 0 && wSrvHit < maxSrvHit && effHooks !== undefined && effHooks.srvHitMissile !== undefined) {
             const hitFnVa = resolveMissileTableFnVa113c(
               m,
               0x6fd2da48,
               DEFAULT_MISSILE_SRVHIT_TABLE_6FD2DA48,
               wSrvHit,
             )
-            const hRes = hooks.srvHitMissile(m, wSrvHit, hitFnVa, g, edi, ebp) | 0
+            const hRes = effHooks.srvHitMissile(m, wSrvHit, hitFnVa, g, edi, ebp) | 0
             if ((hRes & 0x04) !== 0) return 1
           }
         }
@@ -1905,14 +2027,14 @@ export function MISSILE_ProcessTargetCollisionHit113c(
       const wSrvHit = s16SignExt113c(m.u16((pMisTxt + 0x0e) >>> 0))
       const hitLimit = tryReadStaticU32_113c(m, 0x6fd2db64) | 0
       const maxSrvHit = hitLimit > 0 ? hitLimit : 71
-      if (wSrvHit > 0 && wSrvHit < maxSrvHit && hooks !== undefined && hooks.srvHitMissile !== undefined) {
+      if (wSrvHit > 0 && wSrvHit < maxSrvHit && effHooks !== undefined && effHooks.srvHitMissile !== undefined) {
         const hitFnVa = resolveMissileTableFnVa113c(
           m,
           0x6fd2da48,
           DEFAULT_MISSILE_SRVHIT_TABLE_6FD2DA48,
           wSrvHit,
         )
-        hitFlags = hooks.srvHitMissile(m, wSrvHit, hitFnVa, g, edi, ebp) | 0
+        hitFlags = effHooks.srvHitMissile(m, wSrvHit, hitFnVa, g, edi, ebp) | 0
         if ((hitFlags & 0x04) !== 0) return 1
       }
     }
@@ -1924,16 +2046,16 @@ export function MISSILE_ProcessTargetCollisionHit113c(
         const wSrvDmg = s16SignExt113c(m.u16((pMisTxt + 0x10) >>> 0))
         const dmgLimit = tryReadStaticU32_113c(m, 0x6fd2dbe4) | 0
         const maxSrvDmg = dmgLimit > 0 ? dmgLimit : 31
-        if (wSrvDmg > 0 && wSrvDmg < maxSrvDmg && hooks !== undefined && hooks.srvDmgMissile !== undefined) {
+        if (wSrvDmg > 0 && wSrvDmg < maxSrvDmg && effHooks !== undefined && effHooks.srvDmgMissile !== undefined) {
           const dmgFnVa = resolveMissileTableFnVa113c(
             m,
             0x6fd2db68,
             DEFAULT_MISSILE_SRVDMG_TABLE_6FD2DB68,
             wSrvDmg,
           )
-          hooks.srvDmgMissile(m, wSrvDmg, dmgFnVa, g, edi, ebp, pDmgScratch)
+          effHooks.srvDmgMissile(m, wSrvDmg, dmgFnVa, g, edi, ebp, pDmgScratch)
         }
-        MISSILE_ApplyDamageAndArmorShred113c(m, g, pDmgScratch, edi, ebp, hooks)
+        MISSILE_ApplyDamageAndArmorShred113c(m, g, pDmgScratch, edi, ebp, effHooks)
       } finally {
         freeStackScratch113c(0x70)
       }
@@ -1969,24 +2091,25 @@ export function MISSILE_SrvDo01_LinearProjectile113c(
   hooks?: K2GapMeleeDotHooks113c,
 ): number {
   hitD2GameVa113c(0x6FC5F320)
+  const effHooks = resolveMeleeDotHooks113c(hooks)
   const ebx = pMissile >>> 0
   const ediGame = pGame >>> 0
   const pMisTxt = ebx !== 0 ? MISSILES_GetTxtRecordFast113c(m, m.u32((ebx + 0x04) >>> 0) | 0) : 0
   if (pMisTxt === 0) {
-    return MISSILE_ProcessTargetCollisionHit113c(m, ebx, ediGame, 0, 1, hooks)
+    return MISSILE_ProcessTargetCollisionHit113c(m, ebx, ediGame, 0, 1, effHooks)
   }
 
   const pPath0 = m.u32((ebx + 0x2c) >>> 0)
   if (PATH_GetVelocity113c(m, pPath0) !== 0) {
-    if (stepMissilePath0x6FD01930(m, ediGame, ebx, hooks) === 2) {
-      return MISSILE_ProcessTargetCollisionHit113c(m, ebx, ediGame, 0, 1, hooks)
+    if (stepMissilePath0x6FD01930(m, ediGame, ebx, effHooks) === 2) {
+      return MISSILE_ProcessTargetCollisionHit113c(m, ebx, ediGame, 0, 1, effHooks)
     }
   }
 
   const remFrames = (MISSILE_GetRemainingFrames113c(m, ebx) - 1) | 0
   MISSILE_SetRemainingFrames113c(m, ebx, remFrames)
   if (remFrames <= 0) {
-    return MISSILE_ProcessTargetCollisionHit113c(m, ebx, ediGame, 0, 1, hooks)
+    return MISSILE_ProcessTargetCollisionHit113c(m, ebx, ediGame, 0, 1, effHooks)
   }
 
   const colMode = m.u32((ebx + 0x10) >>> 0) | 0
@@ -2048,10 +2171,10 @@ export function MISSILE_SrvDo01_LinearProjectile113c(
           filterCb,
         )
         if (pHitUnit !== 0) {
-          return MISSILE_ProcessTargetCollisionHit113c(m, ebx, ediGame, pHitUnit, 0, hooks)
+          return MISSILE_ProcessTargetCollisionHit113c(m, ebx, ediGame, pHitUnit, 0, effHooks)
         }
         if ((hitMask & 0x04) !== 0) {
-          MISSILE_ProcessTargetCollisionHit113c(m, ebx, ediGame, 0, 1, hooks)
+          MISSILE_ProcessTargetCollisionHit113c(m, ebx, ediGame, 0, 1, effHooks)
           return 2
         }
       }
@@ -2472,8 +2595,9 @@ export function MISSILE_CreateServerProjectile113c(
   STATLIST_CreateEx113c(m, ebxMissile, 0, 0)
 
   const fnInit = m.u32((ebp + 0x54) >>> 0)
-  if (fnInit !== 0 && hooks !== undefined && hooks.missileInitCallback !== undefined) {
-    hooks.missileInitCallback(m, fnInit, ebxMissile, m.u32((ebp + 0x58) >>> 0))
+  const effHooks = resolveMeleeDotHooks113c(hooks)
+  if (fnInit !== 0 && effHooks !== undefined && effHooks.missileInitCallback !== undefined) {
+    effHooks.missileInitCallback(m, fnInit, ebxMissile, m.u32((ebp + 0x58) >>> 0))
   }
 
   const nSkillId = m.u32((ebp + 0x2c) >>> 0) | 0

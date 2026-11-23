@@ -114,6 +114,7 @@ import {
 import { SUNIT_FindItemEventNode113c } from './k2-items-tc-w1-113c.js'
 import {
   ITEMS_ClearAllDupeAndCommandFlags_6FCBB340_113c,
+  SKILLS_ComputeMercSkillDamageAndToHit_6FCBE330_113c,
   SKILLS_RefreshPassiveSkillsAndIconsOnUnit_6FCBE370_113c,
 } from './k2-w2b4-113c.js'
 import { ITEMS_OnInsertOrEquipUpdateStats_6FCF4FF0_113c } from './k2-w2b8-113c.js'
@@ -872,6 +873,22 @@ export function D2GAME_ARENA_FindPlayerSlotByUnit113c(
 }
 
 // @va D2Game:0x6FCB6920
+function resolveDataTablesPtrGapB113c(
+  mem: Memory113c,
+  sgptDataTablesPtr: D2Ptr,
+): D2Ptr {
+  const raw = sgptDataTablesPtr >>> 0
+  if (raw !== 0 && raw !== 0x6fd1829c) {
+    return mem.u32(raw) >>> 0
+  }
+  const iatPtr = mem.u32(0x6fd1829c) >>> 0
+  const pDataTables = iatPtr !== 0 ? (mem.u32(iatPtr) >>> 0) : 0
+  if (pDataTables !== 0) {
+    return pDataTables
+  }
+  return mem.u32(0x6fde9e1c) >>> 0
+}
+
 export function D2GAME_SUMMON_BroadcastPlayerPetsToClient113c(
   mem: Memory113c,
   pPlayerUnit: D2Ptr,
@@ -880,8 +897,11 @@ export function D2GAME_SUMMON_BroadcastPlayerPetsToClient113c(
   callees?: BootInitGapBCallees113c,
 ): void {
   hitD2GameVa113c(0x6FCB6920)
+  if (pPlayerUnit === 0) {
+    throw new D2CommonAssertError('D2Game\\UNIT\\Summon.cpp', 0xa2a)
+  }
   const pPlayerData = UNITS_GetPlayerData113c(mem, pPlayerUnit)
-  if (pPlayerUnit === 0 || pPlayerData === 0) {
+  if (pPlayerData === 0) {
     return
   }
   const pGame = mem.u32(pPlayerUnit + 0x80) >>> 0
@@ -890,10 +910,10 @@ export function D2GAME_SUMMON_BroadcastPlayerPetsToClient113c(
     return
   }
   const pPlayerPets = mem.u32(pPlayerData + 0x44) >>> 0
-  if (pPlayerPets === 0 || sgptDataTablesPtr === 0) {
+  if (pPlayerPets === 0) {
     return
   }
-  const pDataTables = mem.u32(sgptDataTablesPtr) >>> 0
+  const pDataTables = resolveDataTablesPtrGapB113c(mem, sgptDataTablesPtr)
   if (pDataTables === 0) {
     return
   }
@@ -925,18 +945,18 @@ export function D2GAME_SUMMON_BroadcastPlayerPetsToClient113c(
             pkt[2] = petType & 0xff
             pkt[3] = wMonClassId & 0xff
             pkt[4] = (wMonClassId >>> 8) & 0xff
-            pkt[5] = dwPetGuid & 0xff
-            pkt[6] = (dwPetGuid >>> 8) & 0xff
-            pkt[7] = (dwPetGuid >>> 16) & 0xff
-            pkt[8] = (dwPetGuid >>> 24) & 0xff
-            pkt[9] = dwPlayerGuid & 0xff
-            pkt[10] = (dwPlayerGuid >>> 8) & 0xff
-            pkt[11] = (dwPlayerGuid >>> 16) & 0xff
-            pkt[12] = (dwPlayerGuid >>> 24) & 0xff
+            pkt[5] = dwPlayerGuid & 0xff
+            pkt[6] = (dwPlayerGuid >>> 8) & 0xff
+            pkt[7] = (dwPlayerGuid >>> 16) & 0xff
+            pkt[8] = (dwPlayerGuid >>> 24) & 0xff
+            pkt[9] = dwPetGuid & 0xff
+            pkt[10] = (dwPetGuid >>> 8) & 0xff
+            pkt[11] = (dwPetGuid >>> 16) & 0xff
+            pkt[12] = (dwPetGuid >>> 24) & 0xff
             enqueueClientPacket113c(mem, pDestClient, pkt, callees)
           } else {
             const dwSeed = mem.u32(pPetNode + 0x0c) >>> 0
-            const wName = mem.u16(pPetNode + 8)
+            const dwName = mem.u32(pPetNode + 8) >>> 0
             const pkt = new Uint8Array(20)
             pkt[0] = 0x81
             pkt[1] = 7
@@ -950,8 +970,10 @@ export function D2GAME_SUMMON_BroadcastPlayerPetsToClient113c(
             pkt[9] = (dwPetGuid >>> 8) & 0xff
             pkt[10] = (dwPetGuid >>> 16) & 0xff
             pkt[11] = (dwPetGuid >>> 24) & 0xff
-            pkt[12] = wName & 0xff
-            pkt[13] = (wName >>> 8) & 0xff
+            pkt[12] = dwName & 0xff
+            pkt[13] = (dwName >>> 8) & 0xff
+            pkt[14] = (dwName >>> 16) & 0xff
+            pkt[15] = (dwName >>> 24) & 0xff
             pkt[16] = dwSeed & 0xff
             pkt[17] = (dwSeed >>> 8) & 0xff
             pkt[18] = (dwSeed >>> 16) & 0xff
@@ -1202,14 +1224,14 @@ export function D2GAME_MONSTER_ApplyMercStatsOnOwner113c(
   const ownerId = mem.u32(pAiGeneral + 0x2c) >>> 0
   const ownerType = mem.u32(pAiGeneral + 0x30) >>> 0
   const pOwner = SUNIT_GetServerUnit113c(mem, pGame, ownerType, ownerId)
-  if (pOwner === 0 || sgptDataTablesPtr === 0) {
+  if (pOwner === 0) {
     return
   }
   const monClassId = i32(mem.u32(pMonsterUnit + 4))
   if (monClassId < 0) {
     return
   }
-  const pDataTables = mem.u32(sgptDataTablesPtr) >>> 0
+  const pDataTables = resolveDataTablesPtrGapB113c(mem, sgptDataTablesPtr)
   if (pDataTables === 0) {
     return
   }
@@ -1232,6 +1254,8 @@ export function D2GAME_MONSTER_ApplyMercStatsOnOwner113c(
   }
   if (callees && callees.onApplyMercStatBonus) {
     callees.onApplyMercStatBonus(mem, pOwner, wStatIndex, nArg)
+  } else {
+    SKILLS_ComputeMercSkillDamageAndToHit_6FCBE330_113c(mem, wStatIndex, pOwner, nArg)
   }
 }
 

@@ -227,6 +227,19 @@ function scaleResourceOnMaxChangedK3_113c(
   }
 }
 
+function hasLiveStatChangedCallbackK3_113c(m: Memory113c, pUnit: number): boolean {
+  const unit = pUnit >>> 0
+  if (unit === 0) return false
+  const pEx = m.u32((unit + 0x5c) >>> 0) >>> 0
+  return (
+    pEx !== 0 &&
+    (m.u32((pEx + 0x10) >>> 0) | 0) < 0 &&
+    m.u32((pEx + 0x5c) >>> 0) === 0x6fcf9470 &&
+    m.u32((pEx + 0x44) >>> 0) !== 0 &&
+    m.u32((pEx + 0x60) >>> 0) !== 0
+  )
+}
+
 function syncDerivedMaxAndSkillStatsK3_113c(
   m: Memory113c,
   pGame: number,
@@ -237,6 +250,7 @@ function syncDerivedMaxAndSkillStatsK3_113c(
   oldAllSkills: number,
 ): void {
   if (pGame === 0 || pUnit === 0) return
+  if (hasLiveStatChangedCallbackK3_113c(m, pUnit)) return
   const newMaxHp = STATLIST_GetUnitStat113c(m, pUnit, 7, 0) | 0
   if (newMaxHp !== oldMaxHp) {
     scaleResourceOnMaxChangedK3_113c(m, pUnit, 6, oldMaxHp, newMaxHp)
@@ -257,8 +271,20 @@ function syncDerivedMaxAndSkillStatsK3_113c(
 }
 
 function ensureUnitGamePtrBoundK3_113c(m: Memory113c, pUnit: number, pGame: number): void {
-  if (pUnit !== 0 && pGame !== 0 && m.u32((pUnit + 0x80) >>> 0) === 0) {
-    m.setU32((pUnit + 0x80) >>> 0, pGame >>> 0)
+  const unit = pUnit >>> 0
+  const game = pGame >>> 0
+  if (unit === 0 || game === 0) return
+  if (m.u32((unit + 0x80) >>> 0) === 0) {
+    m.setU32((unit + 0x80) >>> 0, game)
+  }
+  const pEx = m.u32((unit + 0x5c) >>> 0) >>> 0
+  if (pEx !== 0 && (m.u32((pEx + 0x10) >>> 0) | 0) < 0 && m.u32((pEx + 0x5c) >>> 0) === 0x6fcf9470) {
+    if (m.u32((pEx + 0x44) >>> 0) === 0) {
+      m.setU32((pEx + 0x44) >>> 0, unit)
+    }
+    if (m.u32((pEx + 0x60) >>> 0) === 0) {
+      m.setU32((pEx + 0x60) >>> 0, game)
+    }
   }
 }
 

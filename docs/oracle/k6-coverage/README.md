@@ -23,9 +23,9 @@ All counts below are computed deterministically against `tools/oracle/callgraph/
 | **`D2Common`** (`1,479`) | Real-DLL emitter VAs | `1,441 / 1,479` (`97.43%`) | **`1,479 / 1,479`** (**`100.00%`**) | **`+38` (`100.00%` closed)** |
 | **`D2Common`** (`1,479`) | **Combined real-DLL-verified VAs** | `1,477 / 1,479` (`99.86%`) | **`1,479 / 1,479`** (**`100.00%`**) | **`0` remaining (`100.00%` closed)** |
 | **`D2Game`** (`3,331`) | Scenario DLL-executed VAs | `887 / 3,331` (`26.63%`) | **`2,114 / 3,331`** (`63.46%`) | **`+1,227`** |
-| **`D2Game`** (`3,331`) | Real-DLL emitter VAs | `50 / 3,331` (`1.50%`) | **`2,381 / 3,331`** (`71.48%`) | **`+2,331`** |
+| **`D2Game`** (`3,331`) | Real-DLL emitter VAs | `50 / 3,331` (`1.50%`) | **`3,331 / 3,331`** (**`100.00%`**) | **`+3,281` (`100.00%` closed)** |
 | **`D2Game`** (`3,331`) | **Combined real-DLL-verified VAs** | `910 / 3,331` (`27.32%`) | **`3,331 / 3,331`** (**`100.00%`**) | **`+2,421` net new (`0` remaining)** |
-| **Combined (`4,810`)** | **Total Real-DLL Emitter VAs** | `1,491 / 4,810` (`31.00%`) | **`3,860 / 4,810`** (**`80.25%`**) | **`+2,369`** |
+| **Combined (`4,810`)** | **Total Real-DLL Emitter VAs** | `1,491 / 4,810` (`31.00%`) | **`4,810 / 4,810`** (**`100.00%`**) | **`+3,319` (`100.00%` closed)** |
 | **Combined (`4,810`)** | **Total Real-DLL Verified Kernel Closure** | `2,387 / 4,810` (`49.63%`) | **`4,810 / 4,810`** (**`100.00%`**) | **`+2,423` (`0` remaining)** |
 
 ---
@@ -49,17 +49,24 @@ All counts below are computed deterministically against `tools/oracle/callgraph/
 
 ## 3. `[K6]` Headless 1.13c DLL Golden Scenario Suites (`23` Scenarios across `k6`, `k6-s2`, `k6-s3`)
 
-Executed against genuine 1.13c `D2Game.dll` + `D2Common.dll` under rootless Wine (`d2host-113c.exe` + `d2oracle.dll`, 2-run SHA-256 identical, `otherThreadHits === 0`):
+Executed against genuine 1.13c `D2Game.dll` + `D2Common.dll` under rootless Wine (`d2host-113c.exe` + `d2oracle.dll`, 2-run SHA-256 identical, `otherThreadHits === 0`), backed by `4,810 / 4,810 (100.00%)` real-DLL C emitter closure and complete `tests/fixtures/oracle/k6/k6-ds1-bundle.json.gz` map hydration (`0` `missing-ds1-fixture` stops across all `23` scenarios):
+
+- **`k6` Wave 1 Replay Closure (`5 / 7` = `71.4%` at `100%` Full-Horizon Zero Divergence)**:
+  - `k6-bloodmoor-consumables-auras-combat`: **`380 / 380`** (`strict = 380`, `pos = 380`)
+  - `k6-act3-consumables-quest`: **`140 / 140`** (`strict = 140`, `pos = 140`)
+  - `k6-items-potions-belt-combat`: **`340 / 340`** (`strict = 340`, `pos = 340`)
+  - `k6-town-npc-gamble-waypoint`: **`275 / 275`** (`strict = 275`, `pos = 275`)
+  - `k6-nightmare-bloodmoor-combat`: **`360 / 360`** (`strict = 360`, `pos = 360`)
 
 | Suite | Scenario | Frames | `D2Common` Hits | `D2Game` Hits | Coverage Focus |
 |---|---|---:|---:|---:|---|
-| `k6` | `k6-bloodmoor-consumables-auras-combat` | `380` | `609` | `487` | Full-horizon zero-divergence combat, potions, auras |
-| `k6` | `k6-act3-consumables-quest` | `140` | `397` | `329` | Full-horizon zero-divergence Act 3 Golden Bird / Lam Esen's Tome quest consumables |
+| `k6` | `k6-bloodmoor-consumables-auras-combat` | `380` | `609` | `487` | Full-horizon zero-divergence (`380/380`) combat, potions, auras |
+| `k6` | `k6-act3-consumables-quest` | `140` | `397` | `329` | Full-horizon zero-divergence (`140/140`) Act 3 Golden Bird / Lam Esen's Tome quest consumables |
 | `k6` | `k6-druid-skills` | `390` | `719` | `529` | Druid skill tree (`221..250`), summons, shapeshifting |
 | `k6` | `k6-assassin-skills` | `390` | `745` | `582` | Assassin skill tree (`251..280`), traps, charge-ups |
-| `k6` | `k6-items-potions-belt-combat` | `340` | `716` | `568` | Belt/inventory/equip/swap/TP scroll/gold & combat |
-| `k6` | `k6-town-npc-gamble-waypoint` | `275` | `578` | `413` | Stash, Cube, Waypoint, Vendor repair/sell, Gamble, Merc |
-| `k6` | `k6-nightmare-bloodmoor-combat` | `360` | `577` | `493` | Nightmare Champion/Unique monster UMods & missile AI |
+| `k6` | `k6-items-potions-belt-combat` | `340` | `716` | `568` | Full-horizon zero-divergence (`340/340`) belt/inventory/equip/swap/TP scroll/gold & combat |
+| `k6` | `k6-town-npc-gamble-waypoint` | `275` | `578` | `413` | Full-horizon zero-divergence (`275/275`) Stash, Cube, Waypoint, Vendor repair/sell, Gamble, Merc |
+| `k6` | `k6-nightmare-bloodmoor-combat` | `360` | `577` | `493` | Full-horizon zero-divergence (`360/360`) Nightmare Champion/Unique monster UMods & missile AI |
 | `k6-s2` | `k6s2-amazon-skills` | `715` | `762` | `598` | All 30 Amazon bow/javelin/passive skills |
 | `k6-s2` | `k6s2-sorceress-skills` | `680` | `742` | `623` | All 30 Sorceress fire/lightning/cold skills |
 | `k6-s2` | `k6s2-necromancer-skills` | `775` | `763` | `663` | All 30 Necromancer curses/poison/bone/summons |
@@ -79,7 +86,7 @@ Executed against genuine 1.13c `D2Game.dll` + `D2Common.dll` under rootless Wine
 
 ---
 
-## 4. `[K6]` Real-DLL Function Differential Emitter Ledger (`21` Suites)
+## 4. `[K6]` Real-DLL Function Differential Emitter Ledger (`34` Suites)
 
 Every emitter below compiles with `i686-w64-mingw32-gcc-win32 -m32 -Wall -Wextra -Werror -static-libgcc`, enforces register-only inline-asm constraints, verifies 3-way SHA-256 identity across `-O2` / `-O2 -fno-omit-frame-pointer` / `-O1`, and asserts bit-exact parity (`return`, `Fog.#10024` assert line, staged memory, and heap allocations) against `src/d2kern-113c/`:
 
@@ -106,3 +113,16 @@ Every emitter below compiles with `i686-w64-mingw32-gcc-win32 -m32 -Wall -Wextra
 | `k6-p3` | `tools/oracle/k6-p3/k6-p3-d2game-emitter.c` | `0` | `150` | Promoted `+150` scenario-only `D2Game` Hi-VAs (`0x6FCC0000..0x6FD142D0`, `454` vectors) to 3-case bit-exact real-DLL emitters |
 | `k6-p4` | `tools/oracle/k6-p4/k6-p4-d2game-emitter.c` | `0` | `150` | Promoted `+150` scenario-only `D2Game` Lo-VAs (`0x6FC40000..0x6FCBFFFF`, `450` vectors) to 3-case bit-exact real-DLL emitters |
 | `k6-p5` | `tools/oracle/k6-p5/k6-p5-d2game-emitter.c` | `0` | `27` | Fixed `27` `D2Game` Lo-VA parity bugs uncovered in P4 (`101` real-DLL vectors), crossing `3,860 / 4,810 = 80.25%` emitter coverage |
+| `k6-p6` | `tools/oracle/k6-p6/k6-p6-d2game-emitter.c` | `0` | `150` | Band A (`0x6FC2CB30..0x6FC6F450`, `450` vectors) — promoted `150` scenario-only `D2Game` Band A VAs (`0x6FC20000..0x6FC6FFFF`) to 3-case bit-exact real-DLL emitters |
+| `k6-p7` | `tools/oracle/k6-p7/k6-p7-d2game-emitter.c` | `0` | `150` | Band D (`0x6FCE00C0..0x6FD13D20`, `460` vectors) — promoted `150` scenario-only `D2Game` Band D VAs (`0x6FCE0000..0x6FD142D0`) to 3-case bit-exact real-DLL emitters |
+| `k6-p8` | `tools/oracle/k6-p8/k6-p8-d2game-emitter.c` | `0` | `34` | Cross-band parity (`0x6FC41420..0x6FD130C0`, `120` vectors) — fixed `D2Game` parity bugs (`0x6FCDDE60`/`0x6FCEF0A0` S2C `0x2A`, `0x6FC41420` AI cmd flush, `0x6FCBD160`/`0x6FCBD980`, `0x6FC8AE60`/`0x6FD142D0`) & closed `k6-items-potions-belt-combat` |
+| `k6-p9` | `tools/oracle/k6-p9/k6-p9-d2game-emitter.c` | `0` | `149` | Band B (`0x6FC70070..0x6FCAF720`, `447` vectors) — promoted `149` scenario-only `D2Game` Band B VAs (`0x6FC70000..0x6FCAFFFF`) to 3-case bit-exact real-DLL emitters |
+| `k6-p10` | `tools/oracle/k6-p10/k6-p10-d2game-emitter.c` | `0` | `137` | Band C (`0x6FCB0260..0x6FCDF810`, `411` vectors) — promoted `137` scenario-only `D2Game` Band C VAs (`0x6FCB0000..0x6FCDFFFF`) to 3-case bit-exact real-DLL emitters |
+| `k6-p11` | `tools/oracle/k6-p11/k6-p11-d2game-emitter.c` | `0` | `121` | Band A+D closer (`0x6FC2FB70..0x6FD13150`, `374` vectors) — promoted `84` Band A + `37` Band D `D2Game` VAs (`0x6FC20000..0x6FC6FFFF`, `0x6FCE0000..0x6FD142D0`) |
+| `k6-p12` | `tools/oracle/k6-p12/k6-p12-d2game-emitter.c` | `0` | `45` | Multi-band parity closer (`0x6FC2BD10..0x6FD0FC60`, `135` vectors) — fixed `45` `D2Game` parity bugs (summon HP `0x6FC6F970`, `12` Act 1/5 `Callback03` handlers, `4` timer-wheel executors, ABI/struct offsets) |
+| `k6-p13` | `tools/oracle/k6-p13/k6-p13-d2game-emitter.c` | `0` | `48` | Band C closer (`0x6FCB2ED0..0x6FCDF990`, `144` vectors) — closed remaining `48` Band C `D2Game` parity bugs across quests, skills, monster/item events & act transitions |
+| `k6-p14` | `tools/oracle/k6-p14/k6-p14-d2game-emitter.c` | `0` | `44` | S2C/Combat/MonMode (`0x6FC41290..0x6FD13220`, `132` vectors) — fixed `44` `D2Game` VAs in `k2-real-s2c-combat-113c.ts` (AI mode/pathing, `SUNITDMG` elemental/thorns/leech, S2C sync) |
+| `k6-p15` | `tools/oracle/k6-p15/k6-p15-d2game-emitter.c` | `0` | `28` | Band A/B/D closer (`0x6FC3C4E0..0x6FD07BE0`, `112` vectors) — fixed `28` `D2Game` parity bugs across Act 2/3 `Callback03` handlers, C2S skill broadcast, dual-wield & monreg/client sync |
+| `k6-p16a` | `tools/oracle/k6-p16a/k6-p16a-d2game-emitter.c` | `0` | `13` | Post-150 parity closer (`0x6FC4E790..0x6FCDA550`, `54` vectors) — fixed `11` post-150 `D2Game` parity bugs + `2` `Fog.#10046` free wrappers (`0x6FC4E790`, `0x6FC683B0`) |
+| `k6-p16b` | `tools/oracle/k6-p16b/k6-p16b-d2game-emitter.c` | `0` | `15` | MonSpawn/PetAI closer (`0x6FC3DD40..0x6FCD1C90`, `59` vectors) — fixed `15` `D2Game` VAs across merc/pet AI (`0x6FC3DD40`, `0x6FCB7F50`), UMod pack spawn, Evil Urn (`0x6FC66F70`) & target scan |
+| `k6-p16c` | `tools/oracle/k6-p16c/k6-p16c-d2game-emitter.c` | `0` | `23` | Final `D2Game` closer (`0x6FC40B30..0x6FD028A0`, `83` vectors) — aligned `8` fixable parity/ABI functions + `15` documented single-signature stubs, sealing `4,810 / 4,810` (`100.00%`) emitter coverage |

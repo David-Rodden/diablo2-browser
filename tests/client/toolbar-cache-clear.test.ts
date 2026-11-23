@@ -911,6 +911,36 @@ describe('Toolbar fullscreen toggle button', () => {
       expect(playHtml).toContain('id="d2-config-hud-layout-row"')
       expect(playHtml).toContain('id="d2-toolbar-hud-layout-select"')
 
+      // Left Joystick Mode selector (#d2-toolbar-joystick-mode-select) bidirectional sync & i18n
+      const joystickRow = configModal.querySelector('#d2-config-joystick-mode-row')!
+      const joystickLabel = configModal.querySelector('#d2-config-joystick-mode-label')!
+      const joystickSelect = configModal.querySelector('#d2-toolbar-joystick-mode-select')!
+      expect(joystickRow).not.toBeNull()
+      expect(joystickLabel.textContent).toBe('Left Joystick')
+      expect(joystickSelect.value).toBe('floating')
+      expect(joystickSelect.options.map((o: FakeElement) => o.value)).toEqual(['floating', 'fixed'])
+      expect(joystickSelect.options.map((o: FakeElement) => o.textContent)).toEqual([
+        'Floating (Follow Touch)',
+        'Fixed (Lock Position)',
+      ])
+
+      joystickSelect.value = 'fixed'
+      joystickSelect.dispatchEvent({ type: 'change' })
+      expect(store.get().mobileJoystickMode).toBe('fixed')
+
+      // External SettingsStore write (e.g. tapping on-canvas padlock) syncs select back to floating
+      store.set({ mobileJoystickMode: 'floating' })
+      expect(joystickSelect.value).toBe('floating')
+
+      toolbar.setLanguage('zh')
+      expect(joystickLabel.textContent).toBe('左摇杆模式')
+      expect(joystickSelect.options.map((o: FakeElement) => o.textContent)).toEqual([
+        '浮动 (随落点移动)',
+        '固定 (锁定当前位置)',
+      ])
+      expect(playHtml).toContain('id="d2-config-joystick-mode-row"')
+      expect(playHtml).toContain('id="d2-toolbar-joystick-mode-select"')
+
       toolbar.destroy()
     } finally {
       ;(globalThis as { document?: unknown }).document = prevDoc

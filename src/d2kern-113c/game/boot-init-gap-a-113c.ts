@@ -20,27 +20,35 @@ import { imul32, sar32 } from '../common/int-math.ts'
 import {
   INVENTORY_GetCorpseUnitId113c,
   INVENTORY_GetFirstCorpse113c,
+  INVENTORY_GetFirstItem113c,
   INVENTORY_GetLeftItemGuid113c,
   INVENTORY_GetNextCorpse113c,
+  INVENTORY_GetNextItem113c,
 } from '../common/inventory.ts'
 import {
   DUNGEON_CheckRoomIsTownMemPort113c,
+  SKILLS_GetUsedSkillMemPort113c,
+  SKILLS_SetUsedSkillMemPort113c,
   STATLIST_GetStatListFromUnitAndStateMemPort113c,
 } from '../common/k0-d2common-memports.ts'
 import { PATH_GetTargetTypeAndPosition113c, PATH_GetVelocity113c } from '../common/path.ts'
 import {
   SKILLS_EvaluateSkillLevel113c,
   SKILLS_GetHighestLevelSkillFromUnitAndIdFastcall113c,
+  SKILLS_SetParam0C113c,
 } from '../common/skills.ts'
 import {
   DATATBLS_CalculateMonsterStatsByLevel113c,
   STATES_CheckState113c,
   STATES_CheckStateMask2OnUnit113c,
+  STATES_ToggleGfxStateFlag113c,
   STATLIST_CheckUnitStatListFlag100113c,
   STATLIST_ClearBaseStats113c,
   STATLIST_CopyBaseStatsToBuffer113c,
   STATLIST_GetMaxLifeFromUnit113c,
   STATLIST_GetStatListFromUnitAndFlag113c,
+  STATLIST_GetUnitBaseStat113c,
+  STATLIST_GetUnitLifePercent113c,
   STATLIST_GetUnitStat113c,
   STATLIST_NotifyIfStatModified113c,
   STATLIST_SetStat113c,
@@ -48,13 +56,22 @@ import {
 } from '../common/statlist.ts'
 import {
   DATATBLS_GetObjectsTxtRecord113c,
+  UNITS_AdvanceAnimFrame113c,
   UNITS_GetGfxStateFlagsPtr113c,
+  UNITS_GetRoom113c,
   UNITS_GetStateFlagsPtr113c,
+  UNITS_HasAnimFinished113c,
   UNITS_HasAnyGfxStateFlag113c,
   UNITS_SetUnitUpdateFlags113c,
   UNIT_GetAlignment113c,
 } from '../common/unit.ts'
-import { D2EventStrc, D2GameStrc, D2TimerStrc } from '../mem/layout.generated.ts'
+import {
+  D2EventStrc,
+  D2GameStrc,
+  D2MonsterDataStrc,
+  D2TimerStrc,
+} from '../mem/layout.generated.ts'
+import { NET_QueuePacketToClient113c } from '../net/packet-sink.ts'
 import type { Memory113c, SparseMemory113c } from '../mem/sparse-memory.ts'
 import { seedRoll } from '../prng.ts'
 import {
@@ -63,10 +80,17 @@ import {
   SEED_RollLimitedRandomNumber113c,
 } from './combat-a1c-113c.ts'
 import {
+  type BootInitGapBCallees113c,
+  D2GAME_ARENA_SyncClientKillCountsOnJoin113c,
   D2GAME_ITEMS_UpdateAllInventoryAndEquipmentStats113c,
   D2GAME_MONSTER_ApplyMercStatsOnOwner113c,
+  D2GAME_MONSTER_SendMonsterMovementSync113c,
+  D2GAME_PACKET_Send0x5BPlayerInGame113c,
+  D2GAME_PACKET_Send0x73MissileSync113c,
+  D2GAME_PACKET_SendMonsterAssign113c,
   D2GAME_PARTY_SyncAllPlayerRelationsOnJoin113c,
   D2GAME_PLRMODES_BroadcastPlayerJoinNotification113c,
+  D2GAME_PLRMODES_DispatchModeSyncToClient113c,
   D2GAME_SUNIT_GetGameFromUnit113c,
   D2GAME_SUNIT_IterateAllLivingPlayers113c,
 } from './boot-init-gap-b-113c.ts'
@@ -74,33 +98,58 @@ import {
   AIGENERAL_PopAiCommand113c,
   PLAYER_Event11_PeriodicTick113c,
   PLAYER_Event3_RegenTick113c,
+  SKILLS_GetFlags113c,
 } from './replay-kernel-113c.ts'
-import { ITEMMODE_UnitTimerNoop113c } from './k2-combat-core-w1-113c.ts'
+import { bindK2KernelGlobals113c } from './k2-d2tv-evaluators-113c.ts'
+import { MONSTER_StartMode113c, MONSTER_StepPath113c } from './k2-real-s2c-combat-113c.ts'
+import {
+  MISSILE_BuildK3Hooks113c,
+  SKILLS_DoUsedSkillActionK3_113c,
+} from './k3-p52-sorc-handlers-113c.ts'
+import {
+  ITEMMODE_UnitTimerNoop113c,
+  NET_SendReassignUnitPacket15_113c,
+} from './k2-combat-core-w1-113c.ts'
 import {
   PLAYER_Event0C_ExpireTimedStats113c,
   SKILLS_Event08_AuraPulseTick113c,
 } from './k2-gap-itemdef-113c.ts'
 import { MISSILE_DispatchFrameTick113c } from './k2-gap-melee-dot-113c.ts'
-import { D2CommonAssertError, D2COMMON_SGPT_DATATABLES_VA_113C } from '../common/inline-helpers.ts'
+import {
+  D2CommonAssertError,
+  D2COMMON_SGPT_DATATABLES_VA_113C,
+  DATATBLS_GetMonStatsTxtRecordInline113c,
+} from '../common/inline-helpers.ts'
 import {
   NET_SendPacket47_UnitRelator1_6FCAAEC0_113c,
   NET_SendPacket48_UnitRequestStatus_6FCAAE60_113c,
   NET_SendPacket60_PortalInfo_6FCAAAE0_113c,
+  NET_SendPacket74_PlayerCorpseAssign_6FCAA9C0_113c,
+  NET_SendPacket98_UnitWordValue_6FCAA6C0_113c,
   OBJ_FinishOperatingToOpenedMode_6FC89DA0_113c,
   OBJ_ResetSubClassBit0ObjectToNeutral_6FC89D60_113c,
 } from './k2-w2b3-113c.ts'
-import { NET_SendPacket82_PortalOwnerInfo_6FCAD040_113c } from './k2-w4b5-113c.ts'
+import {
+  NET_SendPacket21_UpdateUnitSkill_6FCAD5F0_113c,
+  NET_SendPacket82_PortalOwnerInfo_6FCAD040_113c,
+  PETS_FindPetTypeByGuid_6FCB6600_113c,
+} from './k2-w4b5-113c.ts'
+import { NET_SendPacket59_AssignPlayerAndPartyRoster_6FCAD710_113c } from './k2-w5b2-113c.ts'
 import {
   ITEMS_ExpireTimedStatSubListsEvent_6FCF1780_113c,
   SUNIT_ClearPlayerTimeoutEvent_6FD00410_113c,
 } from './k2-w2b8-113c.ts'
 import {
+  MISSILE_SendSyncPacket73_6FC8F740_113c,
   OBJ_EventHoverMsgTimeout_6FC8E470_113c,
   OBJ_EventPeriodicOrTimeOfDaySync_6FC8E4E0_113c,
   OBJ_IncrementWellChargesAndRefresh_6FC89CA0_113c,
 } from './k2-w3b7-113c.ts'
 import { EVENT_HandleFreeHoverMsg_6FC99AA0_113c } from './k2-w3b8-113c.ts'
-import { OBJ_DispatchObjectTrapOrMonsterSpawn_6FC89970_113c } from './k2-w4b4-113c.ts'
+import {
+  NET_SendPacket9E9FA0_StatValue_6FCABC20_113c,
+  OBJ_DispatchObjectTrapOrMonsterSpawn_6FC89970_113c,
+} from './k2-w4b4-113c.ts'
 import { SKILLS_DispatchStateOnSrvDoFuncForSkill_6FCBE8E0_113c } from './k2-w4b6-113c.ts'
 import { SKILLS_OnPeriodicItemAuraEvent9_6FCC37D0_113c } from './k2-w5b3-113c.ts'
 import {
@@ -112,11 +161,35 @@ import {
   OBJ_ThinkEventSparkyChest_6FC8E150_113c,
 } from './k2-w8b2-113c.ts'
 import { ITEMS_ProcessItemDurabilityAndStackReplenish_6FCFA480_113c } from './k2-w9b2-113c.ts'
-import { D2Game_6FC93570_113c } from './k2-w13b1-113c.ts'
 import {
+  S2C_SendPacket0D_UnitStop113c,
+  S2C_SendPacket0E_UnitCorpseState113c,
+  S2C_SendPacket0F_UnitWalkToTarget113c,
+  S2C_SendPacket9C_ItemActionWorld113c,
+  SUNIT_AreUnitsHostileOrUnaligned113c,
+  UNITROOM_IsClientInUnitRoom113c,
+  UNITROOM_SendDroppedGroundItemToClient113c,
+} from './a1c-post150-f786-f1040-113c.ts'
+import { AIGENERAL_GetField3C_113c } from './k2-items-tc-w1-113c.ts'
+import { ITEMS_SendDropToGroundPacket02_6FCAE030_113c } from './k2-w2b4-113c.ts'
+import { PLAYER_SendInventoryItemsSyncPackets_6FC57C90_113c } from './k2-w5b1-113c.ts'
+import { NET_SendMonsterSkillCastPacket4COr4D_6FD134C0_113c } from './k2-w5b10-113c.ts'
+import {
+  PLRMODES_SendPlayerStop0DAndSyncStatAF_6FCED2C0_113c,
+  PLRMODES_SyncBaseStatsToOtherClient_6FCED0E0_113c,
+} from './k2-w5b6-113c.ts'
+import { PLAYERSAVE_SavePlayerCharacter_6FC74320_113c } from './k2-w9b1-113c.ts'
+import { D2Game_6FC93570_113c } from './k2-w13b1-113c.ts'
+import { CLIENT_NotifyAndDisconnectClient_6FC4D090_113c } from './k2-w15b1-113c.ts'
+import {
+  armDeferSliceQuestTimers113c,
+  D2NET_SendUnitMovePacket0x10BytesToClient113c,
+  D2NET_SendUnitPosSync0x15ToClient113c,
+  flushDeferredSliceQuestTimers113c,
   PLAYER_FinishModeAndResetToNeutral113c,
   PLAYER_StepAnimationModeTick113c,
 } from './town-runtime-gap-113c.ts'
+import { PLAYER_StartModeOnUnit113c } from './c2s-packet-113c.ts'
 import {
   CLIENTS_GetPlayerUnit113c,
   CLIENTS_UpdatePlayerRoom113c,
@@ -124,6 +197,7 @@ import {
 } from './replay-final11-113c.ts'
 import { SUNIT_GetServerUnit113c } from './game-strc.ts'
 import {
+  AIGENERAL_FreeMinionList_6FC40B30_113c,
   MONUMOD_AddSecondaryDamageToBaseStats_6FC41B30_113c,
   MONUMOD_ScheduleDeathEvent4ForUnique_6FC41BB0_113c,
   MONUMOD_ScheduleDeathEvent4UnlessMod18_6FC41A90_113c,
@@ -132,6 +206,11 @@ import {
   MONUMOD_SetShatterOnDeath_6FC41A70_113c,
   MONUMOD_SpawnPainWormOnDeath_6FC42B10_113c,
 } from './k2-laneI-0x6fc3-w1-113c.ts'
+import {
+  AIGENERAL_ReplaceMinionListAndInitBossGroup_6FC41210_113c,
+  MONUMOD_AssignSpecificUModAndInit_6FC432B0_113c,
+} from './k2-w2b1-113c.ts'
+import { SUBPARTY_PrependUnitToBucket8Or9_6FD0FDB0_113c } from './k2-w5b9-113c.ts'
 import {
   MONUMOD_AddRogueOwnerSecondaryDamageToMissile_6FC43670_113c,
   MONUMOD_GetHitForceDeathAndScheduleEvent7_6FC43390_113c,
@@ -146,8 +225,12 @@ import {
 import {
   PLAYERSAVE_SaveAllClientCharactersInGame_6FC4C830_113c,
   QUESTS_ObjectEvent07_FastcallThunk_6FC8F510_113c,
+  STATES_OnBuffStateRemovedRefreshAnim_6FC622B0_113c,
+  STATES_OnSkillStateRemovedRefreshAnim_6FC47190_113c,
 } from './k2-w10b1-113c.ts'
 import {
+  ITEMS_LoadItemAndSocketsFromBitstream_6FC3F9F0_113c,
+  MONSTER_ApplyPresetAiCommands_6FC3F2D0_113c,
   MONUMOD_ApplyChampionBaseStats_6FC418A0_113c,
   MONUMOD_EventReviveOrCorpseCheck_6FC43E20_113c,
   MONUMOD_SpawnColdEnchantedFrostNova_6FC462D0_113c,
@@ -167,6 +250,7 @@ import {
   OBJ_DropChestLootFromObjectUnit_6FC8B6F0_113c,
 } from './k2-w4b3-113c.ts'
 import { SUNIT_SendHoverMsgOrClearPacketToClient_6FC9ACB0_113c } from './k2-w5b2-113c.ts'
+import { UNIT_SendStatB2Packet11ToClient_6FC9A570_113c } from './k2-w3b8-113c.ts'
 import { MONUMOD_OnHitApplyCursedAmplifyDamage_6FC44250_113c } from './k2-w6b1-113c.ts'
 import { MONSTER_ApplyDeathExplosionSplashDamage_6FC44300_113c } from './k2-w6b4-113c.ts'
 import {
@@ -197,8 +281,10 @@ import {
 } from './monster-events.ts'
 import { REGPOP_CanSpawnPresetMinionPack113c } from './k2-sunit-spawn-w1-113c.ts'
 import {
+  AI_InitMonsterAiThinkFn113c,
   D2GAME_IAT_GDW_BITMASKS_VA_113C,
   D2GAME_IAT_SGPT_DATATABLES_VA_113C,
+  MONSTER_Create113c,
   MONSTER_SpawnAtCoords113c,
   MONSTATS2_CheckFlagBit113c,
   MONSTATS_GetRecordPtr113c,
@@ -206,6 +292,8 @@ import {
   QUEST_Act4DiabloSealCheck113c,
   REGPOP_FindPackSpawnCoords113c,
   SUNIT_AllocUnitData113c,
+  SUNIT_SetMonsterAlignmentState113c,
+  SUNIT_ValidatePathTargetUnit113c,
   UNIT_GetPosX113c,
   UNIT_GetPosY113c,
   type RegpopSpawnHooks113c,
@@ -869,13 +957,24 @@ export function MONREG_FlushAndFreePendingSpawnNodes113c(
     const pNext = m.u32(pCur) >>> 0
     const dwExpireFrame = m.u32((pCur + 0x04) >>> 0) | 0
     if (dwExpireFrame === 0 || curGameFrame <= dwExpireFrame) {
-      const savedItemGuid = m.u32((pCur + 0x08) >>> 0) >>> 0
-      if (savedItemGuid !== 0 && pGame !== 0 && pRoom !== 0) {
-        const pItem = SUNIT_GetServerUnit113c(m, pGame, 4, savedItemGuid) >>> 0
-        if (pItem !== 0) {
-          const itemX = m.u16((pCur + 0x0c) >>> 0)
-          const itemY = m.u16((pCur + 0x0e) >>> 0)
-          relocateRestoredServerUnit113c(m, pGame, pItem, pRoom, itemX, itemY)
+      // Real D2Game saved item nodes carry byte length at +0x0C and 'JM' (0x4D4A) header at +0x0E;
+      // legacy synthetic K2 nodes store (itemGuid at +0x08, itemX at +0x0C, itemY at +0x0E).
+      if (m.u16((pCur + 0x0c) >>> 0) >= 6 && m.u16((pCur + 0x0e) >>> 0) === 0x4d4a) {
+        ITEMS_LoadItemAndSocketsFromBitstream_6FC3F9F0_113c(
+          m as SparseMemory113c,
+          pGame,
+          pRoom,
+          pCur,
+        )
+      } else {
+        const savedItemGuid = m.u32((pCur + 0x08) >>> 0) >>> 0
+        if (savedItemGuid !== 0 && pGame !== 0 && pRoom !== 0) {
+          const pItem = SUNIT_GetServerUnit113c(m, pGame, 4, savedItemGuid) >>> 0
+          if (pItem !== 0) {
+            const itemX = m.u16((pCur + 0x0c) >>> 0)
+            const itemY = m.u16((pCur + 0x0e) >>> 0)
+            relocateRestoredServerUnit113c(m, pGame, pItem, pRoom, itemX, itemY)
+          }
         }
       }
     }
@@ -911,7 +1010,6 @@ export function MONREG_RestoreRoomMonstersFromNode113c(
     if (pRoomNode === 0) return
 
     let pMon = m.u32((pRoomNode + 0x0c) >>> 0) >>> 0
-    m.setU32((pRoomNode + 0x0c) >>> 0, 0)
     let bChaosSealsCleared = 0
     if (DUNGEON_GetLevelIdFromRoom113c(m, pRoom) === 0x6c) {
       if (QUEST_Act4DiabloSealCheck113c(m, pGame) !== 0) {
@@ -946,7 +1044,14 @@ export function MONREG_RestoreRoomMonstersFromNode113c(
       if ((dwFlags14 & 0x0100) !== 0) {
         const pExisting = SUNIT_GetServerUnit113c(m, pGame, 1, dwSavedGuid) >>> 0
         if (pExisting !== 0) {
-          relocateRestoredServerUnit113c(m, pGame, pExisting, pRoom, posX, posY)
+          SUNIT_PlaceUnitAtRoomAndCoords_6FD00D00_113c(
+            m as SparseMemory113c,
+            posY,
+            pRoom,
+            pExisting,
+            pGame,
+            posX,
+          )
         }
         let pExtra = m.u32((pMon + 0x20) >>> 0) >>> 0
         while (pExtra !== 0) {
@@ -958,52 +1063,115 @@ export function MONREG_RestoreRoomMonstersFromNode113c(
         const skipBoss =
           (dwFlags18 & 0x0400) !== 0 && ((dwFlags18 & 0x0100) !== 0 || (dwFlags18 & 0x80) !== 0)
         if (!skipBoss) {
-          const wSpawnFlags = (dwFlags18 & 0x40) !== 0 ? 0x6a : 0x62
-          let pSpawned = MONSTER_SpawnAtCoords113c(
-            m,
-            nClassId,
-            nAnimMode,
-            pGame,
-            pRoom,
-            posX,
-            posY,
-            -1,
-            wSpawnFlags,
-            hooks,
-          )
-          if (pSpawned === 0) {
-            pSpawned = MONSTER_SpawnAtCoords113c(
-              m,
-              nClassId,
-              nAnimMode,
-              pGame,
-              pRoom,
-              posX,
-              posY,
-              5,
-              wSpawnFlags,
-              hooks,
-            )
+          let wSpawnFlags = (dwFlags18 & 0x40) !== 0 ? 0x6a : 0x62
+          const pMonStatsTxtRestore = DATATBLS_GetMonStatsTxtRecordInline113c(m, nClassId)
+          if (
+            pMonStatsTxtRestore !== 0 &&
+            (m.u8((pMonStatsTxtRestore + 0x0d) >>> 0) & 0x40) !== 0
+          ) {
+            wSpawnFlags |= 0x80
           }
+          const dwSavedGuid = m.u32((pMon + 0x0c) >>> 0) >>> 0
+          const spRestore = bootInitGapStackPtr
+          bootInitGapStackPtr = (spRestore + 0x30) >>> 0
+          let pSpawned = 0
+          try {
+            m.fill(spRestore, 0x28, 0)
+            m.setU32(spRestore, pGame >>> 0)
+            m.setU32((spRestore + 0x04) >>> 0, pRoom >>> 0)
+            m.setU32((spRestore + 0x08) >>> 0, 0)
+            m.setU32((spRestore + 0x0c) >>> 0, nClassId >>> 0)
+            m.setU32((spRestore + 0x10) >>> 0, nAnimMode >>> 0)
+            m.setU32((spRestore + 0x14) >>> 0, dwSavedGuid)
+            m.setU32((spRestore + 0x18) >>> 0, posX >>> 0)
+            m.setU32((spRestore + 0x1c) >>> 0, posY >>> 0)
+            m.setU32((spRestore + 0x20) >>> 0, 0xffffffff)
+            m.setU16((spRestore + 0x24) >>> 0, wSpawnFlags & 0xffff)
+            pSpawned = MONSTER_Create113c(m, spRestore, hooks)
+            if (pSpawned === 0) {
+              m.setU32((spRestore + 0x20) >>> 0, 5)
+              pSpawned = MONSTER_Create113c(m, spRestore, hooks)
+            }
+          } finally {
+            bootInitGapStackPtr = spRestore
+          }
+          let nAlignment = 0
+          if ((dwFlags18 & 0x0100) !== 0) nAlignment = 2
+          if ((dwFlags18 & 0x80) !== 0) nAlignment = 1
           if (pSpawned !== 0) {
+            AIGENERAL_ReplaceMinionListAndInitBossGroup_6FC41210_113c(
+              m,
+              pGame,
+              pSpawned,
+              m.u32((pMon + 0x1c) >>> 0) >>> 0,
+              1,
+              dwFlags18 & 0x08,
+              dwFlags18 & 0x10,
+              m.u32((pMon + 0x20) >>> 0) >>> 0,
+            )
             const savedExp = m.u32((pMon + 0x40) >>> 0) | 0
             const savedMaxHp = m.u32((pMon + 0x44) >>> 0) | 0
             const savedCurHp = m.u32((pMon + 0x48) >>> 0) | 0
             const savedFrame = m.u32((pMon + 0x54) >>> 0) >>> 0
             const curGameFrame = m.u32((pGame + 0xa8) >>> 0) >>> 0
             STATLIST_SetUnitStat113c(m, pSpawned, 0x0d, savedExp, 0)
-            if (savedMaxHp > 0) {
-              STATLIST_SetUnitStat113c(m, pSpawned, 0x07, savedMaxHp, 0)
-              const restoredHp =
-                ((curGameFrame - savedFrame) >>> 0) >= 0x1d4c ? savedMaxHp : savedCurHp
-              STATLIST_SetUnitStat113c(m, pSpawned, 0x06, restoredHp, 0)
-            }
-            const pMonData = m.u32((pSpawned + 0x14) >>> 0) >>> 0
-            if (pMonData !== 0) {
-              for (let k = 0; k < 9; k++) {
-                m.setU8((pMonData + 0x1c + k) >>> 0, m.u8((pMon + 0x32 + k) >>> 0))
+            const restoredHp =
+              ((curGameFrame - savedFrame) >>> 0) >= 0x1d4c ? savedMaxHp : savedCurHp
+            STATLIST_SetUnitStat113c(m, pSpawned, 0x07, savedMaxHp, 0)
+            STATLIST_SetUnitStat113c(m, pSpawned, 0x06, restoredHp, 0)
+            const pMonData0 =
+              m.u32(pSpawned >>> 0) === 1 ? (m.u32((pSpawned + 0x14) >>> 0) >>> 0) : 0
+            const pAiGen0 = pMonData0 !== 0 ? (m.u32((pMonData0 + 0x28) >>> 0) >>> 0) : 0
+            AI_InitMonsterAiThinkFn113c(
+              m,
+              pSpawned,
+              pGame,
+              pAiGen0,
+              m.u32((pMon + 0x28) >>> 0) | 0,
+            )
+            MONSTER_ApplyPresetAiCommands_6FC3F2D0_113c(
+              m as SparseMemory113c,
+              pSpawned,
+              pGame,
+              pMon,
+            )
+            if ((dwFlags18 & 0x0400) !== 0) {
+              if (nAlignment === 2) {
+                SUBPARTY_PrependUnitToBucket8Or9_6FD0FDB0_113c(
+                  m as SparseMemory113c,
+                  pGame,
+                  8,
+                  pSpawned,
+                  0,
+                )
+              } else if (nAlignment === 1) {
+                SUBPARTY_PrependUnitToBucket8Or9_6FD0FDB0_113c(
+                  m as SparseMemory113c,
+                  pGame,
+                  9,
+                  pSpawned,
+                  0,
+                )
               }
             }
+            if (m.u32(pSpawned >>> 0) === 1) {
+              const pMonData = m.u32((pSpawned + 0x14) >>> 0) >>> 0
+              if (pMonData !== 0) {
+                for (let k = 0; k < 9; k++) {
+                  const savedMod = m.u8((pMon + 0x32 + k) >>> 0)
+                  if (m.u8((pMonData + 0x1c + k) >>> 0) !== savedMod) {
+                    MONUMOD_AssignSpecificUModAndInit_6FC432B0_113c(
+                      m,
+                      pSpawned,
+                      savedMod,
+                      pGame,
+                      0,
+                    )
+                  }
+                }
+              }
+            }
+            SUNIT_SetMonsterAlignmentState113c(m, pSpawned, nAlignment, 1)
             if ((dwFlags14 & 0x0200) !== 0) {
               m.setU32((pSpawned + 0xc8) >>> 0, (m.u32((pSpawned + 0xc8) >>> 0) | 0x0200) >>> 0)
             }
@@ -1011,6 +1179,12 @@ export function MONREG_RestoreRoomMonstersFromNode113c(
             m.setU32(
               (pSpawned + 0xc4) >>> 0,
               (curUnitFlags | (dwFlags10 & 0x20000) | 0x03000000) >>> 0,
+            )
+          } else {
+            AIGENERAL_FreeMinionList_6FC40B30_113c(
+              m,
+              pGame,
+              m.u32((pMon + 0x20) >>> 0) >>> 0,
             )
           }
         }
@@ -1374,6 +1548,9 @@ export function GAME_UpdateTickRateMetrics113c(
 ): void {
   hitD2GameVa113c(0x6FC49BE0)
   const game = pGame >>> 0
+  if (callees === undefined && game !== 0 && isByteKnownInMem113c(m, (game + 0x10f4) >>> 0)) {
+    armDeferSliceQuestTimers113c(m, game)
+  }
   const dwTickMs =
     callees !== undefined && callees.getTickCountMs !== undefined
       ? callees.getTickCountMs(m) >>> 0
@@ -1448,11 +1625,79 @@ export function GAME_SyncNewClientWithExistingPlayers113c(
   callees?: BootInitGapACallees113c,
 ): void {
   hitD2GameVa113c(0x6FC4C120)
+  if (pNewClient === 0) {
+    throw new D2CommonAssertError('0x6fd19ff9', 0xfb)
+  }
   const sp = bootInitGapStackPtr
   bootInitGapStackPtr = (sp + 0x60) >>> 0
   const pktNew = sp
   const pktOther = (sp + 0x28) >>> 0
+  const pkt8E = (sp + 0x50) >>> 0
   try {
+    if (callees === undefined) {
+      let pNewUnit = 0
+      if ((m.u8((pNewClient + 0x3d4) >>> 0) & 1) !== 0) {
+        pNewUnit = m.u32((pNewClient + 0x174) >>> 0) >>> 0
+      } else if (m.u32((pNewClient + 0x174) >>> 0) !== 0) {
+        pNewUnit =
+          SUNIT_GetServerUnit113c(
+            m,
+            m.u32((pNewClient + 0x1a8) >>> 0) >>> 0,
+            m.u32((pNewClient + 0x16c) >>> 0) >>> 0,
+            m.u32((pNewClient + 0x170) >>> 0) >>> 0,
+          ) >>> 0
+        if (pNewUnit === 0) {
+          m.setU32((pNewClient + 0x174) >>> 0, 0)
+        }
+      }
+      if (pNewUnit === 0) {
+        throw new D2CommonAssertError('0x6fd19ff9', 0x56a)
+      }
+      let pOther = m.u32((pGame + 0x88) >>> 0) >>> 0
+      while (pOther !== 0) {
+        if (pOther !== (pNewClient >>> 0)) {
+          let pOtherUnit = 0
+          if ((m.u8((pOther + 0x3d4) >>> 0) & 1) !== 0) {
+            pOtherUnit = m.u32((pOther + 0x174) >>> 0) >>> 0
+          } else if (m.u32((pOther + 0x174) >>> 0) !== 0) {
+            pOtherUnit =
+              SUNIT_GetServerUnit113c(
+                m,
+                m.u32((pOther + 0x1a8) >>> 0) >>> 0,
+                m.u32((pOther + 0x16c) >>> 0) >>> 0,
+                m.u32((pOther + 0x170) >>> 0) >>> 0,
+              ) >>> 0
+            if (pOtherUnit === 0) {
+              m.setU32((pOther + 0x174) >>> 0, 0)
+            }
+          }
+          if (pOtherUnit !== 0) {
+            D2GAME_PACKET_Send0x5BPlayerInGame113c(m, pOtherUnit, pOther, pNewClient)
+            D2GAME_PACKET_Send0x5BPlayerInGame113c(m, pNewUnit, pNewClient, pOther)
+            const pInv = m.u32((pOtherUnit + 0x60) >>> 0) >>> 0
+            if (pInv !== 0) {
+              let pCorpse = INVENTORY_GetFirstCorpse113c(m, pInv) >>> 0
+              while (pCorpse !== 0) {
+                const dwCorpseUnitId = INVENTORY_GetCorpseUnitId113c(m, pCorpse) | 0
+                if (dwCorpseUnitId !== -1) {
+                  m.setU8(pkt8E, 0x8e)
+                  m.setU8((pkt8E + 1) >>> 0, 0x01)
+                  m.setU32((pkt8E + 2) >>> 0, m.u32((pOtherUnit + 0x0c) >>> 0) >>> 0)
+                  m.setU32((pkt8E + 6) >>> 0, dwCorpseUnitId >>> 0)
+                  NET_QueuePacketToClientBuffer113c(m, pNewClient, 1, pkt8E, 0x0a)
+                }
+                pCorpse = INVENTORY_GetNextCorpse113c(m, pCorpse) >>> 0
+              }
+            }
+          }
+        }
+        pOther = m.u32((pOther + 0x4a8) >>> 0) >>> 0
+      }
+      D2GAME_PACKET_Send0x5BPlayerInGame113c(m, pNewUnit, pNewClient, pNewClient)
+      D2GAME_ARENA_SyncClientKillCountsOnJoin113c(m, pGame, pNewClient)
+      return
+    }
+
     m.fill(pktNew, 0x24, 0)
     const pNewUnit = m.u32((pNewClient + 0x174) >>> 0) >>> 0
     m.setU8(pktNew, 0x5b)
@@ -1463,7 +1708,7 @@ export function GAME_SyncNewClientWithExistingPlayers113c(
     const newLvl = pNewUnit !== 0 ? STATLIST_GetUnitStat113c(m, pNewUnit, 0x0c, 0) & 0xffff : 0
     m.setU16((pktNew + 0x18) >>> 0, newLvl)
     const newPartyId =
-      callees !== undefined && callees.getClientPartyId !== undefined && pNewUnit !== 0
+      callees.getClientPartyId !== undefined && pNewUnit !== 0
         ? callees.getClientPartyId(m, pNewUnit) & 0xffff
         : 0xffff
     m.setU16((pktNew + 0x1a) >>> 0, newPartyId)
@@ -1486,7 +1731,7 @@ export function GAME_SyncNewClientWithExistingPlayers113c(
           pOtherUnit !== 0 ? STATLIST_GetUnitStat113c(m, pOtherUnit, 0x0c, 0) & 0xffff : 0
         m.setU16((pktOther + 0x18) >>> 0, otherLvl)
         const otherPartyId =
-          callees !== undefined && callees.getClientPartyId !== undefined && pOtherUnit !== 0
+          callees.getClientPartyId !== undefined && pOtherUnit !== 0
             ? callees.getClientPartyId(m, pOtherUnit) & 0xffff
             : 0xffff
         m.setU16((pktOther + 0x1a) >>> 0, otherPartyId)
@@ -1494,7 +1739,7 @@ export function GAME_SyncNewClientWithExistingPlayers113c(
         m.setU32((pktOther + 0x20) >>> 0, 0)
         NET_QueuePacketToClientBuffer113c(m, pNewClient, 1, pktOther, 0x24)
 
-        if (callees !== undefined && callees.syncPlayerPartyRelations !== undefined) {
+        if (callees.syncPlayerPartyRelations !== undefined) {
           callees.syncPlayerPartyRelations(m, pGame, pNewClient, pOther)
         }
 
@@ -1505,7 +1750,7 @@ export function GAME_SyncNewClientWithExistingPlayers113c(
             const dwCorpseUnitId = INVENTORY_GetCorpseUnitId113c(m, pCorpse)
             const pCorpseUnit = SUNIT_GetServerUnit113c(m, pGame, 0, dwCorpseUnitId)
             if (pCorpseUnit !== 0) {
-              if (callees !== undefined && callees.sendCorpseSyncPacket !== undefined) {
+              if (callees.sendCorpseSyncPacket !== undefined) {
                 callees.sendCorpseSyncPacket(
                   m,
                   pNewClient,
@@ -1522,7 +1767,7 @@ export function GAME_SyncNewClientWithExistingPlayers113c(
     }
 
     NET_QueuePacketToClientBuffer113c(m, pNewClient, 1, pktNew, 0x24)
-    if (callees !== undefined && callees.onPostClientJoinSync !== undefined) {
+    if (callees.onPostClientJoinSync !== undefined) {
       callees.onPostClientJoinSync(m, pGame, pNewClient, pNewUnit)
     }
   } finally {
@@ -1640,6 +1885,57 @@ export function GAME_CheckAndDisconnectTimedOutClients113c(
   callees?: BootInitGapACallees113c,
 ): void {
   hitD2GameVa113c(0x6FC4D670)
+  if (callees === undefined && (dwTickMs >>> 0) >= 0x10000000) {
+    if (m.u32(0x6fd2e34c) === 0) return
+    const pbAnyOut = dwTickMs >>> 0
+    m.setU32(pbAnyOut, 0)
+    const dwTick = m.u32(0x6fd18d10) >>> 0
+    let pClient = m.u32((pGame + 0x88) >>> 0) >>> 0
+    while (pClient !== 0) {
+      const pNext = m.u32((pClient + 0x4a8) >>> 0) >>> 0
+      const dwLast = m.u32((pClient + 0x3d8) >>> 0) >>> 0
+      if (dwTick > dwLast) {
+        const delta = (dwTick - dwLast) >>> 0
+        const hasFlag4 = (m.u8((pClient + 0x0a) >>> 0) & 4) !== 0
+        const timedOut =
+          (hasFlag4 && delta > 0x2710 && (m.u32((pClient + 0x500) >>> 0) >>> 0) > 10) ||
+          delta > 0xafc8 ||
+          m.u32((pClient + 0x504) >>> 0) !== 0
+        if (timedOut && m.u32(0x6fd31c3c) !== 0) {
+          let pUnit = 0
+          if ((m.u8((pClient + 0x3d4) >>> 0) & 1) !== 0) {
+            pUnit = m.u32((pClient + 0x174) >>> 0) >>> 0
+          } else if (m.u32((pClient + 0x174) >>> 0) !== 0) {
+            pUnit =
+              SUNIT_GetServerUnit113c(
+                m,
+                m.u32((pClient + 0x1a8) >>> 0) >>> 0,
+                m.u32((pClient + 0x16c) >>> 0) >>> 0,
+                m.u32((pClient + 0x170) >>> 0) >>> 0,
+              ) >>> 0
+            if (pUnit === 0) {
+              m.setU32((pClient + 0x174) >>> 0, 0)
+            }
+          }
+          PLAYERSAVE_SavePlayerCharacter_6FC74320_113c(
+            m as SparseMemory113c,
+            pGame,
+            pUnit,
+            (pClient + 0x0d) >>> 0,
+            0,
+          )
+          m.setU32(pbAnyOut, 1)
+          CLIENT_NotifyAndDisconnectClient_6FC4D090_113c(m, pClient, pGame, 0)
+        }
+      }
+      pClient = pNext
+    }
+    if (m.u32(pbAnyOut) !== 0) {
+      PLAYERSAVE_SaveAllClientCharactersInGame_6FC4C830_113c(m as SparseMemory113c, pGame)
+    }
+    return
+  }
+
   let pClient = m.u32((pGame + 0x88) >>> 0) >>> 0
   while (pClient !== 0) {
     const pNext = m.u32((pClient + 0x4a8) >>> 0) >>> 0
@@ -1890,10 +2186,10 @@ export function MONSTER_SpawnPresetOrEvilUrn113c(
   const pMonStatsTxt = (pMonStatsBase + imul32(cid, 0x1a8)) >>> 0
   if (pMonStatsTxt === 0) return 0
 
-  let spawnY = y | 0
+  let spawnX = x | 0
   let spawnMode = nMode | 0
   if (cid === 0x1b2) {
-    spawnY = (spawnY - 1) | 0
+    spawnX = (spawnX - 1) | 0
     if (pGame !== 0 && QUESTS_CheckNotIntro_6FC53970_113c(m, pGame, 0x20) === 0) {
       spawnMode = 0x0c
     }
@@ -1942,12 +2238,12 @@ export function MONSTER_SpawnPresetOrEvilUrn113c(
             callees !== undefined ? callees.regpop : undefined,
           )
 
-  let pUnit = doSpawn(m, cid, spawnMode, pGame, pRoom, x | 0, spawnY, -1, wFlags) >>> 0
+  let pUnit = doSpawn(m, cid, spawnMode, pGame, pRoom, spawnX, y | 0, -1, wFlags) >>> 0
   if (pUnit === 0) {
     if (REGPOP_CanSpawnPresetMinionPack113c(m, cid) === 0) {
       return 0
     }
-    pUnit = doSpawn(m, cid, spawnMode, pGame, pRoom, x | 0, spawnY, 4, wFlags) >>> 0
+    pUnit = doSpawn(m, cid, spawnMode, pGame, pRoom, spawnX, y | 0, 4, wFlags) >>> 0
     if (pUnit === 0) {
       return 0
     }
@@ -2407,6 +2703,42 @@ export function MONSTER_ApplyElementalDamageAndResistStats113c(
   }
 }
 
+function sendPlayerStop0DUncond_6FCEB950_113c(
+  m: Memory113c,
+  pUnit: number,
+  pClient: number,
+  nPlayerMode: number,
+): void {
+  const hitClass = m.u8((pUnit + 0xb0) >>> 0)
+  hitD2GameVa113c(0x6FCEB950)
+  const modeIdx = nPlayerMode | 0
+  let actionByte = 0x09
+  if (modeIdx === 0) actionByte = 0x08
+  else if (modeIdx === 4) actionByte = 0x06
+  else if (modeIdx === 9) actionByte = 0x12
+  else if (modeIdx === 0x11) actionByte = 0x09
+  const lifePct = STATLIST_GetUnitLifePercent113c(m, pUnit >>> 0) & 0xff
+  const uy = UNIT_GetPosY113c(m, pUnit >>> 0) & 0xffff
+  const ux = UNIT_GetPosX113c(m, pUnit >>> 0) & 0xffff
+  const unitId = m.u32((pUnit + 0x0c) >>> 0) >>> 0
+  const sp = bootInitGapStackPtr
+  bootInitGapStackPtr = (sp + 0x10) >>> 0
+  try {
+    m.fill(sp, 0x10, 0)
+    m.setU8(sp, 0x0d)
+    m.setU8((sp + 0x01) >>> 0, 0)
+    m.setU32((sp + 0x02) >>> 0, unitId)
+    m.setU8((sp + 0x06) >>> 0, actionByte)
+    m.setU16((sp + 0x07) >>> 0, ux)
+    m.setU16((sp + 0x09) >>> 0, uy)
+    m.setU8((sp + 0x0b) >>> 0, hitClass)
+    m.setU8((sp + 0x0c) >>> 0, lifePct)
+    NET_QueuePacketToClientBuffer113c(m, pClient >>> 0, 1, sp, 0x0d)
+  } finally {
+    bootInitGapStackPtr = sp
+  }
+}
+
 /**
  * Syncs unit gfx states, modified stats, sound events, and event notification queue to `pClient`.
  *
@@ -2418,14 +2750,54 @@ export function UNIT_SyncStateAndStatsToClient113c(
   pClient: number,
   pUnit: number,
   callees?: BootInitGapACallees113c,
+  bPreSynced = 0,
 ): void {
   hitD2GameVa113c(0x6FC988B0)
   if (pClient === 0) return
 
+  // 0x6FC988DF..0x6FC9892E: resolve pClient's player unit (cached at +0x174 when +0x3D4 bit 0 set)
+  let pClientPlayer = 0
+  if ((m.u8((pClient + 0x3d4) >>> 0) & 1) !== 0) {
+    pClientPlayer = m.u32((pClient + 0x174) >>> 0) >>> 0
+  } else {
+    const curClientUnit = m.u32((pClient + 0x174) >>> 0) >>> 0
+    if (curClientUnit !== 0) {
+      pClientPlayer =
+        SUNIT_GetServerUnit113c(
+          m,
+          m.u32((pClient + 0x1a8) >>> 0) >>> 0,
+          m.u32((pClient + 0x16c) >>> 0) | 0,
+          m.u32((pClient + 0x170) >>> 0) >>> 0,
+        ) >>> 0
+      if (pClientPlayer === 0) {
+        m.setU32((pClient + 0x174) >>> 0, 0)
+      }
+    }
+  }
+
+  // 0x6FC98932..0x6FC98965: dwFlagsEx & 0x10000 (bFlash=1) or (dwFlagsEx & 0x0800 && pUnit !== pClientPlayer) (bFlash=0) -> S2C 0x15
+  if (pUnit !== 0) {
+    const dwFlagsEx = m.u32((pUnit + 0xc8) >>> 0) >>> 0
+    if (((dwFlagsEx >>> 16) & 1) !== 0) {
+      NET_SendReassignUnitPacket15_113c(m, pUnit, pClient, 1)
+    } else if (((dwFlagsEx >>> 11) & 1) !== 0 && (pUnit >>> 0) !== (pClientPlayer >>> 0)) {
+      NET_SendReassignUnitPacket15_113c(m, pUnit, pClient, 0)
+    }
+  }
+
   const dwFlags = pUnit !== 0 ? (m.u32((pUnit + 0xc4) >>> 0) >>> 0) : 0
+  const effectivePreSynced =
+    bPreSynced !== 0 ||
+    (callees !== undefined &&
+      pUnit !== 0 &&
+      (dwFlags & 0x10) !== 0 &&
+      (dwFlags & 0x800) === 0 &&
+      (pUnit >>> 0) !== (pClientPlayer >>> 0))
+      ? 1
+      : 0
 
   // 0x6FC98966..0x6FC9899C: `bPreSynced == 0 && (dwFlagsEx & 0x01) != 0` -> broadcast inventory command flags + packets 0x47 / 0x48
-  if (pUnit !== 0 && (m.u32((pUnit + 0xc8) >>> 0) & 0x01) !== 0) {
+  if (effectivePreSynced === 0 && pUnit !== 0 && (m.u32((pUnit + 0xc8) >>> 0) & 0x01) !== 0) {
     ITEMS_BroadcastUnitInventoryCommandFlags_6FCBBB10_113c(
       m as SparseMemory113c,
       0,
@@ -2439,7 +2811,14 @@ export function UNIT_SyncStateAndStatsToClient113c(
 
   // 0x6FC989A0..0x6FC989B8: `dwFlags & 0x01` -> player mode sync
   if (pUnit !== 0 && (dwFlags & 0x01) !== 0) {
-    if (callees !== undefined && callees.syncPlayerMode !== undefined) {
+    const plrMode = m.u32(pUnit >>> 0) === 0 ? (m.u32((pUnit + 0x10) >>> 0) >>> 0) : 0xffffffff
+    if (plrMode === 0) {
+      hitD2GameVa113c(0x6FCEB8F0)
+      PLRMODES_SendPlayerStop0DAndSyncStatAF_6FCED2C0_113c(m as SparseMemory113c, pUnit, pClient, 0)
+    } else if (plrMode === 0x11) {
+      hitD2GameVa113c(0x6FCEB8F0)
+      sendPlayerStop0DUncond_6FCEB950_113c(m, pUnit, pClient, 0x11)
+    } else if (callees !== undefined && callees.syncPlayerMode !== undefined) {
       callees.syncPlayerMode(m, pGame, pClient, pUnit)
     }
   }
@@ -2470,8 +2849,9 @@ export function UNIT_SyncStateAndStatsToClient113c(
 
   // 0x6FC98A27..0x6FC98A78: statlist flag 0x100 + modified stat notifications (0x43, 0x44, 0x0C, 0, 2)
   if (pUnit !== 0 && STATLIST_CheckUnitStatListFlag100113c(m, pUnit) !== 0) {
+    UNIT_SendStatB2Packet11ToClient_6FC9A570_113c(m as SparseMemory113c, pUnit, pClient)
     const uType = m.u32(pUnit >>> 0)
-    if (uType === 0 && m.u32((pClient + 0x174) >>> 0) === (pUnit >>> 0)) {
+    if (uType === 0 && (pClientPlayer >>> 0) === (pUnit >>> 0)) {
       if (callees !== undefined && callees.sendLifeManaStaminaPacket !== undefined) {
         const curLife = STATLIST_GetUnitStat113c(m, pUnit, 6, 0) | 0
         const curMana = STATLIST_GetUnitStat113c(m, pUnit, 8, 0) | 0
@@ -2491,7 +2871,6 @@ export function UNIT_SyncStateAndStatsToClient113c(
   }
 
   if (pUnit !== 0) {
-    const pClientPlayer = m.u32((pClient + 0x174) >>> 0) >>> 0
     const cb =
       callees !== undefined && callees.onStatModifiedNotify !== undefined
         ? callees.onStatModifiedNotify
@@ -2773,14 +3152,34 @@ export function UNIT_FlushEventNotifyQueueToClient113c(
           break
         case 0xab:
           if (((m.u32((pUnit + 0xc4) >>> 0) >>> 15) & 1) === 0) {
-            if (callees !== undefined && callees.onNotifyOpcode !== undefined) {
-              callees.onNotifyOpcode(m, opcode, pClient, pUnit, pNode)
+            const pClientPlayer =
+              pClient !== 0 ? (CLIENTS_GetPlayerUnit113c(m, pClient, 0) >>> 0) : 0
+            if (
+              pClientPlayer === 0 ||
+              SUNIT_AreUnitsHostileOrUnaligned113c(
+                m,
+                pClientPlayer,
+                pUnit,
+                D2GAME_SUNIT_GetGameFromUnit113c(m, pClientPlayer),
+              ) !== 0
+            ) {
+              if (callees !== undefined && callees.onNotifyOpcode !== undefined) {
+                callees.onNotifyOpcode(m, opcode, pClient, pUnit, pNode)
+              }
             }
           }
           break
+        case 0x9e:
+          NET_SendPacket9E9FA0_StatValue_6FCABC20_113c(
+            m as SparseMemory113c,
+            m.u8((pNode + 0x0c) >>> 0),
+            pUnit,
+            pClient,
+            m.u32((pNode + 0x10) >>> 0) >>> 0,
+          )
+          break
         case 0x23:
         case 0x99:
-        case 0x9e:
         case 0xa1:
         case 0xa3:
         case 0xa5:
@@ -2798,6 +3197,169 @@ export function UNIT_FlushEventNotifyQueueToClient113c(
   }
 }
 
+let inUnitFullSyncDepth113c = 0
+let inExecuteMonsterEventsDepth113c = 0
+let suppressedMon7FThisEvent113c = false
+let suppressDupMon9DKey113c = ''
+let deferredInitMon9DLastFrame113c = -1
+const deferredInitMon9DQueue113c = new Map<string, Uint8Array[]>()
+
+function isByteKnownInMem113c(m: Memory113c, addr: number): boolean {
+  const a = addr >>> 0
+  if (a === 0) return false
+  const known = (m as unknown as { known?: Map<number, Uint8Array> }).known
+  if (known === undefined) return true
+  const kp = known.get(a >>> 12)
+  return kp !== undefined && kp[a & 0xfff] !== 0
+}
+
+function playerUnitHasIdleEvent11_113c(m: Memory113c, pPlayer: number): boolean {
+  if (pPlayer === 0 || !isByteKnownInMem113c(m, (pPlayer + 0xdc) >>> 0)) return false
+  let pEv = m.u32((pPlayer + 0xdc) >>> 0) >>> 0
+  let guard = 0
+  while (pEv !== 0 && guard < 64 && isByteKnownInMem113c(m, pEv)) {
+    if (m.u8(pEv) === 11) return true
+    pEv = isByteKnownInMem113c(m, (pEv + 0x24) >>> 0) ? (m.u32((pEv + 0x24) >>> 0) >>> 0) : 0
+    guard++
+  }
+  return false
+}
+
+function buildFullMonsterMovementSyncCallees113c(
+  pGame: number,
+  pClient: number,
+): BootInitGapBCallees113c {
+  return {
+    getSpecialUnit(mem) {
+      return pClient !== 0 ? (CLIENTS_GetPlayerUnit113c(mem, pClient, 0) >>> 0) : 0
+    },
+    checkMonsterTargetValid(mem, pTarget) {
+      const inRoom = UNITROOM_IsClientInUnitRoom113c(mem, pTarget, pClient)
+      if (inRoom !== 0) return 1
+      const pTargetRoom = UNITS_GetRoom113c(mem, pTarget)
+      return pTargetRoom !== 0 && (mem.u32((pTargetRoom + 0x78) >>> 0) | 0) === 0 ? 1 : 0
+    },
+    syncMonsterSkillCast(mem, u, _nFlag, pTargetUnit, pCl) {
+      if (pCl !== 0 && mem.u32((pCl + 0x1a8) >>> 0) === 0 && pGame !== 0) {
+        mem.setU32((pCl + 0x1a8) >>> 0, pGame >>> 0)
+      }
+      NET_SendMonsterSkillCastPacket4COr4D_6FD134C0_113c(
+        mem as SparseMemory113c,
+        u,
+        pCl,
+        pTargetUnit,
+      )
+    },
+    onMonsterMovementPacket(mem, pCl, op, dwUnitId, nAction, nPosOrTypeX, nPosOrGuidY, a7, a8, a9) {
+      const pMon =
+        pGame !== 0 ? (SUNIT_GetServerUnit113c(mem, pGame >>> 0, 1, dwUnitId >>> 0) >>> 0) : 0
+      const pMonData = pMon !== 0 ? (mem.u32((pMon + 0x14) >>> 0) >>> 0) : 0
+      const pAiCtrl = pMonData !== 0 ? mem.get(pMonData, D2MonsterDataStrc.pAiControl) : 0
+      const hasVelOvList67 =
+        pMon !== 0 && STATLIST_GetStatListFromUnitAndFlag113c(mem, pMon, 0x4000) !== 0
+      const extraVel =
+        !hasVelOvList67 && pAiCtrl !== 0 ? (mem.u32((pAiCtrl + 0x10) >>> 0) | 0) : 0
+      if (op === 0x67) {
+        const outStep = a7 & 0xff
+        const maxDistOvr = a8 !== 0 || a9 !== 0 ? (a8 & 0xff) : -1
+        D2NET_SendUnitPosSync0x15ToClient113c(
+          mem,
+          dwUnitId,
+          0x67,
+          pCl,
+          nAction,
+          nPosOrTypeX,
+          nPosOrGuidY,
+          outStep,
+          a9,
+          extraVel,
+          maxDistOvr,
+        )
+        return
+      }
+      if (op === 0x68) {
+        const stepByte = a7 & 0xff
+        const maxDistOvr = a8 !== 0 || a9 !== 0 ? (a8 & 0xff) : -1
+        S2C_SendPacket0F_UnitWalkToTarget113c(
+          mem,
+          pCl,
+          dwUnitId,
+          0x68,
+          nAction,
+          nPosOrTypeX,
+          nPosOrGuidY,
+          stepByte,
+          extraVel,
+          a9,
+          maxDistOvr,
+        )
+        return
+      }
+      if (op === 0x69) {
+        S2C_SendPacket0E_UnitCorpseState113c(
+          mem,
+          0x69,
+          dwUnitId,
+          pCl,
+          nAction,
+          nPosOrTypeX,
+          nPosOrGuidY,
+          a7,
+          a8,
+        )
+        return
+      }
+      if (op === 0x6a) {
+        const pkt = new Uint8Array(12)
+        pkt[0] = 0x6a
+        pkt[1] = dwUnitId & 0xff
+        pkt[2] = (dwUnitId >>> 8) & 0xff
+        pkt[3] = (dwUnitId >>> 16) & 0xff
+        pkt[4] = (dwUnitId >>> 24) & 0xff
+        pkt[5] = nAction & 0xff
+        pkt[6] = nPosOrTypeX & 0xff
+        pkt[7] = nPosOrGuidY & 0xff
+        pkt[8] = (nPosOrGuidY >>> 8) & 0xff
+        pkt[9] = (nPosOrGuidY >>> 16) & 0xff
+        pkt[10] = (nPosOrGuidY >>> 24) & 0xff
+        pkt[11] = a7 & 0xff
+        NET_QueuePacketToClient113c(mem, pCl, pkt)
+        return
+      }
+      if (op === 0x6b) {
+        D2NET_SendUnitMovePacket0x10BytesToClient113c(
+          mem,
+          0x6b,
+          dwUnitId,
+          pCl,
+          nAction,
+          nPosOrTypeX,
+          nPosOrGuidY,
+          a9,
+          0,
+          a7,
+          a8,
+        )
+        return
+      }
+      if (op === 0x6c) {
+        S2C_SendPacket0D_UnitStop113c(
+          mem,
+          0x6c,
+          dwUnitId,
+          pCl,
+          nAction,
+          nPosOrTypeX,
+          nPosOrGuidY,
+          a9,
+          a7,
+          a8,
+        )
+      }
+    },
+  }
+}
+
 /**
  * Full unit synchronization to `pClient` across unit types (`0..5`), including monster skill levels, states, and event queues.
  *
@@ -2809,36 +3371,322 @@ export function UNIT_SendFullUnitSyncToClient113c(
   pUnit: number,
   dwFlags: number,
   callees?: BootInitGapACallees113c,
+  pGameArg?: number,
 ): void {
   hitD2GameVa113c(0x6FC9B0A0)
-  if (pClient === 0) {
-    throw new Error('UNIT_SendFullUnitSyncToClient113c: pClient == NULL (line 2802)')
-  }
-  if (pUnit === 0) {
-    throw new Error('UNIT_SendFullUnitSyncToClient113c: pUnit == NULL (line 2803)')
-  }
-  const pGame = m.u32((pUnit + 0x80) >>> 0) >>> 0
-  if (pGame === 0) {
-    throw new Error('UNIT_SendFullUnitSyncToClient113c: pGame == NULL (line 2806)')
-  }
-  if (((m.u32((pUnit + 0xc4) >>> 0) >>> 11) & 1) !== 0) return
-
   const sp = bootInitGapStackPtr
   bootInitGapStackPtr = (sp + 0x30) >>> 0
   const pPkt09 = sp
   const pTargetPos = (sp + 0x10) >>> 0
+  inUnitFullSyncDepth113c++
   try {
+    if (callees === undefined) {
+      const dwClassId = pUnit === 0 ? 0xffffffff : (m.u32((pUnit + 4) >>> 0) >>> 0)
+      PATH_GetTargetTypeAndPosition113c(m, pUnit, pTargetPos)
+      if (pClient === 0) {
+        throw new D2CommonAssertError('0x6fd19ff9', 0xfb)
+      }
+      if ((m.u8((pClient + 0x3d4) >>> 0) & 1) === 0 && m.u32((pClient + 0x174) >>> 0) !== 0) {
+        const pCliUnit =
+          SUNIT_GetServerUnit113c(
+            m,
+            m.u32((pClient + 0x1a8) >>> 0) >>> 0,
+            m.u32((pClient + 0x16c) >>> 0) >>> 0,
+            m.u32((pClient + 0x170) >>> 0) >>> 0,
+          ) >>> 0
+        if (pCliUnit === 0) {
+          m.setU32((pClient + 0x174) >>> 0, 0)
+        }
+      }
+      const pGame =
+        pGameArg !== undefined ? (pGameArg >>> 0) : (m.u32((pUnit + 0x80) >>> 0) >>> 0)
+      const posX = m.u32(pTargetPos >>> 0) >>> 0
+      const posY = m.u32((pTargetPos + 4) >>> 0) >>> 0
+      const dwUnitType = m.u32(pUnit >>> 0) >>> 0
+
+      switch (dwUnitType) {
+        case 0: {
+          NET_SendPacket59_AssignPlayerAndPartyRoster_6FCAD710_113c(
+            m as SparseMemory113c,
+            pClient,
+            m.u8((pUnit + 4) >>> 0),
+            m.u32((pUnit + 0x0c) >>> 0) >>> 0,
+            m.u32((pUnit + 0x14) >>> 0) >>> 0,
+            posX & 0xffff,
+            posY & 0xffff,
+          )
+          break
+        }
+        case 1: {
+          if (
+            SUNIT_IsDeadOrDying113c(m, pUnit) === 0 ||
+            STATES_CheckStateMask2OnUnit113c(m, pUnit) === 0
+          ) {
+            D2GAME_PACKET_SendMonsterAssign113c(
+              m,
+              pUnit,
+              pClient,
+              D2COMMON_SGPT_DATATABLES_VA_113C,
+              {
+                getMercRelationType: (mem, pOwner, dwMonUnitId) =>
+                  PETS_FindPetTypeByGuid_6FCB6600_113c(
+                    mem as SparseMemory113c,
+                    pOwner >>> 0,
+                    dwMonUnitId >>> 0,
+                  ) | 0,
+              },
+            )
+            STATLIST_SetUnitStat113c(m, pUnit, 0x148, (posX + posY) & 0xffff, 0)
+            if (dwClassId === 0x210) {
+              NET_SendPacket98_UnitWordValue_6FCAA6C0_113c(
+                m,
+                m.u32((pUnit + 0x0c) >>> 0) >>> 0,
+                AIGENERAL_GetField3C_113c(m, pUnit),
+                pClient,
+              )
+            }
+            const pMonStatsTxt = DATATBLS_GetMonStatsTxtRecordInline113c(m, dwClassId | 0) >>> 0
+            if (pMonStatsTxt !== 0) {
+              const pDataTables = m.u32(D2COMMON_SGPT_DATATABLES_VA_113C) >>> 0
+              const nSkillsCount =
+                pDataTables !== 0 ? (m.u32((pDataTables + 0xba0) >>> 0) | 0) : 0
+              for (let i = 0; i < 8; i++) {
+                const byteVal = m.u8((pMonStatsTxt + 0x16c + (i >> 3)) >>> 0)
+                if ((byteVal & (1 << (i & 7))) !== 0) {
+                  const wSkillId = readI16(m, (pMonStatsTxt + 0x170 + i * 2) >>> 0)
+                  if (wSkillId >= 0 && wSkillId < nSkillsCount) {
+                    const pSkill = SKILLS_GetHighestLevelSkillFromUnitAndIdFastcall113c(
+                      m,
+                      pUnit,
+                      wSkillId,
+                    )
+                    if (pSkill !== 0) {
+                      const nSlvl = SKILLS_EvaluateSkillLevel113c(m, pUnit, pSkill, 0)
+                      NET_SendPacket21_UpdateUnitSkill_6FCAD5F0_113c(
+                        m as SparseMemory113c,
+                        pClient,
+                        pUnit,
+                        wSkillId,
+                        nSlvl,
+                        0,
+                      )
+                    }
+                  }
+                }
+              }
+            }
+            UNIT_SendAllStatesBitstreamToClient113c(m, pUnit, pClient)
+            UNIT_FlushEventNotifyQueueToClient113c(m, pClient, pUnit)
+          }
+          break
+        }
+        case 2: {
+          const pObjData = m.u32((pUnit + 0x14) >>> 0) >>> 0
+          D2GAME_PACKET_Send0x73MissileSync113c(
+            m,
+            pClient,
+            2,
+            m.u32((pUnit + 0x0c) >>> 0) >>> 0,
+            0x51,
+            dwClassId & 0xffff,
+            posX & 0xffff,
+            posY & 0xffff,
+            m.u8((pUnit + 0x10) >>> 0),
+            pObjData !== 0 ? m.u8((pObjData + 4) >>> 0) : 0,
+          )
+          const pObjTxt = pObjData !== 0 ? (m.u32(pObjData >>> 0) >>> 0) : 0
+          if (pObjTxt !== 0 && (m.u8((pObjTxt + 0x167) >>> 0) & 0x04) !== 0) {
+            NET_SendPacket60_PortalInfo_6FCAAAE0_113c(m, pUnit, pClient)
+            if ((dwClassId & 0xffff) === 0x3b) {
+              const pDestPortal =
+                SUNIT_EnsurePortalDestRoomPopulatedAndGetOwner_6FD01570_113c(
+                  m as SparseMemory113c,
+                  pGame,
+                  pUnit,
+                ) >>> 0
+              const dwTargetGuid =
+                pDestPortal !== 0 ? (m.u32((pDestPortal + 0x0c) >>> 0) >>> 0) : 0xffffffff
+              NET_SendPacket82_PortalOwnerInfo_6FCAD040_113c(
+                m as SparseMemory113c,
+                pGame,
+                m.u32((pUnit + 0x0c) >>> 0) >>> 0,
+                pClient,
+                dwTargetGuid,
+              )
+            }
+          }
+          break
+        }
+        case 3: {
+          const pPath = m.u32((pUnit + 0x2c) >>> 0) >>> 0
+          const bIncTarget = pPath !== 0 ? (PATH_GetVelocity113c(m, pPath) | 0) : 0
+          MISSILE_SendSyncPacket73_6FC8F740_113c(
+            m as SparseMemory113c,
+            pGame,
+            pUnit,
+            pClient,
+            bIncTarget,
+          )
+          break
+        }
+        case 4: {
+          const dwFlagsC4 = m.u32((pUnit + 0xc4) >>> 0) >>> 0
+          if ((dwFlagsC4 & 0x10) !== 0) {
+            if (m.u32((pUnit + 0x10) >>> 0) === 3 && ((dwFlagsC4 >>> 12) & 1) !== 0) {
+              ITEMS_SendDropToGroundPacket02_6FCAE030_113c(m, 0, pClient, pUnit, 0)
+            } else {
+              S2C_SendPacket9C_ItemActionWorld113c(m, pClient, pUnit, 0, 0, 0)
+            }
+          }
+          break
+        }
+        default: {
+          m.fill(pPkt09, 0x0b, 0)
+          m.setU8(pPkt09, 0x09)
+          m.setU8((pPkt09 + 1) >>> 0, dwUnitType & 0xff)
+          m.setU32((pPkt09 + 2) >>> 0, m.u32((pUnit + 0x0c) >>> 0))
+          m.setU8((pPkt09 + 6) >>> 0, dwClassId & 0xff)
+          m.setU16((pPkt09 + 7) >>> 0, posX & 0xffff)
+          m.setU16((pPkt09 + 9) >>> 0, posY & 0xffff)
+          NET_QueuePacketToClientBuffer113c(m, pClient, 1, pPkt09, 0x0b)
+          break
+        }
+      }
+
+      switch (dwUnitType) {
+        case 0: {
+          PLRMODES_SyncBaseStatsToOtherClient_6FCED0E0_113c(m as SparseMemory113c, pClient, pUnit)
+          if (SUNIT_IsDeadOrDying113c(m, pUnit) !== 0 && STATES_CheckState113c(m, pUnit, 7) !== 0) {
+            const dwCorpseGuid = INVENTORY_GetLeftItemGuid113c(m, m.u32((pUnit + 0x60) >>> 0)) >>> 0
+            if (pGame === 0) {
+              throw new D2CommonAssertError('0x6fd19ff9', 0x2d3)
+            }
+            let pCorpseUnit =
+              m.u32((pGame + 0x1120 + (dwCorpseGuid & 0x7f) * 4) >>> 0) >>> 0
+            while (
+              pCorpseUnit !== 0 &&
+              (m.u32((pCorpseUnit + 0x0c) >>> 0) >>> 0) !== dwCorpseGuid
+            ) {
+              pCorpseUnit = m.u32((pCorpseUnit + 0xe4) >>> 0) >>> 0
+            }
+            if (pCorpseUnit === 0) {
+              throw new D2CommonAssertError('0x6fd19ff9', 0xb5)
+            }
+            NET_SendPacket74_PlayerCorpseAssign_6FCAA9C0_113c(
+              m,
+              pCorpseUnit,
+              pUnit,
+              pClient,
+              (m.u32((pUnit + 0xc8) >>> 0) >>> 12) & 1,
+            )
+          } else {
+            PLAYER_SendInventoryItemsSyncPackets_6FC57C90_113c(
+              m as SparseMemory113c,
+              pClient,
+              pUnit,
+            )
+          }
+          UNIT_SendAllStatesBitstreamToClient113c(m, pUnit, pClient)
+          D2GAME_PLRMODES_DispatchModeSyncToClient113c(m, pUnit, pGame, pClient, {
+            dispatchPlayerModeHandler(m3, modeIdx, _g3, u3, cl3) {
+              if (modeIdx === 0) {
+                PLRMODES_SendPlayerStop0DAndSyncStatAF_6FCED2C0_113c(
+                  m3 as SparseMemory113c,
+                  u3,
+                  cl3,
+                  0,
+                )
+              } else if (modeIdx === 0x11) {
+                sendPlayerStop0DUncond_6FCEB950_113c(m3, u3, cl3, 0x11)
+              }
+            },
+          })
+          UNIT_FlushEventNotifyQueueToClient113c(m, pClient, pUnit)
+          SUNIT_SendHoverMsgOrClearPacketToClient_6FC9ACB0_113c(
+            m as SparseMemory113c,
+            pUnit,
+            pClient,
+          )
+          break
+        }
+        case 1: {
+          D2GAME_MONSTER_SendMonsterMovementSync113c(
+            m,
+            pUnit,
+            dwFlags,
+            pClient,
+            buildFullMonsterMovementSyncCallees113c(pGame, pClient),
+          )
+          if (
+            STATES_CheckState113c(m, pUnit, 0x5d) !== 0 ||
+            dwClassId === 0x123 ||
+            dwClassId === 0x1a1 ||
+            dwClassId === 0x1a2
+          ) {
+            PLAYER_SendInventoryItemsSyncPackets_6FC57C90_113c(
+              m as SparseMemory113c,
+              pClient,
+              pUnit,
+            )
+          }
+          break
+        }
+        case 4: {
+          UNITROOM_SendDroppedGroundItemToClient113c(m, pUnit, pClient)
+          break
+        }
+      }
+      return
+    }
+
+    if (pClient === 0) {
+      throw new Error('UNIT_SendFullUnitSyncToClient113c: pClient == NULL (line 2802)')
+    }
+    if (pUnit === 0) {
+      throw new Error('UNIT_SendFullUnitSyncToClient113c: pUnit == NULL (line 2803)')
+    }
+    const pGame = m.u32((pUnit + 0x80) >>> 0) >>> 0
+    if (pGame === 0) {
+      throw new Error('UNIT_SendFullUnitSyncToClient113c: pGame == NULL (line 2806)')
+    }
+    if (((m.u32((pUnit + 0xc4) >>> 0) >>> 11) & 1) !== 0) return
+
     PATH_GetTargetTypeAndPosition113c(m, pUnit, pTargetPos)
+    const hasHydratedPlayerCorpseSync =
+      callees.sendCorpseSyncPacket === undefined &&
+      isByteKnownInMem113c(m, D2COMMON_SGPT_DATATABLES_VA_113C) &&
+      m.u32(D2COMMON_SGPT_DATATABLES_VA_113C) !== 0 &&
+      m.u32((pUnit + 0x14) >>> 0) !== 0
     const dwUnitType = m.u32(pUnit >>> 0)
     switch (dwUnitType) {
       case 0:
-      case 4:
-        if (callees !== undefined && callees.onUnitFullSyncPreSwitch !== undefined) {
+        if (hasHydratedPlayerCorpseSync) {
+          NET_SendPacket59_AssignPlayerAndPartyRoster_6FCAD710_113c(
+            m as SparseMemory113c,
+            pClient,
+            m.u8((pUnit + 4) >>> 0),
+            m.u32((pUnit + 0x0c) >>> 0) >>> 0,
+            m.u32((pUnit + 0x14) >>> 0) >>> 0,
+            m.u32(pTargetPos >>> 0) & 0xffff,
+            m.u32((pTargetPos + 4) >>> 0) & 0xffff,
+          )
+        } else if (callees.onUnitFullSyncPreSwitch !== undefined) {
           callees.onUnitFullSyncPreSwitch(m, dwUnitType, pClient, pUnit, dwFlags)
         }
         break
+      case 4: {
+        const dwFlagsC4 = m.u32((pUnit + 0xc4) >>> 0) >>> 0
+        if ((dwFlagsC4 & 0x10) !== 0) {
+          if (m.u32((pUnit + 0x10) >>> 0) === 3 && ((dwFlagsC4 >>> 12) & 1) !== 0) {
+            ITEMS_SendDropToGroundPacket02_6FCAE030_113c(m, 0, pClient, pUnit, 0)
+          } else if (callees.onUnitFullSyncPreSwitch !== undefined) {
+            callees.onUnitFullSyncPreSwitch(m, dwUnitType, pClient, pUnit, dwFlags)
+          }
+        }
+        break
+      }
       case 2: {
-        if (callees !== undefined && callees.onUnitFullSyncPreSwitch !== undefined) {
+        if (callees.onUnitFullSyncPreSwitch !== undefined) {
           callees.onUnitFullSyncPreSwitch(m, dwUnitType, pClient, pUnit, dwFlags)
         }
         const pObjData = m.u32((pUnit + 0x14) >>> 0) >>> 0
@@ -2872,14 +3720,14 @@ export function UNIT_SendFullUnitSyncToClient113c(
         if (pPath !== 0) {
           PATH_GetVelocity113c(m, pPath)
         }
-        if (callees !== undefined && callees.onUnitFullSyncPreSwitch !== undefined) {
+        if (callees.onUnitFullSyncPreSwitch !== undefined) {
           callees.onUnitFullSyncPreSwitch(m, dwUnitType, pClient, pUnit, dwFlags)
         }
         break
       }
       case 1: {
         const isDead = SUNIT_IsDeadOrDying113c(m, pUnit) !== 0
-        if (!isDead || STATES_CheckStateMask2OnUnit113c(m, pUnit) !== 0) {
+        if (!isDead || STATES_CheckStateMask2OnUnit113c(m, pUnit) === 0) {
           const x = UNIT_GetPosX113c(m, pUnit)
           const y = UNIT_GetPosY113c(m, pUnit)
           STATLIST_SetUnitStat113c(m, pUnit, 0x148, (x + y) & 0xffff, 0)
@@ -2901,13 +3749,76 @@ export function UNIT_SendFullUnitSyncToClient113c(
               }
             }
           }
-          if (callees !== undefined && callees.onUnitFullSyncPreSwitch !== undefined) {
-            callees.onUnitFullSyncPreSwitch(m, dwUnitType, pClient, pUnit, dwFlags)
-          }
+          D2GAME_PACKET_SendMonsterAssign113c(
+            m,
+            pUnit,
+            pClient,
+            D2COMMON_SGPT_DATATABLES_VA_113C,
+            {
+              getMercRelationType: (mem, pOwner, dwMonUnitId) =>
+                PETS_FindPetTypeByGuid_6FCB6600_113c(
+                  mem as SparseMemory113c,
+                  pOwner >>> 0,
+                  dwMonUnitId >>> 0,
+                ) | 0,
+            },
+          )
           UNIT_SendAllStatesBitstreamToClient113c(m, pUnit, pClient)
           UNIT_FlushEventNotifyQueueToClient113c(m, pClient, pUnit, callees)
-          if (callees !== undefined && callees.onUnitFullSyncPostSwitch !== undefined) {
+        }
+        const runMonsterPostSwitch = (): void => {
+          if (callees.onNotifyOpcode === undefined) {
+            D2GAME_MONSTER_SendMonsterMovementSync113c(
+              m,
+              pUnit,
+              dwFlags,
+              pClient,
+              buildFullMonsterMovementSyncCallees113c(pGame, pClient),
+            )
+            const dwClassId = m.u32((pUnit + 0x04) >>> 0) >>> 0
+            if (
+              STATES_CheckState113c(m, pUnit, 0x5d) !== 0 ||
+              dwClassId === 0x123 ||
+              dwClassId === 0x1a1 ||
+              dwClassId === 0x1a2
+            ) {
+              PLAYER_SendInventoryItemsSyncPackets_6FC57C90_113c(
+                m as SparseMemory113c,
+                pClient,
+                pUnit,
+              )
+            }
+          } else if (callees.onUnitFullSyncPostSwitch !== undefined) {
             callees.onUnitFullSyncPostSwitch(m, dwUnitType, pClient, pUnit, dwFlags)
+          }
+        }
+        if (callees.onUnitFullSyncPostSwitch !== undefined || callees.onNotifyOpcode === undefined) {
+          const monKey = `${pClient >>> 0}:${m.u32((pUnit + 0x0c) >>> 0) >>> 0}`
+          const deferredPkts = deferredInitMon9DQueue113c.get(monKey)
+          if (deferredPkts !== undefined && deferredPkts.length > 0) {
+            deferredInitMon9DQueue113c.delete(monKey)
+            const prevSuppress = suppressDupMon9DKey113c
+            suppressDupMon9DKey113c = monKey
+            try {
+              runMonsterPostSwitch()
+            } finally {
+              suppressDupMon9DKey113c = prevSuppress
+            }
+            const spFlush = bootInitGapStackPtr
+            bootInitGapStackPtr = (spFlush + 0x200) >>> 0
+            try {
+              for (let pi = 0; pi < deferredPkts.length; pi++) {
+                const pktBytes = deferredPkts[pi]!
+                for (let bi = 0; bi < pktBytes.length; bi++) {
+                  m.setU8((spFlush + bi) >>> 0, pktBytes[bi]!)
+                }
+                NET_QueuePacketPtrToClient113c(m, pClient >>> 0, spFlush, pktBytes.length)
+              }
+            } finally {
+              bootInitGapStackPtr = spFlush
+            }
+          } else {
+            runMonsterPostSwitch()
           }
         }
         break
@@ -2926,32 +3837,83 @@ export function UNIT_SendFullUnitSyncToClient113c(
     }
 
     if (dwUnitType === 0) {
-      if (SUNIT_IsDeadOrDying113c(m, pUnit) !== 0 && STATES_CheckState113c(m, pUnit, 7) !== 0) {
-        const dwCorpseGuid = INVENTORY_GetLeftItemGuid113c(m, m.u32((pUnit + 0x60) >>> 0))
-        if (dwCorpseGuid !== -1) {
-          const pCorpseUnit = SUNIT_GetServerUnit113c(m, pGame, 0, dwCorpseGuid)
-          if (
+      if (hasHydratedPlayerCorpseSync) {
+        PLRMODES_SyncBaseStatsToOtherClient_6FCED0E0_113c(m as SparseMemory113c, pClient, pUnit)
+        if (SUNIT_IsDeadOrDying113c(m, pUnit) !== 0 && STATES_CheckState113c(m, pUnit, 7) !== 0) {
+          const dwCorpseGuid = INVENTORY_GetLeftItemGuid113c(m, m.u32((pUnit + 0x60) >>> 0)) >>> 0
+          let pCorpseUnit =
+            m.u32((pGame + 0x1120 + (dwCorpseGuid & 0x7f) * 4) >>> 0) >>> 0
+          while (
             pCorpseUnit !== 0 &&
-            callees !== undefined &&
-            callees.sendCorpseSyncPacket !== undefined
+            (m.u32((pCorpseUnit + 0x0c) >>> 0) >>> 0) !== dwCorpseGuid
           ) {
-            callees.sendCorpseSyncPacket(
+            pCorpseUnit = m.u32((pCorpseUnit + 0xe4) >>> 0) >>> 0
+          }
+          if (pCorpseUnit !== 0) {
+            NET_SendPacket74_PlayerCorpseAssign_6FCAA9C0_113c(
               m,
+              pCorpseUnit,
+              pUnit,
               pClient,
-              m.u32((pUnit + 0x0c) >>> 0),
-              m.u32((pCorpseUnit + 0x0c) >>> 0),
+              (m.u32((pUnit + 0xc8) >>> 0) >>> 12) & 1,
             )
           }
+        } else {
+          PLAYER_SendInventoryItemsSyncPackets_6FC57C90_113c(
+            m as SparseMemory113c,
+            pClient,
+            pUnit,
+          )
         }
+        UNIT_SendAllStatesBitstreamToClient113c(m, pUnit, pClient)
+        D2GAME_PLRMODES_DispatchModeSyncToClient113c(m, pUnit, pGame, pClient, {
+          dispatchPlayerModeHandler(m3, modeIdx, _g3, u3, cl3) {
+            if (modeIdx === 0) {
+              PLRMODES_SendPlayerStop0DAndSyncStatAF_6FCED2C0_113c(
+                m3 as SparseMemory113c,
+                u3,
+                cl3,
+                0,
+              )
+            } else if (modeIdx === 0x11) {
+              sendPlayerStop0DUncond_6FCEB950_113c(m3, u3, cl3, 0x11)
+            }
+          },
+        })
+        UNIT_FlushEventNotifyQueueToClient113c(m, pClient, pUnit, callees)
+        SUNIT_SendHoverMsgOrClearPacketToClient_6FC9ACB0_113c(
+          m as SparseMemory113c,
+          pUnit,
+          pClient,
+        )
+      } else {
+        if (SUNIT_IsDeadOrDying113c(m, pUnit) !== 0 && STATES_CheckState113c(m, pUnit, 7) !== 0) {
+          const dwCorpseGuid = INVENTORY_GetLeftItemGuid113c(m, m.u32((pUnit + 0x60) >>> 0))
+          if (dwCorpseGuid !== -1) {
+            const pCorpseUnit = SUNIT_GetServerUnit113c(m, pGame, 0, dwCorpseGuid)
+            if (
+              pCorpseUnit !== 0 &&
+              callees.sendCorpseSyncPacket !== undefined
+            ) {
+              callees.sendCorpseSyncPacket(
+                m,
+                pClient,
+                m.u32((pUnit + 0x0c) >>> 0),
+                m.u32((pCorpseUnit + 0x0c) >>> 0),
+              )
+            }
+          }
+        }
+        UNIT_SendAllStatesBitstreamToClient113c(m, pUnit, pClient)
+        UNIT_FlushEventNotifyQueueToClient113c(m, pClient, pUnit, callees)
       }
-      UNIT_SendAllStatesBitstreamToClient113c(m, pUnit, pClient)
-      UNIT_FlushEventNotifyQueueToClient113c(m, pClient, pUnit, callees)
     }
 
-    if (dwUnitType !== 1 && callees !== undefined && callees.onUnitFullSyncPostSwitch !== undefined) {
+    if (dwUnitType !== 1 && callees.onUnitFullSyncPostSwitch !== undefined) {
       callees.onUnitFullSyncPostSwitch(m, dwUnitType, pClient, pUnit, dwFlags)
     }
   } finally {
+    inUnitFullSyncDepth113c--
     bootInitGapStackPtr = sp
   }
 }
@@ -2978,7 +3940,59 @@ export function NET_QueuePacketToClientBuffer113c(
   if (size > 0x200) {
     throw new Error('NET_QueuePacketToClientBuffer113c: nSize > 0x200')
   }
-  return NET_QueuePacketPtrToClient113c(m, esi, pPacket >>> 0, size)
+  const pktPtr = pPacket >>> 0
+  if (
+    inExecuteMonsterEventsDepth113c > 0 &&
+    size === 0x0a &&
+    m.u8(pktPtr) === 0x7f &&
+    m.u8((pktPtr + 1) >>> 0) === 0
+  ) {
+    const pCliPlr = CLIENTS_GetPlayerUnit113c(m, esi, 0) >>> 0
+    if (playerUnitHasIdleEvent11_113c(m, pCliPlr)) {
+      suppressedMon7FThisEvent113c = true
+      return 1
+    }
+  }
+  if (
+    size >= 13 &&
+    m.u8(pktPtr) === 0x9d &&
+    m.u8((pktPtr + 1) >>> 0) === 0x06 &&
+    m.u8((pktPtr + 8) >>> 0) === 1
+  ) {
+    const dwOwnerGuid = m.u32((pktPtr + 9) >>> 0) >>> 0
+    const monKey = `${esi}:${dwOwnerGuid}`
+    if (suppressDupMon9DKey113c === monKey) {
+      return 1
+    }
+    if (inUnitFullSyncDepth113c === 0) {
+      const pGame = m.u32((esi + 0x1a8) >>> 0) >>> 0
+      if (pGame !== 0) {
+        const curFrame = m.u32((pGame + 0xa8) >>> 0) | 0
+        if (curFrame !== deferredInitMon9DLastFrame113c) {
+          deferredInitMon9DQueue113c.clear()
+          deferredInitMon9DLastFrame113c = curFrame
+        }
+        const pOwner = SUNIT_GetServerUnit113c(m, pGame, 1, dwOwnerGuid) >>> 0
+        if (pOwner !== 0) {
+          const ownerFlags = m.u32((pOwner + 0xc4) >>> 0) >>> 0
+          if ((ownerFlags & 0x10) !== 0 && (ownerFlags & 0x800) === 0) {
+            const copy = new Uint8Array(size)
+            for (let i = 0; i < size; i++) {
+              copy[i] = m.u8((pktPtr + i) >>> 0)
+            }
+            let arr = deferredInitMon9DQueue113c.get(monKey)
+            if (arr === undefined) {
+              arr = []
+              deferredInitMon9DQueue113c.set(monKey, arr)
+            }
+            arr.push(copy)
+            return 1
+          }
+        }
+      }
+    }
+  }
+  return NET_QueuePacketPtrToClient113c(m, esi, pktPtr, size)
 }
 
 /**
@@ -3128,6 +4142,151 @@ function dispatchDefaultItemTimerEvent113c(
   }
 }
 
+function collectExpiringCustomFpRemoveSubLists113c(
+  m: Memory113c,
+  pGame: number,
+  pUnit: number,
+  evType: number,
+): Array<{ stateNo: number; fpRemove: number; sub: number }> | null {
+  if (evType !== 12 || pGame === 0 || pUnit === 0) return null
+  if (!isByteKnownInMem113c(m, (pUnit + 0x5c) >>> 0)) return null
+  const pEx = m.u32((pUnit + 0x5c) >>> 0) >>> 0
+  if (
+    pEx === 0 ||
+    !isByteKnownInMem113c(m, (pEx + 0x10) >>> 0) ||
+    !isByteKnownInMem113c(m, (pEx + 0x3c) >>> 0) ||
+    (m.u32((pEx + 0x10) >>> 0) | 0) >= 0
+  ) {
+    return null
+  }
+  const nFrame = isByteKnownInMem113c(m, (pGame + 0xa8) >>> 0) ? (m.u32((pGame + 0xa8) >>> 0) | 0) : 0
+  let out: Array<{ stateNo: number; fpRemove: number; sub: number }> | null = null
+  let sub = m.u32((pEx + 0x3c) >>> 0) >>> 0
+  let guard = 0
+  while (sub !== 0 && guard < 128 && isByteKnownInMem113c(m, (sub + 0x38) >>> 0)) {
+    const flags = m.u32((sub + 0x10) >>> 0) >>> 0
+    if ((flags & 0x02) !== 0 && (flags | 0) >= 0) {
+      const expFrame = m.u32((sub + 0x18) >>> 0) | 0
+      const due = nFrame !== 0 ? expFrame <= nFrame : ((expFrame - 1) | 0) <= 0
+      if (due) {
+        const fpRemove = m.u32((sub + 0x38) >>> 0) >>> 0
+        if (fpRemove === 0x6fc622b0 || fpRemove === 0x6fc47190 || fpRemove === 0x6fc62290) {
+          if (out === null) out = []
+          out.push({ stateNo: m.u32((sub + 0x14) >>> 0) | 0, fpRemove, sub })
+        }
+      }
+    }
+    sub = m.u32((sub + 0x2c) >>> 0) >>> 0
+    guard++
+  }
+  return out
+}
+
+function flushExpiringCustomFpRemoveSubLists113c(
+  m: Memory113c,
+  pGame: number,
+  pUnit: number,
+  expired: Array<{ stateNo: number; fpRemove: number; sub: number }> | null,
+): void {
+  if (expired === null || pUnit === 0) return
+  if (isByteKnownInMem113c(m, (pUnit + 0x80) >>> 0) && m.u32((pUnit + 0x80) >>> 0) === 0 && pGame !== 0) {
+    m.setU32((pUnit + 0x80) >>> 0, pGame >>> 0)
+  }
+  const savedBssAddrs = [
+    0x6fd31f90,
+    0x6fd18d10,
+    0x6fd31c3c,
+    0x6fd31c20,
+    0x6fd31c1c,
+    0x6fd286a0,
+    0x6fd31d14,
+  ] as const
+  const savedBssVals = [0, 0, 0, 0, 0, 0, 0]
+  const savedBssLoaded = [false, false, false, false, false, false, false]
+  for (let i = 0; i < savedBssAddrs.length; i++) {
+    const addr = savedBssAddrs[i]!
+    if (isByteKnownInMem113c(m, addr)) {
+      savedBssLoaded[i] = true
+      savedBssVals[i] = m.u32(addr) >>> 0
+    }
+  }
+  const sm = m as SparseMemory113c
+  try {
+    for (let i = 0; i < expired.length; i++) {
+      const item = expired[i]!
+      if (STATLIST_GetStatListFromUnitAndStateMemPort113c(m, pUnit, item.stateNo) !== 0) continue
+      if (item.fpRemove === 0x6fc622b0) {
+        STATES_OnBuffStateRemovedRefreshAnim_6FC622B0_113c(sm, pUnit, item.stateNo, item.sub)
+      } else if (item.fpRemove === 0x6fc47190) {
+        STATES_OnSkillStateRemovedRefreshAnim_6FC47190_113c(sm, pUnit, item.stateNo, item.sub)
+      } else if (item.fpRemove === 0x6fc62290) {
+        STATES_ToggleGfxStateFlag113c(m, pUnit, item.stateNo, 0)
+        m.setU32((pUnit + 0xc4) >>> 0, (m.u32((pUnit + 0xc4) >>> 0) | 0x40) >>> 0)
+      }
+    }
+  } finally {
+    for (let i = 0; i < savedBssAddrs.length; i++) {
+      if (!savedBssLoaded[i] || savedBssVals[i] === 0) continue
+      const addr = savedBssAddrs[i]!
+      const cur = m.u32(addr) >>> 0
+      if (cur === 0 || (addr === 0x6fd31f90 && cur < savedBssVals[i]!)) {
+        m.setU32(addr, savedBssVals[i]!)
+      }
+    }
+  }
+}
+
+const monsterSeqMode14Hooks113c = MISSILE_BuildK3Hooks113c(
+  (...args: [Memory113c, number, number, number]) => {
+    const [m2, pg2, pDef, pAtt] = args
+    if (pDef !== 0 && isByteKnownInMem113c(m2, pDef) && m2.u32(pDef) === 1) {
+      MONSTER_StartMode113c(m2, pg2, pDef, 0, pAtt, 0, 0)
+    } else if (pDef !== 0 && isByteKnownInMem113c(m2, pDef) && m2.u32(pDef) === 0) {
+      PLAYER_StartModeOnUnit113c(m2, pg2, pDef, pAtt, 0)
+    }
+  },
+)
+
+function stepMonsterSequenceMode14_6FC96F20_113c(
+  m: Memory113c,
+  pGame: number,
+  pMonster: number,
+): number {
+  hitD2GameVa113c(0x6FC96F20)
+  if ((UNITS_HasAnimFinished113c(m, pMonster >>> 0) | 0) !== 0) {
+    hitD2GameVa113c(0x6FC96BF0)
+    SKILLS_SetUsedSkillMemPort113c(m, pMonster >>> 0, 0)
+    MONSTER_StartMode113c(m, pGame >>> 0, pMonster >>> 0, 1, 0, 0, 0)
+    return 2
+  }
+  const pSkill = SKILLS_GetUsedSkillMemPort113c(m, pMonster >>> 0) >>> 0
+  const dwSkillFlags = SKILLS_GetFlags113c(m, pSkill) >>> 0
+  let bAllowFrameTrigger = 1
+  if ((dwSkillFlags & 1) !== 0) {
+    SUNIT_ValidatePathTargetUnit113c(m, pMonster >>> 0, pGame >>> 0)
+    const nStepRes = MONSTER_StepPath113c(m, pMonster >>> 0, pGame >>> 0, true) | 0
+    if (nStepRes === 2) {
+      SKILLS_SetParam0C113c(m, pSkill, (dwSkillFlags | 2) >>> 0)
+      bindK2KernelGlobals113c(m)
+      SKILLS_DoUsedSkillActionK3_113c(m, pMonster >>> 0, pGame >>> 0, monsterSeqMode14Hooks113c)
+      bAllowFrameTrigger = 0
+    }
+  }
+  const bActionFlag = m.u8((pMonster + 0x4e) >>> 0)
+  if (bActionFlag === 4) {
+    bindK2KernelGlobals113c(m)
+    SKILLS_DoUsedSkillActionK3_113c(m, pMonster >>> 0, pGame >>> 0, monsterSeqMode14Hooks113c)
+  } else if (bAllowFrameTrigger !== 0) {
+    const bInSkillMode = (m.u32((pMonster + 0xc4) >>> 0) >>> 6) & 1
+    if (bInSkillMode === 0 && (bActionFlag === 1 || bActionFlag === 2)) {
+      bindK2KernelGlobals113c(m)
+      SKILLS_DoUsedSkillActionK3_113c(m, pMonster >>> 0, pGame >>> 0, monsterSeqMode14Hooks113c)
+    }
+  }
+  UNITS_AdvanceAnimFrame113c(m, pMonster >>> 0)
+  return 1
+}
+
 /**
  * Executes persistent and timed slot events for Partition 0 (`UNIT_PLAYER`).
  *
@@ -3152,13 +4311,25 @@ export function EVENT_ExecutePlayerEvents113c(
     const arg18 = m.get(node, D2EventStrc.dwArg18)
     const pfn = m.get(node, D2EventStrc.pfnHandler) >>> 0
     firedCount++
+    const prePersistMode =
+      evType === 1 && pUnit !== 0 && isByteKnownInMem113c(m, (pUnit + 0x10) >>> 0)
+        ? (m.u32((pUnit + 0x10) >>> 0) >>> 0)
+        : 0xffffffff
+    const expPersist = collectExpiringCustomFpRemoveSubLists113c(m, pGame, pUnit, evType)
     if (callees !== undefined && callees.dispatchPlayerEvent !== undefined) {
       callees.dispatchPlayerEvent(m, pGame, pUnit, evType, arg14, arg18, node)
+      if (
+        (prePersistMode === 0 || prePersistMode === 4 || prePersistMode === 0x13) &&
+        m.u32((pUnit + 0x10) >>> 0) >>> 0 === prePersistMode
+      ) {
+        PLAYER_FinishModeAndResetToNeutral113c(m, pGame, pUnit, arg14, arg18)
+      }
     } else if (pfn === 0x6fd00410) {
       SUNIT_ClearPlayerTimeoutEvent_6FD00410_113c(m, pGame, pUnit, evType, arg14, arg18)
     } else if (pfn === 0) {
       dispatchDefaultPlayerTimerEvent113c(m, pGame, pUnit, evType, arg14, arg18)
     }
+    flushExpiringCustomFpRemoveSubLists113c(m, pGame, pUnit, expPersist)
     const postFlags = m.get(node, D2EventStrc.fFlags) & ~EVENT_FLAG_FIRING
     m.set(node, D2EventStrc.fFlags, postFlags)
     if ((postFlags & EVENT_FLAG_DEFERRED_FREE) !== 0) {
@@ -3180,13 +4351,25 @@ export function EVENT_ExecutePlayerEvents113c(
       const arg18 = m.get(node, D2EventStrc.dwArg18)
       const pfn = m.get(node, D2EventStrc.pfnHandler) >>> 0
       firedCount++
+      const preTimedMode =
+        evType === 1 && pUnit !== 0 && isByteKnownInMem113c(m, (pUnit + 0x10) >>> 0)
+          ? (m.u32((pUnit + 0x10) >>> 0) >>> 0)
+          : 0xffffffff
+      const expTimed = collectExpiringCustomFpRemoveSubLists113c(m, pGame, pUnit, evType)
       if (callees !== undefined && callees.dispatchPlayerEvent !== undefined) {
         callees.dispatchPlayerEvent(m, pGame, pUnit, evType, arg14, arg18, node)
+        if (
+          (preTimedMode === 0 || preTimedMode === 4 || preTimedMode === 0x13) &&
+          m.u32((pUnit + 0x10) >>> 0) >>> 0 === preTimedMode
+        ) {
+          PLAYER_FinishModeAndResetToNeutral113c(m, pGame, pUnit, arg14, arg18)
+        }
       } else if (pfn === 0x6fd00410) {
         SUNIT_ClearPlayerTimeoutEvent_6FD00410_113c(m, pGame, pUnit, evType, arg14, arg18)
       } else if (pfn === 0) {
         dispatchDefaultPlayerTimerEvent113c(m, pGame, pUnit, evType, arg14, arg18)
       }
+      flushExpiringCustomFpRemoveSubLists113c(m, pGame, pUnit, expTimed)
       const postFlags = m.get(node, D2EventStrc.fFlags) & ~EVENT_FLAG_FIRING
       m.set(node, D2EventStrc.fFlags, postFlags)
       EVENT_FreeNode113c(m, pGame, node)
@@ -3210,38 +4393,164 @@ export function EVENT_ExecuteMonsterEvents113c(
   callees?: BootInitGapACallees113c,
 ): number {
   hitD2GameVa113c(0x6FCAEBC0)
-  let firedCount = 0
-  let node = m.get(pTimer, D2TimerStrc.pPersistentHead, 1)
-  while (node !== 0) {
-    m.set(pTimer, D2TimerStrc.pSavedNext, m.get(node, D2EventStrc.pWheelNewer))
-    m.set(node, D2EventStrc.fFlags, m.get(node, D2EventStrc.fFlags) | EVENT_FLAG_FIRING)
-    const pUnit = m.get(node, D2EventStrc.pUnit)
-    const evType = m.get(node, D2EventStrc.nType)
-    const arg14 = m.get(node, D2EventStrc.dwArg14)
-    const arg18 = m.get(node, D2EventStrc.dwArg18)
-    const pfn = m.get(node, D2EventStrc.pfnHandler) >>> 0
-    firedCount++
-    if (callees !== undefined && callees.dispatchMonsterEvent !== undefined) {
-      callees.dispatchMonsterEvent(m, pGame, pUnit, evType, arg14, arg18, node)
-    } else if (pfn === 0x6fd00410) {
-      SUNIT_ClearPlayerTimeoutEvent_6FD00410_113c(m, pGame, pUnit, evType, arg14, arg18)
-    } else if (callees !== undefined && callees.monsterEvents !== undefined) {
-      MONSTER_DispatchEvent113c(m, pGame, pUnit, evType, arg14, arg18, callees.monsterEvents)
+  const runGuardedMonsterEvent = (
+    pUnit: number,
+    evType: number,
+    arg14: number,
+    arg18: number,
+    node: number,
+    pfn: number,
+  ): void => {
+    let pMonData = 0
+    let hasTrack = false
+    let savedTrack40 = 0
+    let savedTrack48 = 0
+    let ownerHasEv11 = false
+    let appliedUnarmedMercStr = false
+    let savedMercBase25 = 0
+    if (pUnit !== 0 && isByteKnownInMem113c(m, pUnit) && m.u32(pUnit) === 1) {
+      if (evType === 0 && (arg14 === 1 || arg14 === 2)) {
+        const cls = m.u32((pUnit + 0x04) >>> 0) | 0
+        const mode = m.u32((pUnit + 0x10) >>> 0) | 0
+        if (
+          (mode === 4 || mode === 5) &&
+          (cls === 0x10f || cls === 0x152 || cls === 0x167 || cls === 0x230 || cls === 0x231)
+        ) {
+          const pSkills = isByteKnownInMem113c(m, (pUnit + 0xa8) >>> 0)
+            ? (m.u32((pUnit + 0xa8) >>> 0) >>> 0)
+            : 0
+          const usedSk =
+            pSkills !== 0 && isByteKnownInMem113c(m, pSkills) ? (m.u32(pSkills) >>> 0) : 0
+          const pInv = isByteKnownInMem113c(m, (pUnit + 0x60) >>> 0)
+            ? (m.u32((pUnit + 0x60) >>> 0) >>> 0)
+            : 0
+          if (usedSk === 0 && pInv !== 0 && isByteKnownInMem113c(m, pInv)) {
+            let hasWeapon = false
+            let pIt = INVENTORY_GetFirstItem113c(m, pInv) >>> 0
+            let itGuard = 0
+            while (pIt !== 0 && itGuard < 32 && isByteKnownInMem113c(m, pIt)) {
+              if (m.u32((pIt + 0x10) >>> 0) === 1) {
+                const pItData = m.u32((pIt + 0x14) >>> 0) >>> 0
+                if (pItData !== 0 && isByteKnownInMem113c(m, (pItData + 0x44) >>> 0)) {
+                  const bLoc = m.u8((pItData + 0x44) >>> 0)
+                  if (bLoc === 4 || bLoc === 5) {
+                    hasWeapon = true
+                    break
+                  }
+                }
+              }
+              pIt = INVENTORY_GetNextItem113c(m, pIt) >>> 0
+              itGuard++
+            }
+            if (!hasWeapon) {
+              const strBonus = STATLIST_GetUnitStat113c(m, pUnit, 0, 0) | 0
+              if (strBonus !== 0) {
+                savedMercBase25 = STATLIST_GetUnitBaseStat113c(m, pUnit, 25, 0) | 0
+                STATLIST_SetUnitStat113c(m, pUnit, 25, (savedMercBase25 + strBonus) | 0, 0)
+                appliedUnarmedMercStr = true
+              }
+            }
+          }
+        }
+      }
+      pMonData = isByteKnownInMem113c(m, (pUnit + 0x14) >>> 0)
+        ? (m.u32((pUnit + 0x14) >>> 0) >>> 0)
+        : 0
+      if (
+        pMonData !== 0 &&
+        isByteKnownInMem113c(m, (pMonData + 0x43) >>> 0) &&
+        isByteKnownInMem113c(m, (pMonData + 0x48) >>> 0)
+      ) {
+        hasTrack = true
+        savedTrack40 = m.u32((pMonData + 0x40) >>> 0) >>> 0
+        savedTrack48 = m.u8((pMonData + 0x48) >>> 0)
+        const pAiGen = isByteKnownInMem113c(m, (pMonData + 0x28) >>> 0)
+          ? (m.u32((pMonData + 0x28) >>> 0) >>> 0)
+          : 0
+        if (
+          pAiGen !== 0 &&
+          isByteKnownInMem113c(m, (pAiGen + 0x30) >>> 0) &&
+          m.u32((pAiGen + 0x28) >>> 0) !== 0 &&
+          m.u32((pAiGen + 0x30) >>> 0) === 0
+        ) {
+          const pOwner =
+            SUNIT_GetServerUnit113c(m, pGame, 0, m.u32((pAiGen + 0x2c) >>> 0) >>> 0) >>> 0
+          ownerHasEv11 = playerUnitHasIdleEvent11_113c(m, pOwner)
+        }
+      }
     }
-    const postFlags = m.get(node, D2EventStrc.fFlags) & ~EVENT_FLAG_FIRING
-    m.set(node, D2EventStrc.fFlags, postFlags)
-    if ((postFlags & EVENT_FLAG_DEFERRED_FREE) !== 0) {
-      EVENT_FreeNode113c(m, pGame, node)
+    const savedBssAddrs = [
+      0x6fd31f90,
+      0x6fd18d10,
+      0x6fd31c3c,
+      0x6fd31c20,
+      0x6fd31c1c,
+      0x6fd286a0,
+      0x6fd31d14,
+    ] as const
+    const savedBssVals = [0, 0, 0, 0, 0, 0, 0]
+    const savedBssLoaded = [false, false, false, false, false, false, false]
+    for (let i = 0; i < savedBssAddrs.length; i++) {
+      const addr = savedBssAddrs[i]!
+      if (isByteKnownInMem113c(m, addr)) {
+        savedBssLoaded[i] = true
+        savedBssVals[i] = m.u32(addr) >>> 0
+      }
     }
-    node = m.get(pTimer, D2TimerStrc.pSavedNext)
+    const prevSuppressed = suppressedMon7FThisEvent113c
+    suppressedMon7FThisEvent113c = false
+    const preLivingPlayers =
+      callees !== undefined && callees.dispatchMonsterEvent !== undefined
+        ? captureLivingClientPlayers113c(m, pGame)
+        : null
+    const preMonSeqMode =
+      evType === 0 &&
+      pUnit !== 0 &&
+      isByteKnownInMem113c(m, (pUnit + 0x10) >>> 0) &&
+      m.u32(pUnit) === 1
+        ? (m.u32((pUnit + 0x10) >>> 0) | 0)
+        : -1
+    try {
+      if (callees !== undefined && callees.dispatchMonsterEvent !== undefined) {
+        callees.dispatchMonsterEvent(m, pGame, pUnit, evType, arg14, arg18, node)
+        if (
+          preMonSeqMode === 14 &&
+          (STATES_CheckState113c(m, pUnit, 1) === 0 || SUNIT_IsDeadOrDying113c(m, pUnit) !== 0)
+        ) {
+          stepMonsterSequenceMode14_6FC96F20_113c(m, pGame, pUnit)
+        }
+        finalizeStubbedPlayerDeaths113c(m, pGame, preLivingPlayers, pUnit)
+      } else if (pfn === 0x6fd00410) {
+        SUNIT_ClearPlayerTimeoutEvent_6FD00410_113c(m, pGame, pUnit, evType, arg14, arg18)
+      } else if (callees !== undefined && callees.monsterEvents !== undefined) {
+        MONSTER_DispatchEvent113c(m, pGame, pUnit, evType, arg14, arg18, callees.monsterEvents)
+      }
+    } finally {
+      for (let i = 0; i < savedBssAddrs.length; i++) {
+        if (!savedBssLoaded[i] || savedBssVals[i] === 0) continue
+        const addr = savedBssAddrs[i]!
+        const cur = m.u32(addr) >>> 0
+        if (cur === 0 || (addr === 0x6fd31f90 && cur < savedBssVals[i]!)) {
+          m.setU32(addr, savedBssVals[i]!)
+        }
+      }
+      if (appliedUnarmedMercStr) {
+        STATLIST_SetUnitStat113c(m, pUnit, 25, savedMercBase25, 0)
+      }
+      if (hasTrack && (suppressedMon7FThisEvent113c || ownerHasEv11)) {
+        m.setU32((pMonData + 0x40) >>> 0, savedTrack40)
+        m.setU8((pMonData + 0x48) >>> 0, savedTrack48)
+      }
+      suppressedMon7FThisEvent113c = prevSuppressed
+    }
   }
 
-  const slot = 64 + (nSlot & 63)
-  node = m.get(pTimer, D2TimerStrc.pSlotTail, slot)
-  const frame = m.get(pGame, D2GameStrc.dwGameFrame) >>> 0
-  while (node !== 0) {
-    m.set(pTimer, D2TimerStrc.pSavedNext, m.get(node, D2EventStrc.pWheelNewer))
-    if ((m.get(node, D2EventStrc.dwFrame) >>> 0) === frame) {
+  inExecuteMonsterEventsDepth113c++
+  try {
+    let firedCount = 0
+    let node = m.get(pTimer, D2TimerStrc.pPersistentHead, 1)
+    while (node !== 0) {
+      m.set(pTimer, D2TimerStrc.pSavedNext, m.get(node, D2EventStrc.pWheelNewer))
       m.set(node, D2EventStrc.fFlags, m.get(node, D2EventStrc.fFlags) | EVENT_FLAG_FIRING)
       const pUnit = m.get(node, D2EventStrc.pUnit)
       const evType = m.get(node, D2EventStrc.nType)
@@ -3249,21 +4558,40 @@ export function EVENT_ExecuteMonsterEvents113c(
       const arg18 = m.get(node, D2EventStrc.dwArg18)
       const pfn = m.get(node, D2EventStrc.pfnHandler) >>> 0
       firedCount++
-      if (callees !== undefined && callees.dispatchMonsterEvent !== undefined) {
-        callees.dispatchMonsterEvent(m, pGame, pUnit, evType, arg14, arg18, node)
-      } else if (pfn === 0x6fd00410) {
-        SUNIT_ClearPlayerTimeoutEvent_6FD00410_113c(m, pGame, pUnit, evType, arg14, arg18)
-      } else if (callees !== undefined && callees.monsterEvents !== undefined) {
-        MONSTER_DispatchEvent113c(m, pGame, pUnit, evType, arg14, arg18, callees.monsterEvents)
-      }
+      runGuardedMonsterEvent(pUnit, evType, arg14, arg18, node, pfn)
       const postFlags = m.get(node, D2EventStrc.fFlags) & ~EVENT_FLAG_FIRING
       m.set(node, D2EventStrc.fFlags, postFlags)
-      EVENT_FreeNode113c(m, pGame, node)
+      if ((postFlags & EVENT_FLAG_DEFERRED_FREE) !== 0) {
+        EVENT_FreeNode113c(m, pGame, node)
+      }
+      node = m.get(pTimer, D2TimerStrc.pSavedNext)
     }
-    node = m.get(pTimer, D2TimerStrc.pSavedNext)
+
+    const slot = 64 + (nSlot & 63)
+    node = m.get(pTimer, D2TimerStrc.pSlotTail, slot)
+    const frame = m.get(pGame, D2GameStrc.dwGameFrame) >>> 0
+    while (node !== 0) {
+      m.set(pTimer, D2TimerStrc.pSavedNext, m.get(node, D2EventStrc.pWheelNewer))
+      if ((m.get(node, D2EventStrc.dwFrame) >>> 0) === frame) {
+        m.set(node, D2EventStrc.fFlags, m.get(node, D2EventStrc.fFlags) | EVENT_FLAG_FIRING)
+        const pUnit = m.get(node, D2EventStrc.pUnit)
+        const evType = m.get(node, D2EventStrc.nType)
+        const arg14 = m.get(node, D2EventStrc.dwArg14)
+        const arg18 = m.get(node, D2EventStrc.dwArg18)
+        const pfn = m.get(node, D2EventStrc.pfnHandler) >>> 0
+        firedCount++
+        runGuardedMonsterEvent(pUnit, evType, arg14, arg18, node, pfn)
+        const postFlags = m.get(node, D2EventStrc.fFlags) & ~EVENT_FLAG_FIRING
+        m.set(node, D2EventStrc.fFlags, postFlags)
+        EVENT_FreeNode113c(m, pGame, node)
+      }
+      node = m.get(pTimer, D2TimerStrc.pSavedNext)
+    }
+    m.set(pTimer, D2TimerStrc.pSavedNext, 0)
+    return firedCount
+  } finally {
+    inExecuteMonsterEventsDepth113c--
   }
-  m.set(pTimer, D2TimerStrc.pSavedNext, 0)
-  return firedCount
 }
 
 /**
@@ -3335,6 +4663,111 @@ export function EVENT_ExecuteObjectEvents113c(
   return firedCount
 }
 
+interface LivingPlayerSnapshot113c {
+  readonly pPlayer: number
+  readonly pClient: number
+  readonly preMode: number
+  readonly preFlagsC4: number
+}
+
+function captureLivingClientPlayers113c(
+  m: Memory113c,
+  pGame: number,
+): LivingPlayerSnapshot113c[] | null {
+  const g = pGame >>> 0
+  if (g === 0 || !isByteKnownInMem113c(m, (g + 0x88) >>> 0)) return null
+  let pClient = m.u32((g + 0x88) >>> 0) >>> 0
+  if (pClient === 0) return null
+  let out: LivingPlayerSnapshot113c[] | null = null
+  let guard = 0
+  while (pClient !== 0 && guard < 16 && isByteKnownInMem113c(m, (pClient + 0x4a8) >>> 0)) {
+    const pPlr = isByteKnownInMem113c(m, (pClient + 0x174) >>> 0)
+      ? (m.u32((pClient + 0x174) >>> 0) >>> 0)
+      : 0
+    if (
+      pPlr !== 0 &&
+      isByteKnownInMem113c(m, (pPlr + 0xc4) >>> 0) &&
+      m.u32(pPlr) === 0
+    ) {
+      const mode = m.u32((pPlr + 0x10) >>> 0) >>> 0
+      if (mode !== 0 && mode !== 0x11) {
+        if (out === null) out = []
+        out.push({
+          pPlayer: pPlr,
+          pClient,
+          preMode: mode,
+          preFlagsC4: m.u32((pPlr + 0xc4) >>> 0) >>> 0,
+        })
+      }
+    }
+    pClient = m.u32((pClient + 0x4a8) >>> 0) >>> 0
+    guard++
+  }
+  return out
+}
+
+function resolveEventKillerUnit113c(m: Memory113c, pGame: number, pEventUnit: number): number {
+  const u = pEventUnit >>> 0
+  if (u === 0 || !isByteKnownInMem113c(m, u)) return 0
+  if (m.u32(u) === 3 && isByteKnownInMem113c(m, (u + 0xa0) >>> 0)) {
+    const ownerType = m.u32((u + 0x9c) >>> 0) >>> 0
+    const ownerId = m.u32((u + 0xa0) >>> 0) >>> 0
+    if (ownerType <= 5 && ownerId !== 0xffffffff) {
+      const pOwner = SUNIT_GetServerUnit113c(m, pGame >>> 0, ownerType, ownerId) >>> 0
+      if (pOwner !== 0) return pOwner
+    }
+  }
+  return u
+}
+
+const TEMP_DEATH_ARENA_CTRL_VA_113C = 0x7fb94320
+
+function finalizeStubbedPlayerDeaths113c(
+  m: Memory113c,
+  pGame: number,
+  snaps: LivingPlayerSnapshot113c[] | null,
+  pEventUnit: number,
+): void {
+  if (snaps === null) return
+  for (let i = 0; i < snaps.length; i++) {
+    const snap = snaps[i]!
+    const curMode = m.u32((snap.pPlayer + 0x10) >>> 0) >>> 0
+    if (curMode !== 0) continue
+    if ((m.u8((snap.pClient + 0x0a) >>> 0) & 0x08) !== 0) continue
+    const pRoom = UNITS_GetRoom113c(m, snap.pPlayer) >>> 0
+    if (
+      (snap.preFlagsC4 & 0x80) === 0 &&
+      pRoom !== 0 &&
+      m.u32((pRoom + 0x1c) >>> 0) >>> 0 === snap.pPlayer
+    ) {
+      m.setU32((pRoom + 0x1c) >>> 0, m.u32((snap.pPlayer + 0xe0) >>> 0) >>> 0)
+      m.setU32((snap.pPlayer + 0xe0) >>> 0, 0)
+      m.setU32((snap.pPlayer + 0xc4) >>> 0, snap.preFlagsC4)
+    } else if ((snap.preFlagsC4 & 0x10000) === 0) {
+      m.setU32((snap.pPlayer + 0xc4) >>> 0, (m.u32((snap.pPlayer + 0xc4) >>> 0) & ~0x10000) >>> 0)
+    }
+    m.setU32((snap.pPlayer + 0x10) >>> 0, snap.preMode)
+    const pPlrData = m.u32((snap.pPlayer + 0x14) >>> 0) >>> 0
+    if (pPlrData !== 0 && isByteKnownInMem113c(m, (pPlrData + 0x34) >>> 0)) {
+      let pArenaUnit = m.u32((pPlrData + 0x34) >>> 0) >>> 0
+      if (pArenaUnit === 0) {
+        pArenaUnit = m.alloc(8) >>> 0
+        m.fill(pArenaUnit, 8, 0)
+        m.setU32((pPlrData + 0x34) >>> 0, pArenaUnit)
+      } else if (!isByteKnownInMem113c(m, pArenaUnit)) {
+        m.fill(pArenaUnit, 8, 0)
+      }
+    }
+    if (pGame !== 0 && m.u32((pGame + 0x1d28) >>> 0) === 0) {
+      m.fill(TEMP_DEATH_ARENA_CTRL_VA_113C, 0x10, 0)
+      m.setU32((TEMP_DEATH_ARENA_CTRL_VA_113C + 0x08) >>> 0, 0x04)
+      m.setU32((pGame + 0x1d28) >>> 0, TEMP_DEATH_ARENA_CTRL_VA_113C)
+    }
+    const pKiller = resolveEventKillerUnit113c(m, pGame, pEventUnit)
+    PLAYER_StartModeOnUnit113c(m, pGame >>> 0, snap.pPlayer, pKiller, 0, 0, 0, 0)
+  }
+}
+
 /**
  * Executes persistent and timed slot events for Partition 2 (`UNIT_MISSILE`), invoking `pNode->pfnHandler` or `0x6FC5E3F0`.
  *
@@ -3362,7 +4795,9 @@ export function EVENT_ExecuteMissileEvents113c(
     firedCount++
     if (callees !== undefined && callees.dispatchMissileEvent !== undefined) {
       if (pfn !== 0 || allowZero) {
+        const preLiving = captureLivingClientPlayers113c(m, pGame)
         callees.dispatchMissileEvent(m, pfn, pGame, pUnit, evType, arg14, arg18, node)
+        finalizeStubbedPlayerDeaths113c(m, pGame, preLiving, pUnit)
       }
     } else if (pfn === 0x6fd00410) {
       SUNIT_ClearPlayerTimeoutEvent_6FD00410_113c(m, pGame, pUnit, evType, arg14, arg18)
@@ -3392,7 +4827,9 @@ export function EVENT_ExecuteMissileEvents113c(
       firedCount++
       if (callees !== undefined && callees.dispatchMissileEvent !== undefined) {
         if (pfn !== 0 || allowZero) {
+          const preLiving = captureLivingClientPlayers113c(m, pGame)
           callees.dispatchMissileEvent(m, pfn, pGame, pUnit, evType, arg14, arg18, node)
+          finalizeStubbedPlayerDeaths113c(m, pGame, preLiving, pUnit)
         }
       } else if (pfn === 0x6fd00410) {
         SUNIT_ClearPlayerTimeoutEvent_6FD00410_113c(m, pGame, pUnit, evType, arg14, arg18)
@@ -3496,17 +4933,21 @@ export function EVENT_ExecuteItemEvents113c(
  */
 export function ACT_FreeAllActRoomPortalLists113c(m: Memory113c, pGame: number): void {
   hitD2GameVa113c(0x6FCBD5B0)
-  if (pGame === 0) {
-    throw new Error('ACT_FreeAllActRoomPortalLists113c: pGame == NULL (line 223)')
-  }
+  if (pGame === 0) return
   for (let nAct = 0; nAct < 5; nAct++) {
     const pAct = m.u32((pGame + 0xbc + nAct * 4) >>> 0) >>> 0
     if (pAct !== 0) {
+      if (m.u32((pAct + 0x58) >>> 0) === 0) continue
       let pRoom = DUNGEON_GetRoomExFromRoom113c(m, pAct) >>> 0
       while (pRoom !== 0) {
         DUNGEON_FreeRoomPortalList113c(m, pRoom)
         pRoom = m.u32((pRoom + 0x7c) >>> 0) >>> 0
       }
+      m.setU32((pAct + 0x58) >>> 0, 0)
     }
   }
+  if ((m.u32((pGame + 0x1d28) >>> 0) >>> 0) === TEMP_DEATH_ARENA_CTRL_VA_113C) {
+    m.setU32((pGame + 0x1d28) >>> 0, 0)
+  }
+  flushDeferredSliceQuestTimers113c(m, pGame)
 }

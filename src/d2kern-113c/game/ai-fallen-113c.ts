@@ -1163,7 +1163,7 @@ export function AI_CheckApproachTauntSound113c(
   m.setU8((pAiControlAfter + 0x08) >>> 0, (m.u8((pAiControlAfter + 0x08) >>> 0) | 0x10) & 0xff)
   if (world !== undefined) {
     AI_Stall113c(world, pUnit, 20)
-  } else if (pGame !== 0) {
+  } else {
     AI_Stall113c(m, pGame, pUnit, 20)
   }
   return 1

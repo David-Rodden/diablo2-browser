@@ -24,6 +24,7 @@ import {
   UNITROOM_RefreshUnit113c,
   UNITS_UpdateAnimFrame113c,
 } from '../common/unit.ts'
+import { D2CommonAssertError } from '../common/inline-helpers.ts'
 import { SKILLS_SetUsedSkillMemPort113c } from '../common/k0-d2common-memports.ts'
 import {
   EVENT_DeleteEventByArg14_113c,
@@ -269,6 +270,8 @@ export const MONSTER_INLINE_AI_ON_END_TABLE_113C: readonly number[] = [
   1, // 15: RN
 ]
 
+const D2GAME_IAT_SGPT_DATATABLES_SLOT = 0x6fd1829c
+
 /** `@va D2Game:0x6FC949A0` (`MONSTER_GetModeEntry`, `ecx = pUnit`, `eax = nMode`). */
 export function MONSTER_GetModeEntry113c(
   m: Memory113c,
@@ -276,33 +279,79 @@ export function MONSTER_GetModeEntry113c(
   mode: number,
 ): MonsterModeEntry113c | null {
   hitD2GameVa113c(0x6FC949A0)
-  if (pUnit === 0 || m.get(pUnit, D2UnitStrc.dwUnitType) !== UNIT_MONSTER) return null
-  if ((mode >>> 0) >= 16) return null
-  const classId = m.get(pUnit, D2UnitStrc.dwClassId) >>> 0
-  if (classId >= 734) return null
+  if (pUnit === 0 || m.get(pUnit, D2UnitStrc.dwUnitType) !== UNIT_MONSTER) {
+    return null
+  }
+  const classId = m.get(pUnit, D2UnitStrc.dwClassId) | 0
+  const modeSigned = mode | 0
 
-  // `0x6FC949E7: mov al, [edx + 0x1A5]; test al, al; je base_table` (`SplGetModeChart`)
-  if (SPL_GET_MODE_CHART_HCIDX_SET_113C.has(classId)) {
+  const sgptPtr = safeReadU32MonEvt113c(m, D2GAME_IAT_SGPT_DATATABLES_SLOT)
+  const sgpt = sgptPtr !== 0 ? safeReadU32MonEvt113c(m, sgptPtr) : 0
+  let useSpecial = false
+  if (sgpt !== 0) {
+    const count = m.u32((sgpt + 0xa80) >>> 0) | 0
+    const pMonStatsBase = m.u32((sgpt + 0xa78) >>> 0) >>> 0
+    if (classId < 0 || classId >= count) {
+      return null
+    }
+    const pMonStats = (pMonStatsBase + Math.imul(classId, 0x1a8)) >>> 0
+    if (pMonStats === 0) {
+      return null
+    }
+    if (modeSigned < 0 || modeSigned >= 16) {
+      return null
+    }
+    // `0x6FC949E7: mov bl, byte ptr [ecx + 0x1A5]; test bl, bl; je base_table` (`SplGetModeChart`)
+    useSpecial = m.u8((pMonStats + 0x1a5) >>> 0) !== 0
+  } else {
+    if (classId < 0 || classId >= 734) {
+      return null
+    }
+    if (modeSigned < 0 || modeSigned >= 16) {
+      return null
+    }
+    useSpecial = SPL_GET_MODE_CHART_HCIDX_SET_113C.has(classId)
+  }
+
+  if (useSpecial) {
     if (classId === 243 || classId === 333 || classId === 705) {
-      if (mode === 11) return SPECIAL_MODE_DIABLO_S4
-      if (mode === 10) return SPECIAL_MODE_DIABLO_S3
+      if (modeSigned === 11) return SPECIAL_MODE_DIABLO_S4
+      if (modeSigned === 10) return SPECIAL_MODE_DIABLO_S3
     } else if (classId === 403) {
-      if (mode === 4) return SPECIAL_MODE_403_A1
-      if (mode === 5) return SPECIAL_MODE_403_A2
-      if (mode === 8) return SPECIAL_MODE_403_S1
-      if (mode === 9) return SPECIAL_MODE_403_S2
+      if (modeSigned === 4) return SPECIAL_MODE_403_A1
+      if (modeSigned === 5) return SPECIAL_MODE_403_A2
+      if (modeSigned === 8) return SPECIAL_MODE_403_S1
+      if (modeSigned === 9) return SPECIAL_MODE_403_S2
     } else if (classId === 417 || classId === 418) {
-      if (mode === 11) return SPECIAL_MODE_SHADOW_S4
+      if (modeSigned === 11) return SPECIAL_MODE_SHADOW_S4
     } else if (classId === 543 || classId === 544 || classId === 570 || classId === 709) {
-      if (mode === 10) return SPECIAL_MODE_BAAL_S3
+      if (modeSigned === 10) return SPECIAL_MODE_BAAL_S3
     }
   }
 
-  const baseEntry = MONSTER_MODE_TABLE_113C[mode]
+  const baseEntry = MONSTER_MODE_TABLE_113C[modeSigned]
   if (baseEntry === undefined) {
     throw new RangeError(`MONSTER_GetModeEntry113c: missing base mode table entry for mode=${mode}`)
   }
   return baseEntry
+}
+
+/** Returns the raw `0x6FD1A498..0x6FD1A5D8` `.rdata` table pointer VA returned by `MONSTER_GetModeEntry`. */
+export function MONSTER_GetModeEntryVa113c(
+  m: Memory113c,
+  pUnit: number,
+  mode: number,
+): number {
+  const entry = MONSTER_GetModeEntry113c(m, pUnit, mode)
+  if (entry === null) return 0
+  if (entry === SPECIAL_MODE_DIABLO_S4) return 0x6fd1a598
+  if (entry === SPECIAL_MODE_DIABLO_S3) return 0x6fd1a5a8
+  if (entry === SPECIAL_MODE_403_A1 || entry === SPECIAL_MODE_403_A2) return 0x6fd1a5b8
+  if (entry === SPECIAL_MODE_403_S1 || entry === SPECIAL_MODE_403_S2) return 0x6fd1a5c8
+  if (entry === SPECIAL_MODE_SHADOW_S4) return 0x6fd1a5d8
+  if (entry === SPECIAL_MODE_BAAL_S3) return 0x6fd1a508
+  const idx = MONSTER_MODE_TABLE_113C.indexOf(entry)
+  return idx >= 0 ? ((0x6fd1a498 + (idx << 4)) >>> 0) : 0
 }
 
 /**
@@ -726,19 +775,85 @@ export function getK2MonsterDropLootHook113c():
   return k2MonsterDropLootHook113c
 }
 
-/** `@va D2Game:0x6FCBD3B0` (`AI_RunMonsterAI` -> `0x6FCBD160` -> `0x6FCBCC70`). */
-export function AI_RunMonsterAI113c(
+export interface MonsterAiPipelineHooks113c {
+  readonly handleStunDoorOrLeaderFollow: (
+    m: Memory113c,
+    pUnit: number,
+    pGame: number,
+    pAiTickArgs: number,
+  ) => number
+  readonly dispatchTargetByAiFlag: (
+    m: Memory113c,
+    pUnit: number,
+    pAiTickArgs: number,
+    pGame: number,
+  ) => number
+  readonly acquireOrValidateCombatTarget: (
+    m: Memory113c,
+    pAiTickArgs: number,
+    pUnit: number,
+    pGame: number,
+  ) => number
+  readonly runRogueTownAi?: (
+    m: Memory113c,
+    pGame: number,
+    pUnit: number,
+    pAiTickArgs: number,
+  ) => void
+}
+
+let monsterAiPipelineHooks113c: MonsterAiPipelineHooks113c | undefined
+let monsterEventsAiStackPtr = 0x7e940000
+
+export function registerMonsterAiPipeline113c(hooks: MonsterAiPipelineHooks113c): void {
+  monsterAiPipelineHooks113c = hooks
+}
+
+function lookupMonsterAiRecordPtrs113c(
+  m: Memory113c,
+  pUnit: number,
+): { tablesLoaded: boolean; pMonStats: number; pMonStats2: number } {
+  const pTablesSlot = safeReadU32MonEvt113c(m, 0x6fd1829c)
+  const pTables = pTablesSlot !== 0 ? safeReadU32MonEvt113c(m, pTablesSlot) : 0
+  if (pTables === 0) return { tablesLoaded: false, pMonStats: 0, pMonStats2: 0 }
+  if (pUnit === 0) return { tablesLoaded: true, pMonStats: 0, pMonStats2: 0 }
+  const classId = m.u32((pUnit + 0x04) >>> 0) | 0
+  if (classId < 0) return { tablesLoaded: true, pMonStats: 0, pMonStats2: 0 }
+  const nMonStats = m.u32((pTables + 0xa80) >>> 0) | 0
+  if (classId >= nMonStats) return { tablesLoaded: true, pMonStats: 0, pMonStats2: 0 }
+  const pMonStatsBase = m.u32((pTables + 0xa78) >>> 0) >>> 0
+  const pMonStats = pMonStatsBase !== 0 ? (pMonStatsBase + Math.imul(classId, 0x1a8)) >>> 0 : 0
+  let pMonStats2 = 0
+  if (pMonStats !== 0) {
+    const extIdx = (m.u16((pMonStats + 0x18) >>> 0) << 16) >> 16
+    const nMonStats2 = m.u32((pTables + 0xa98) >>> 0) | 0
+    const pMonStats2Base = m.u32((pTables + 0xa90) >>> 0) >>> 0
+    if (extIdx >= 0 && extIdx < nMonStats2 && pMonStats2Base !== 0) {
+      pMonStats2 = (pMonStats2Base + Math.imul(extIdx, 0x134)) >>> 0
+    }
+  }
+  return { tablesLoaded: true, pMonStats, pMonStats2 }
+}
+
+function runLegacyMonsterAiThinkFallback113c(
   m: Memory113c,
   pGame: number,
   pUnit: number,
-  arg14 = 0,
-  arg18 = 0,
-  callbacks?: MonsterEventCallbacks113c,
+  pAiGeneral: number,
+  arg14: number,
+  arg18: number,
+  cb?: (
+    m: Memory113c,
+    pGame: number,
+    pUnit: number,
+    pAiGeneral: number,
+    pfnThink: number,
+    arg14: number,
+    arg18: number,
+  ) => void,
 ): void {
-  hitD2GameVa113c(0x6FCBD3B0)
   if (pUnit === 0 || m.get(pUnit, D2UnitStrc.dwUnitType) !== UNIT_MONSTER) return
   if (SUNIT_IsDeadOrDying113c(m, pUnit) !== 0) return
-  // 0x6FCBCD94: `STATES_CheckState(pUnit, STATE_STUNNED = 0x15)` -> `AI_Stall(pGame, pUnit, 15)`
   if (STATES_CheckState113c(m, pUnit, STATE_STUNNED_113C) !== 0) {
     SKILLS_SetUsedSkill113c(m, pUnit, 0)
     if (m.get(pUnit, D2UnitStrc.dwAnimMode) !== 1) {
@@ -751,15 +866,103 @@ export function AI_RunMonsterAI113c(
     }
     return
   }
-  const pMonsterData = m.get(pUnit, D2UnitStrc.pUnitData)
-  if (pMonsterData === 0) return
-  const pAiGeneral = m.get(pMonsterData, D2MonsterDataStrc.pAiGeneral)
   if (pAiGeneral === 0) return
   const pfnThink = m.get(pAiGeneral, D2AiGeneralStrc.pfnThink)
+  cb?.(m, pGame, pUnit, pAiGeneral, pfnThink, arg14, arg18)
+}
+
+/** `@va D2Game:0x6FCBD3B0` (`AI_RunMonsterAI` -> `0x6FCBCD90` -> `0x6FCBD160` -> `0x6FCBCFE0`). */
+export function AI_RunMonsterAI113c(
+  m: Memory113c,
+  pGame: number,
+  pUnit: number,
+  arg14 = 0,
+  arg18 = 0,
+  callbacks?: MonsterEventCallbacks113c,
+): void {
+  hitD2GameVa113c(0x6FCBD3B0)
+  let pMonsterData = 0
+  let pAiGeneral = 0
+  if (pUnit !== 0 && m.get(pUnit, D2UnitStrc.dwUnitType) === UNIT_MONSTER) {
+    pMonsterData = m.get(pUnit, D2UnitStrc.pUnitData)
+    if (pMonsterData !== 0) {
+      pAiGeneral = m.get(pMonsterData, D2MonsterDataStrc.pAiGeneral)
+    }
+  }
+
   if (callbacks?.onAiThink !== undefined) {
-    callbacks.onAiThink(m, pGame, pUnit, pAiGeneral, pfnThink, arg14, arg18)
-  } else if (defaultMonsterAiThinkCallback113c !== undefined) {
-    defaultMonsterAiThinkCallback113c(m, pGame, pUnit, pAiGeneral, pfnThink, arg14, arg18)
+    runLegacyMonsterAiThinkFallback113c(
+      m,
+      pGame,
+      pUnit,
+      pAiGeneral,
+      arg14,
+      arg18,
+      callbacks.onAiThink,
+    )
+    return
+  }
+
+  const { tablesLoaded, pMonStats, pMonStats2 } = lookupMonsterAiRecordPtrs113c(m, pUnit)
+  if (tablesLoaded && (pMonStats === 0 || pMonStats2 === 0)) return
+  const hasMonsterStatsTxt = pMonsterData !== 0 && safeReadU32MonEvt113c(m, pMonsterData) !== 0
+  if (!tablesLoaded || !hasMonsterStatsTxt) {
+    runLegacyMonsterAiThinkFallback113c(
+      m,
+      pGame,
+      pUnit,
+      pAiGeneral,
+      arg14,
+      arg18,
+      defaultMonsterAiThinkCallback113c,
+    )
+    return
+  }
+
+  const sp = monsterEventsAiStackPtr
+  monsterEventsAiStackPtr = (sp + 0x30) >>> 0
+  try {
+    m.fill(sp, 0x24, 0)
+    m.setU32(sp, pAiGeneral >>> 0)
+    m.setU32((sp + 0x1c) >>> 0, pMonStats >>> 0)
+    m.setU32((sp + 0x20) >>> 0, pMonStats2 >>> 0)
+
+    const hooks = monsterAiPipelineHooks113c
+    if (hooks !== undefined) {
+      if (hooks.handleStunDoorOrLeaderFollow(m, pUnit, pGame, sp) !== 0) return
+      if (hooks.dispatchTargetByAiFlag(m, pUnit, sp, pGame) !== 0) return
+      if (hooks.acquireOrValidateCombatTarget(m, sp, pUnit, pGame) !== 0) return
+    } else if (STATES_CheckState113c(m, pUnit, STATE_STUNNED_113C) !== 0) {
+      SKILLS_SetUsedSkill113c(m, pUnit, 0)
+      if (m.get(pUnit, D2UnitStrc.dwAnimMode) !== 1) {
+        UNITS_ChangeAnimMode113c(m, pUnit, 1)
+      }
+      if (pGame !== 0) {
+        EVENT_DeleteEventByArg14_113c(m, pGame, pUnit, MON_EVENT_AI_THINK, 0)
+        const frame = m.get(pGame, D2GameStrc.dwGameFrame) >>> 0
+        EVENT_SetEventFull113c(m, pGame, pUnit, MON_EVENT_AI_THINK, (frame + 15) >>> 0, 0, 0, 0)
+      }
+      return
+    }
+
+    const activeAiGen = m.u32(sp) >>> 0
+    const pfnThink = activeAiGen !== 0 ? m.get(activeAiGen, D2AiGeneralStrc.pfnThink) >>> 0 : 0
+    if (pfnThink < 0x6fc20000 || pfnThink >= 0x6fd17000) {
+      throw new D2CommonAssertError('D2Game\\MONSTER\\MonsterAI.cpp', 0x39e)
+    }
+
+    if (pfnThink === 0x6fcbc990 || pfnThink === 0x6fcd6c80 || pfnThink === 0x6fc9b4e0 || pfnThink === 0x6fcc39d0) {
+      return
+    }
+    if (pfnThink === 0x6fcbcb00 && hooks?.runRogueTownAi !== undefined) {
+      hooks.runRogueTownAi(m, pGame, pUnit, sp)
+      return
+    }
+    if (defaultMonsterAiThinkCallback113c !== undefined) {
+      defaultMonsterAiThinkCallback113c(m, pGame, pUnit, activeAiGen, pfnThink, arg14, arg18)
+    }
+  } finally {
+    monsterEventsAiStackPtr = sp
   }
 }
 

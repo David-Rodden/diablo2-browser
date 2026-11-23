@@ -450,6 +450,14 @@ export function isPointInterceptedByHud(hud: HudManager, logicalX: number, logic
     hud.touchControls.enabled &&
     touchContext === 'world' &&
     (hud.touchControls.joystick.active ||
+      hud.touchControls.hitTestLockButton(
+        logicalX,
+        logicalY,
+        profile.width,
+        profile.height,
+        hud.leftPanel !== 'none',
+        hud.belt.isExpanded,
+      ) ||
       hud.touchControls.isInLeftJoystickZone(
         logicalX,
         logicalY,
@@ -1961,6 +1969,28 @@ export function handleHudMouseDown(
     if (compactHit !== null) {
       return
     }
+  }
+  if (
+    e.button === 0 &&
+    hud.touchControls.enabled &&
+    resolveTouchHudContext(hud) === 'world' &&
+    hud.touchControls.hitTestLockButton(
+      pt.x,
+      pt.y,
+      hud.viewportProfile.width,
+      hud.viewportProfile.height,
+      hud.leftPanel !== 'none',
+      hud.belt.isExpanded,
+    )
+  ) {
+    hud.touchControls.toggleJoystickLock(
+      hud.viewportProfile.width,
+      hud.viewportProfile.height,
+      performance.now(),
+    )
+    triggerMobileHaptic('tap', hud.touchControls.hapticsEnabled)
+    hud.syncPublishedState()
+    return
   }
   if (
     e.button === 0 &&

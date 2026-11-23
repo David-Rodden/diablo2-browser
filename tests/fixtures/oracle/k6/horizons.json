@@ -11,13 +11,13 @@
   },
   "k6-druid-skills": {
     "bootFrame": 2,
-    "strict": 230,
-    "pos": 231
+    "strict": 390,
+    "pos": 390
   },
   "k6-assassin-skills": {
     "bootFrame": 2,
-    "strict": 58,
-    "pos": 78
+    "strict": 390,
+    "pos": 390
   },
   "k6-items-potions-belt-combat": {
     "bootFrame": 2,
@@ -26,12 +26,12 @@
   },
   "k6-town-npc-gamble-waypoint": {
     "bootFrame": 2,
-    "strict": 47,
-    "pos": 120
+    "strict": 275,
+    "pos": 275
   },
   "k6-nightmare-bloodmoor-combat": {
     "bootFrame": 2,
-    "strict": 307,
-    "pos": 307
+    "strict": 360,
+    "pos": 360
   }
 }

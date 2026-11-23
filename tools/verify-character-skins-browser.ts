@@ -329,6 +329,68 @@ async function main(): Promise<void> {
       }
     }
 
+    // Paper-doll skin: the Sorceress model follows the worn equipment (geosets, composited body
+    // texture, weapon-specific clips). Equipment is set on the client world as item packets would.
+    {
+      const modelsBefore = await h.cdp.evaluate<number>(countMeshModels)
+      await h.cdp.evaluate(`(async () => {
+        const app = window.__d2Play;
+        const w = app.session.world;
+        const mod = await import('/src/client/render/character-skin-cache.ts');
+        const svc = mod.getGlobalCharacterSkinService();
+        svc.setConfig({ selectedByClass: { ...svc.getConfig().selectedByClass, so: 'so-wow-human-mage' } });
+        w.self.charClass = 1;
+        app.session.selfAppearanceCache = null;
+        const u = w.getUnit('player', ${String(selfId)});
+        if (u) { u.classId = 1; u.token = 'so'; u.mode = 1; u.dir64 = 0; u.targetDirection = 0; u.castState = undefined; u.states.replaceAll([]); }
+        app.hudModel.syncFromWorld();
+        app.renderFrame(performance.now());
+      })()`)
+      let loaded = false
+      for (let i = 0; i < 60 && !loaded; i += 1) {
+        await h.tick(2)
+        loaded = (await h.cdp.evaluate<number>(countMeshModels)) > modelsBefore
+        if (!loaded) await sleep(100)
+      }
+      assert(loaded, 'Expected the so-wow-human-mage hero model to be loaded')
+      const paperdollLooks: readonly (readonly [string, Readonly<Record<number, string>>, string, number])[] = [
+        ['bare', {}, 'nu', 0],
+        ['cloth-staff', { 1: 'cap', 3: 'qui', 4: 'sst', 10: 'lgl' }, 'nu:2h', 1],
+        ['mail-orb-shield', { 1: 'hlm', 3: 'chn', 4: 'ob1', 5: 'buc', 10: 'hgl' }, 'nu:1h', 2],
+      ]
+      await h.cdp.setViewport(800, 600)
+      await h.cdp.evaluate(`window.__d2Play.settings.set({ viewport: '800x600' })`)
+      for (const [name, codes, wantClip, wantCanvases] of paperdollLooks) {
+        const state = await h.cdp.evaluate<{ clip: string | null; canvases: number }>(`(async () => {
+          const app = window.__d2Play;
+          const eq = app.session.world.containers.equipmentBySlot;
+          for (const k of [...eq.keys()]) eq.delete(k);
+          for (const [slot, code] of Object.entries(${JSON.stringify(codes)})) {
+            eq.set(Number(slot), { id: 7000 + Number(slot), itemId: 7000 + Number(slot), code, rawCode: code, bodyLoc: Number(slot), equippedSlot: Number(slot), identified: true, quality: 2, stats: [] });
+          }
+          app.session.selfAppearanceCache = null;
+          app.renderFrame(performance.now());
+          const mod = await import('/src/client/render/character-skin-cache.ts');
+          const svc = mod.getGlobalCharacterSkinService();
+          let clip = null; let canvases = 0;
+          for (const rt of svc.listMeshSkinRuntimes()) {
+            const st = rt.animator.snapshot().find((u) => u.unitKey === 'player:${String(selfId)}');
+            if (st) clip = st.clip;
+            const unit = svc.getMeshSkinUnit(rt.meshRenderer.renderer, 'so', null);
+            if (unit && unit !== 'loading') canvases = unit.gpu.canvasTextures.size;
+          }
+          return { clip, canvases };
+        })()`)
+        assert(state.clip === wantClip, `Paper-doll look '${name}': expected clip '${wantClip}', got '${String(state.clip)}'`)
+        assert(
+          state.canvases === wantCanvases,
+          `Paper-doll look '${name}': expected ${String(wantCanvases)} composited body textures, got ${String(state.canvases)}`,
+        )
+        await h.tick(3)
+        await h.cdp.captureScreenshot(join(outDir, `08-so-wow-human-mage-${name}-800x600.png`))
+      }
+    }
+
     assert(h.cdp.missingArt.length === 0, `Unexpected missingArt errors: ${JSON.stringify(h.cdp.missingArt)}`)
     assert(h.cdp.consoleErrors.length === 0, `Unexpected console errors: ${JSON.stringify(h.cdp.consoleErrors)}`)
     console.log(`[verify-character-skins] All multi-resolution & Trang-Oul override checks PASSED -> ${outDir}`)

@@ -338,6 +338,9 @@ export type ToolbarI18nKey =
   | 'toolbar.config.hudLayout.auto'
   | 'toolbar.config.hudLayout.classic'
   | 'toolbar.config.hudLayout.compact-d2r'
+  | 'toolbar.config.joystickMode'
+  | 'toolbar.config.joystickMode.floating'
+  | 'toolbar.config.joystickMode.fixed'
   | 'toolbar.bug.open'
   | 'toolbar.bug.title'
   | 'toolbar.bug.subtitle'
@@ -431,6 +434,9 @@ export const TOOLBAR_I18N: Readonly<Record<ToolbarI18nKey, { readonly zh: string
   'toolbar.config.hudLayout.auto': { zh: '自动 (按设备检测)', en: 'Auto (Detect Device)' },
   'toolbar.config.hudLayout.classic': { zh: '关闭 (经典 PC 界面)', en: 'Off (Classic PC HUD)' },
   'toolbar.config.hudLayout.compact-d2r': { zh: '紧凑 D2R (强制开启触控)', en: 'Compact D2R (Force Touch)' },
+  'toolbar.config.joystickMode': { zh: '左摇杆模式', en: 'Left Joystick' },
+  'toolbar.config.joystickMode.floating': { zh: '浮动 (随落点移动)', en: 'Floating (Follow Touch)' },
+  'toolbar.config.joystickMode.fixed': { zh: '固定 (锁定当前位置)', en: 'Fixed (Lock Position)' },
   'toolbar.bug.open': { zh: '汇报 Bug', en: 'Report Bug' },
   'toolbar.bug.title': { zh: '汇报 Bug', en: 'Report a Bug' },
   'toolbar.bug.subtitle': {

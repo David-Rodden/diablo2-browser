@@ -138,12 +138,16 @@ import { type SUnitDmgHooks113c } from './k2-real-s2c-combat-113c'
 import {
   OVERLAY_GetRecordPtrFast_6FC21AE0_113c,
   SKILLS_EvalLinearParam12_6FC21B10_113c,
+  SKILLS_SrvDo147_SyncOwnerPos_6FC2C170_113c,
 } from './k2-laneH-0x6fc2-w1-113c'
 import {
   AIGENERAL_FreeBossMinionListAndClearRefs_6FC41590_113c,
   MONREG_IsMonsterDeadAtCoords_6FC3EE50_113c,
 } from './k2-laneI-0x6fc3-w1-113c'
-import { SKILLS_ApplySkillAuraStatCalcs_6FC648E0_113c } from './k2-laneL-0x6fc6-w1-113c'
+import {
+  SKILLS_ApplySkillAuraStatCalcs_6FC648E0_113c,
+  SKILLS_SrvDo32_FlagSkillEndAndExecuteEvents_6FC6F920_113c,
+} from './k2-laneL-0x6fc6-w1-113c'
 import { SKILLS_RedemptionCorpseCallback_6FC59930_113c } from './k2-laneK-0x6fc5-w1-113c'
 import { ACT5Q5_GetSummitPlayerCount_6FC766D0_113c } from './k2-laneM-0x6fc7-w1-113c'
 import { SKILLS_SetTargetAndDoNihlathakCorpseExplosion_6FC2C8D0_113c } from './k2-w4b1-113c'
@@ -155,9 +159,11 @@ import {
   SKILLS_IncrementUnitFindCountCallback_6FCBE600_113c,
   SKILLS_TargetRingScanCallback_6FCBED70_113c,
 } from './k2-w2b5-113c'
+import { SKILLS_SrvDo124_ClearSeqFlagAndFrameCount_6FCD2E90_113c } from './k2-w2b6-113c'
 import { ACT2Q3_InitAct2EclipseIfActive_6FCE2150_113c } from './k2-w2b7-113c'
 import { AI_StartModeAtCoordsKeepSteps_6FD121E0_113c } from './k2-w2b8-113c'
 import { AIGENERAL_RemoveFromMinionList_6FC416A0_113c } from './k2-w3b2-113c'
+import { SKILLS_SrvDo_Unsummon_6FCC2EA0_113c } from './k2-w8b2-113c'
 import { SUNIT_IsDeadOrDying113c, UNITS_ChangeAnimMode113c } from './monster-events'
 import {
   D2GAME_IAT_SGPT_DATATABLES_VA_113C,
@@ -446,7 +452,7 @@ export function ACT_AllocGameActAndInitEclipse_6FCBD6F0_113c(
   hitD2GameVa113c(0x6FCBD6F0)
   const pArena = m.u32((pGame + 0x1d28) >>> 0) >>> 0
   if (pArena === 0) {
-    throw new D2CommonAssertError('Client.cpp', 0x27)
+    throw new D2CommonAssertError('0x6fd19ff9', 0x27)
   }
   const actIdx = nAct & 0xff
   let nTownLevelId: number
@@ -707,7 +713,50 @@ export function SKILLS_DispatchStateOnSrvDoFuncForSkill_6FCBE8E0_113c(
   if (hooks !== undefined && hooks.onSrvDoFunc !== undefined) {
     return hooks.onSrvDoFunc(m, pfn, pGame >>> 0, pUnit >>> 0, skillId, nSkillLevel | 0) | 0
   }
-  return pfn | 0
+  switch (pfn) {
+    case 0x6fc2c170:
+      return (
+        SKILLS_SrvDo147_SyncOwnerPos_6FC2C170_113c(
+          m,
+          pGame >>> 0,
+          pUnit >>> 0,
+          skillId,
+          nSkillLevel | 0,
+        ) | 0
+      )
+    case 0x6fc6f920:
+      return (
+        SKILLS_SrvDo32_FlagSkillEndAndExecuteEvents_6FC6F920_113c(
+          m,
+          pGame >>> 0,
+          pUnit >>> 0,
+          skillId,
+          nSkillLevel | 0,
+        ) | 0
+      )
+    case 0x6fcc2ea0:
+      return (
+        SKILLS_SrvDo_Unsummon_6FCC2EA0_113c(
+          m as unknown as Parameters<typeof SKILLS_SrvDo_Unsummon_6FCC2EA0_113c>[0],
+          pGame >>> 0,
+          pUnit >>> 0,
+          skillId,
+          nSkillLevel | 0,
+        ) | 0
+      )
+    case 0x6fcd2e90:
+      return (
+        SKILLS_SrvDo124_ClearSeqFlagAndFrameCount_6FCD2E90_113c(
+          m,
+          pGame >>> 0,
+          pUnit >>> 0,
+          skillId,
+          nSkillLevel | 0,
+        ) | 0
+      )
+    default:
+      return pfn | 0
+  }
 }
 
 /**

@@ -143,6 +143,7 @@ import {
   SKILLS_EvalLinearParam12_6FC21B10_113c,
   STATLIST_AddUnitStatGoldGuarded_6FC21670_113c,
 } from './k2-laneH-0x6fc2-w1-113c.js'
+import { AI_CountAdjacentUnitsCallback_6FC35590_113c } from './k2-laneI-0x6fc3-w1-113c.js'
 import { PARTY_GetPlayerRelationState113c } from './k2-sunit-spawn-w1-113c.js'
 import { ITEMS_RemoveUnitInventoryOrCursorItem_6FC2E7E0_113c } from './k2-w2b1-113c.js'
 import {
@@ -1762,7 +1763,9 @@ export function PETS_ForEachPlayerPetUnit_6FCB6AF0_113c(
   hitD2GameVa113c(0x6FCB6AF0)
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer >>> 0) >>> 0
   if (pPlayerData === 0) return
-  if (pfnCallback === 0) return
+  if (pfnCallback === 0) {
+    throw new D2CommonAssertError('pfnCallback', 0x5b5)
+  }
 
   const pPlayerPets = m.u32((pPlayerData + 0x44) >>> 0) >>> 0
   if (pPlayerPets === 0) return
@@ -1780,13 +1783,18 @@ export function PETS_ForEachPlayerPetUnit_6FCB6AF0_113c(
       if (pSlot !== 0) {
         let pNode = m.u32(pSlot) >>> 0
         while (pNode !== 0) {
-          if ((m.u8(pNode) & 1) === 0 && pGame !== 0) {
+          if ((m.u8(pNode) & 1) === 0) {
+            if (pGame === 0) {
+              throw new D2CommonAssertError('SUnitMsg.cpp', 0x2d3)
+            }
             const dwPetGuid = m.u32((pNode + 0x04) >>> 0) >>> 0
             let pPetUnit = m.u32((pGame + (dwPetGuid & 0x7f) * 4 + 0x1320) >>> 0) >>> 0
             while (pPetUnit !== 0) {
               if (m.u32((pPetUnit + 0x0c) >>> 0) === dwPetGuid) {
                 if (typeof pfnCallback === 'function') {
                   pfnCallback(m, pGame >>> 0, pPlayer >>> 0, pPetUnit, pArg >>> 0)
+                } else if ((pfnCallback >>> 0) === 0x6fc35590) {
+                  AI_CountAdjacentUnitsCallback_6FC35590_113c(m, pPetUnit, pArg >>> 0)
                 }
                 break
               }

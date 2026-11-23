@@ -444,6 +444,24 @@ export class OnlineSession {
     if (currentSettings.mobileHapticsEnabled !== undefined) {
       this.hudManager.touchControls.hapticsEnabled = currentSettings.mobileHapticsEnabled
     }
+    const initVp = this.hudManager.viewportProfile
+    this.hudManager.touchControls.applyJoystickSettings(
+      currentSettings.mobileJoystickMode,
+      currentSettings.mobileJoystickAnchorRx,
+      currentSettings.mobileJoystickAnchorRy,
+      initVp.width,
+      initVp.height,
+      performance.now(),
+      false,
+    )
+    this.hudManager.touchControls.onJoystickLockChange = (ev) => {
+      this.settingsStore.set({
+        mobileJoystickMode: ev.mode,
+        ...(ev.anchorRx !== undefined && ev.anchorRy !== undefined
+          ? { mobileJoystickAnchorRx: ev.anchorRx, mobileJoystickAnchorRy: ev.anchorRy }
+          : {}),
+      })
+    }
 
     this.mapService = options.mapService ?? null
     this.automapView =
@@ -683,12 +701,43 @@ export class OnlineSession {
       }
       if (
         next.hudLayoutMode !== prev.hudLayoutMode ||
+        next.mobileJoystickMode !== prev.mobileJoystickMode ||
+        next.mobileJoystickAnchorRx !== prev.mobileJoystickAnchorRx ||
+        next.mobileJoystickAnchorRy !== prev.mobileJoystickAnchorRy ||
         next.skillWheelBankMode !== prev.skillWheelBankMode ||
         next.mobileAutoPickupGoldAndPotions !== prev.mobileAutoPickupGoldAndPotions ||
         next.mobileHapticsEnabled !== prev.mobileHapticsEnabled
       ) {
         if (next.hudLayoutMode !== prev.hudLayoutMode) {
           this.hudManager.touchControls.applyHudLayoutMode(next.hudLayoutMode ?? 'auto')
+        }
+        if (
+          next.mobileJoystickMode !== prev.mobileJoystickMode ||
+          next.mobileJoystickAnchorRx !== prev.mobileJoystickAnchorRx ||
+          next.mobileJoystickAnchorRy !== prev.mobileJoystickAnchorRy
+        ) {
+          const vp = this.hudManager.viewportProfile
+          const resolved = this.hudManager.touchControls.applyJoystickSettings(
+            next.mobileJoystickMode,
+            next.mobileJoystickAnchorRx,
+            next.mobileJoystickAnchorRy,
+            vp.width,
+            vp.height,
+            performance.now(),
+            next.mobileJoystickMode !== prev.mobileJoystickMode,
+          )
+          if (
+            resolved.mode === 'fixed' &&
+            resolved.anchorRx !== undefined &&
+            resolved.anchorRy !== undefined &&
+            (resolved.anchorRx !== next.mobileJoystickAnchorRx ||
+              resolved.anchorRy !== next.mobileJoystickAnchorRy)
+          ) {
+            this.settingsStore.set({
+              mobileJoystickAnchorRx: resolved.anchorRx,
+              mobileJoystickAnchorRy: resolved.anchorRy,
+            })
+          }
         }
         if (next.skillWheelBankMode !== undefined) {
           this.hudManager.touchControls.skillWheelBankMode = next.skillWheelBankMode

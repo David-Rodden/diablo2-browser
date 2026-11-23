@@ -8,8 +8,8 @@ execution across `runReplay113c('a1c-bloodmoor-fallen')`.
 
 | Module | DLL executed | TS executed (`dll ∩ ts`) | TS total hit | manifest unported | manifest gap bytes | runtime exec gap (`dll - ts`) | runtime gap bytes |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| D2Common | 579 | 579 / 579 | 681 | 0 | 0 | 0 | 0 |
-| D2Game | 476 | 476 / 476 | 546 | 0 | 0 | 0 | 0 |
+| D2Common | 579 | 579 / 579 | 689 | 0 | 0 | 0 | 0 |
+| D2Game | 476 | 476 / 476 | 547 | 0 | 0 | 0 | 0 |
 
 ## D2Common Manifest Unported (0)
 

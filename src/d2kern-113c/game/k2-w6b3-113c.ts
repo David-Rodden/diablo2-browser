@@ -1998,7 +1998,9 @@ export function AI_ExecuteHirelingCombatStep_6FC3C8A0_113c(
           if (AI_WalkWanderAroundUnitOrSelf_6FD12870_113c(m, pOwner, 4, pGame, pMerc, { world }) !== 0) {
             return
           }
-          EVENT_DeleteEventByArg14_113c(m, pGame, pMerc, 2, 0)
+          if (pMerc !== 0) {
+            freeUnitType2TimerEvents113c(m, pGame, pMerc)
+          }
           if (AI_FleeFrom113c(world, pTarget, pMerc, 4, true)) {
             return
           }
@@ -2023,9 +2025,10 @@ export function AI_ExecuteHirelingCombatStep_6FC3C8A0_113c(
       return
     }
 
-    const pMonStats2 = m.u32((pMonStatsTxt + 0x08) >>> 0) >>> 0
-    const walkSteps = pMonStats2 !== 0 ? m.u8((pMonStats2 + 0x0e) >>> 0) : 8
-    AI_ApproachTarget113c(world, pMerc, pTarget, 15, 0, 0, walkSteps > 0 ? walkSteps : 1, 1)
+    const pMonStats2 = MONSTATS2_GetRecordPtr113c(m, nClassId) >>> 0
+    const nStepNum = pMonStats2 !== 0 ? m.u8((pMonStats2 + 0x0e) >>> 0) : 0
+    PATH_SetStepNum113c(m, m.u32((pMerc + 0x2c) >>> 0) >>> 0, nStepNum)
+    AI_ApproachTarget113c(world, pMerc, pTarget, 15, 0, 0, 1, 1)
     return
   }
 

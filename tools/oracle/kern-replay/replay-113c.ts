@@ -19,6 +19,8 @@ import { fileURLToPath } from 'node:url'
 import { gunzipSync } from 'node:zlib'
 import { SparseMemory113c } from '../../../src/d2kern-113c/mem/sparse-memory.ts'
 import { D2DynamicPathStrc, D2GameStrc, D2StaticPathStrc, D2UnitStrc } from '../../../src/d2kern-113c/mem/layout.generated.ts'
+// Ensure items.ts is entered before statlist.ts so circular Vite SSR ESM init completes statlist.ts before items.ts populates top-level mod tables.
+import '../../../src/d2kern-113c/common/items.ts'
 import { STATLIST_GetUnitStat113c } from '../../../src/d2kern-113c/common/statlist.ts'
 import { UNITS_GetRoom113c } from '../../../src/d2kern-113c/common/unit.ts'
 import { DUNGEON_GetLevelIdFromRoom113c } from '../../../src/d2kern-113c/common/dungeon.ts'
@@ -139,9 +141,12 @@ function ensureReplayHydrationAssetsLoaded113c(): void {
   const rawWildTemple = JSON.parse(
     gunzipSync(readFileSync(join(REPO_ROOT_113C, 'tools/oracle/k6-s3/drlg-wildtemple-ds1-dt1-113c.json.gz'))).toString('utf8'),
   ) as { ds1: Record<string, string>; dt1: Record<string, string> }
+  const rawK6Bundle = JSON.parse(
+    gunzipSync(readFileSync(join(REPO_ROOT_113C, 'tests/fixtures/oracle/k6-s3/k6-ds1-bundle.json.gz'))).toString('utf8'),
+  ) as { ds1: Record<string, string>; dt1: Record<string, string> }
   const ds1 = new Map<string, Uint8Array>()
   const dt1 = new Map<string, Uint8Array>()
-  for (const bundle of [raw, rawAct2To5, rawWildTemple]) {
+  for (const bundle of [raw, rawAct2To5, rawWildTemple, rawK6Bundle]) {
     for (const [k, b64] of Object.entries(bundle.ds1)) {
       ds1.set(k.replace(/\//g, '\\').toLowerCase(), new Uint8Array(Buffer.from(b64, 'base64')))
     }
@@ -498,6 +503,12 @@ function normalizeS2c22UninitPad113c(hex: string): string {
   // byte [2] (chars 4..5) and byte [10] (chars 20..21) as uninitialized MSVC stack bytes.
   if (lc.length === 24 && lc.startsWith('22')) {
     return `${lc.slice(0, 4)}00${lc.slice(6, 20)}00${lc.slice(22, 24)}`
+  }
+  // D2Game.dll@0x6FCAAC90 (all 29 callers) and all 10 inline 0x2A senders allocate 0x0F/0x10 stack
+  // bytes and write buf[0]=0x2a, buf[1]=type, buf[2]=result, buf[7..10]=dwParam7, buf[11..14]=gold,
+  // leaving buf[3..6] (chars 6..13) as uninitialized MSVC stack bytes.
+  if (lc.length === 30 && lc.startsWith('2a')) {
+    return `${lc.slice(0, 6)}00000000${lc.slice(14)}`
   }
   return hex
 }

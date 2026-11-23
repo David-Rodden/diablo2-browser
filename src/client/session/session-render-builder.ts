@@ -16,6 +16,7 @@ import {
   resolveCharacterAppearance,
   resolveEquipmentSlotsToAppearanceInput,
 } from '../../common/units/char-appearance.ts'
+import { resolveMeshPaperdollKeyFromSlots } from '../../common/units/mesh-skin-paperdoll.ts'
 import { isMonsterSubmergedMode113c } from '../../common/units/monai-113c.ts'
 import { resolveLevelAmbient } from '../../common/world/ambient-light.ts'
 import type { Environment } from '../../common/world/environment.ts'
@@ -577,6 +578,11 @@ export function buildRenderableUnits(
       isCorpse: isSelfDead,
       equipmentAppearance: selfEquipmentAppearance,
       appearanceKey: selfAppearanceKey,
+      meshPaperdoll: resolveMeshPaperdollKeyFromSlots(
+        (bodyLoc) => host.world.containers.equipmentBySlot.get(bodyLoc)?.code,
+        selfWeaponSet,
+        (bodyLoc) => host.world.containers.equipmentBySlot.get(bodyLoc)?.quality,
+      ),
       states: selfStates,
       stats: selfUnit?.stats ?? host.world.self.stats,
       ...((selfUnit as any)?.chargeCounts !== undefined
@@ -1133,6 +1139,15 @@ export function buildRenderableUnits(
               ? { equipmentAppearance: remoteEquipmentAppearance }
               : {}),
             ...(remoteAppearanceKey !== undefined ? { appearanceKey: remoteAppearanceKey } : {}),
+            ...(remoteEquipSlots
+              ? {
+                  meshPaperdoll: resolveMeshPaperdollKeyFromSlots(
+                    (bodyLoc) => remoteEquipSlots.get(bodyLoc)?.code,
+                    0,
+                    (bodyLoc) => remoteEquipSlots.get(bodyLoc)?.quality,
+                  ),
+                }
+              : {}),
           }
         : u.unitType === 'monster' && u.classId === 356
           ? (() => {

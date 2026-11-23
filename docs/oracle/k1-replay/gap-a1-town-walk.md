@@ -8,8 +8,8 @@ execution across `runReplay113c('a1-town-walk')`.
 
 | Module | DLL executed | TS executed (`dll ∩ ts`) | TS total hit | manifest unported | manifest gap bytes | runtime exec gap (`dll - ts`) | runtime gap bytes |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| D2Common | 352 | 352 / 352 | 492 | 0 | 0 | 0 | 0 |
-| D2Game | 247 | 247 / 247 | 317 | 0 | 0 | 0 | 0 |
+| D2Common | 352 | 352 / 352 | 503 | 0 | 0 | 0 | 0 |
+| D2Game | 247 | 247 / 247 | 318 | 0 | 0 | 0 | 0 |
 
 ## D2Common Manifest Unported (0)
 

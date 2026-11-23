@@ -166,5 +166,36 @@
       { "item": "El Rune" }
     ],
     "stash": []
+  },
+  "TestWowMage": {
+    "class": "Sorceress",
+    "level": 99,
+    "attributes": { "strength": 156, "dexterity": 100, "vitality": 399, "energy": 100 },
+    "gold": 990000,
+    "stashGold": 2500000,
+    "skills": {
+      "Fire Bolt": 20, "Warmth": 1, "Inferno": 1, "Blaze": 1, "Fire Ball": 20, "Fire Wall": 1, "Enchant": 1,
+      "Meteor": 20, "Fire Mastery": 20, "Hydra": 1, "Ice Bolt": 1, "Frozen Armor": 1, "Charged Bolt": 1,
+      "Telekinesis": 1, "Static Field": 1, "Teleport": 1
+    },
+    "leftSkill": "Fire Ball",
+    "rightSkill": "Teleport",
+    "quests": { "Den of Evil": "completed", "Tools of the Trade": "reward pending" },
+    "equipped": {},
+    "belt": [],
+    "inventory": [
+      { "item": "Short Staff" },
+      { "item": "Eagle Orb" },
+      { "item": "Buckler" },
+      { "item": "Cap/hat" },
+      { "item": "Quilted Armor" },
+      { "item": "Gloves(L)" },
+      { "item": "Town Portal Book", "quantity": 20 }
+    ],
+    "stash": [
+      { "item": "Helm" },
+      { "item": "Chain Mail" },
+      { "item": "Gaunlets(H)" }
+    ]
   }
 }

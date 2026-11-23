@@ -1516,14 +1516,7 @@ export function PLAYER_ProcessPlayerDeathAndPenalties_6FC99E40_113c(
   SUNIT_InitUnitAnimData113c(m, pVictim);
   PLAYER_FinalizeDeathStateAndEvents_6FC98230_113c(m, pVictim, pGame);
   MONSTER_ClearModeEvents113c(m, pGame, pVictim);
-  SUNIT_ScheduleModeAnimEvents113c(
-    m,
-    pGame,
-    pVictim,
-    { frames: 1, speed: 256, events: [] },
-    0,
-    256,
-  );
+  SUNIT_ScheduleModeAnimEvents113c(m, pGame, pVictim);
   if (STATES_CheckState113c(m, pVictim, 7) === 0 && pVictim !== 0) {
     m.setU32((pVictim + 0xc4) >>> 0, (m.u32((pVictim + 0xc4) >>> 0) & 0xfffffffd) >>> 0);
   }

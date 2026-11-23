@@ -53,8 +53,8 @@ const K6_S2_SCENARIO_SPECS_113C: readonly K6S2ScenarioSpec113c[] = [
     totalHits: 1360,
     d2CommonExecuted: 762,
     d2GameExecuted: 598,
-    minStrictHorizon: 311,
-    minPosHorizon: 360,
+    minStrictHorizon: 715,
+    minPosHorizon: 715,
   },
   {
     name: 'k6s2-sorceress-skills',
@@ -62,8 +62,8 @@ const K6_S2_SCENARIO_SPECS_113C: readonly K6S2ScenarioSpec113c[] = [
     totalHits: 1365,
     d2CommonExecuted: 742,
     d2GameExecuted: 623,
-    minStrictHorizon: 340,
-    minPosHorizon: 340,
+    minStrictHorizon: 680,
+    minPosHorizon: 680,
   },
   {
     name: 'k6s2-necromancer-skills',
@@ -71,8 +71,8 @@ const K6_S2_SCENARIO_SPECS_113C: readonly K6S2ScenarioSpec113c[] = [
     totalHits: 1426,
     d2CommonExecuted: 763,
     d2GameExecuted: 663,
-    minStrictHorizon: 296,
-    minPosHorizon: 335,
+    minStrictHorizon: 775,
+    minPosHorizon: 775,
   },
   {
     name: 'k6s2-paladin-skills',
@@ -80,8 +80,8 @@ const K6_S2_SCENARIO_SPECS_113C: readonly K6S2ScenarioSpec113c[] = [
     totalHits: 1316,
     d2CommonExecuted: 741,
     d2GameExecuted: 575,
-    minStrictHorizon: 268,
-    minPosHorizon: 268,
+    minStrictHorizon: 775,
+    minPosHorizon: 775,
   },
   {
     name: 'k6s2-barbarian-skills',
@@ -89,8 +89,8 @@ const K6_S2_SCENARIO_SPECS_113C: readonly K6S2ScenarioSpec113c[] = [
     totalHits: 1366,
     d2CommonExecuted: 775,
     d2GameExecuted: 591,
-    minStrictHorizon: 274,
-    minPosHorizon: 361,
+    minStrictHorizon: 665,
+    minPosHorizon: 665,
   },
   {
     name: 'k6s2-act2-sewers-cube-merc',
@@ -98,8 +98,8 @@ const K6_S2_SCENARIO_SPECS_113C: readonly K6S2ScenarioSpec113c[] = [
     totalHits: 1452,
     d2CommonExecuted: 809,
     d2GameExecuted: 643,
-    minStrictHorizon: 38,
-    minPosHorizon: 349,
+    minStrictHorizon: 1290,
+    minPosHorizon: 1290,
   },
   {
     name: 'k6s2-act4-hell-chaos-shrines',
@@ -107,8 +107,8 @@ const K6_S2_SCENARIO_SPECS_113C: readonly K6S2ScenarioSpec113c[] = [
     totalHits: 1655,
     d2CommonExecuted: 896,
     d2GameExecuted: 759,
-    minStrictHorizon: 95,
-    minPosHorizon: 241,
+    minStrictHorizon: 1225,
+    minPosHorizon: 1225,
   },
   {
     name: 'k6s2-act5-harrogath-shenk-anya',
@@ -116,8 +116,8 @@ const K6_S2_SCENARIO_SPECS_113C: readonly K6S2ScenarioSpec113c[] = [
     totalHits: 1588,
     d2CommonExecuted: 828,
     d2GameExecuted: 760,
-    minStrictHorizon: 33,
-    minPosHorizon: 49,
+    minStrictHorizon: 860,
+    minPosHorizon: 860,
   },
 ]
 
@@ -332,5 +332,24 @@ describe('[K6] Wave 4 8-scenario F2 boot hydration, ratchet horizons, and real-D
     expect(act5.frames.get(638)!.t0![0]![7]).toBe(111)
     expect(act5.frames.get(825)!.t0![0]![7]).toBe(111)
     expect(act5.frames.get(826)!.t0![0]![7]).toBe(109)
+  })
+
+  it('locks full-horizon zero-divergence closure across all 8 Wave 4 scenarios (Amazon 715/715, Sorceress 680/680, Necromancer 775/775, Paladin 775/775, Barbarian 665/665, Act 2 1290/1290, Act 4 1225/1225, Act 5 860/860)', () => {
+    for (const [name, expectedFrames] of [
+      ['k6s2-amazon-skills', 715],
+      ['k6s2-sorceress-skills', 680],
+      ['k6s2-necromancer-skills', 775],
+      ['k6s2-paladin-skills', 775],
+      ['k6s2-barbarian-skills', 665],
+      ['k6s2-act2-sewers-cube-merc', 1290],
+      ['k6s2-act4-hell-chaos-shrines', 1225],
+      ['k6s2-act5-harrogath-shenk-anya', 860],
+    ] as const) {
+      const r = getReplay(name)
+      expect(r.strictHorizon).toBe(expectedFrames)
+      expect(r.posHorizon).toBe(expectedFrames)
+      expect(r.firstStrictDivergence).toBeNull()
+      expect(r.firstPosDivergence).toBeNull()
+    }
   })
 })

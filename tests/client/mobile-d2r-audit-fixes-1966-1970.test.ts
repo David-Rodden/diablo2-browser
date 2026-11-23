@@ -1,8 +1,11 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
   computeCompactD2rHudMetrics,
+  computeJoystickLockButtonMetrics,
   detectMobileTouchEnvironment,
   hitTestCompactD2rHud,
+  JOYSTICK_FIXED_HIT_PADDING,
+  JOYSTICK_OUTER_RADIUS,
   TouchControlsHud,
 } from '../../src/client/ui/touch-controls.ts'
 import {
@@ -84,11 +87,13 @@ function makeMapper(hud: HudManager, sent: unknown[]): CommandMapper {
     self: { x: 5000, y: 5000, leftSkill: 0, rightSkill: 0, maxStamina: 0, stamina: 0 },
     areaId: 1,
     listUnits: () => [],
+    getUnitsByType: () => [],
     getUnit: () => undefined,
     getRevealedAreaIds: () => [],
     containers: { cursor: null },
     npcInteraction: {},
     pendingMeleeAttack: null,
+    cancelPendingMeleeAttack: () => {},
     noteOutgoingCommand: () => {},
   }
   return new CommandMapper({
@@ -147,6 +152,39 @@ describe('#1966 multi-touch routing & joystick hold loop', () => {
     mapper.handleTouchEnd(1, 180, 450, 1600)
     expect(hud.touchControls.joystick.active).toBe(false)
     expect(mapper.activeTouches.size).toBe(0)
+  })
+
+  it('toggles fixed joystick via on-canvas padlock medallion and lets outside-ring bottom-left taps reach the world', () => {
+    const hud = makeTouchHud(1068, 600)
+    const sent: unknown[] = []
+    const mapper = makeMapper(hud, sent)
+
+    // Move floating stick to (150, 440) and release
+    expect(mapper.handleTouchStart(1, 150, 440, 1000)).toBe('joystick')
+    mapper.handleTouchEnd(1, 150, 440, 1050)
+    expect(hud.touchControls.joystick.originX).toBe(150)
+    expect(hud.touchControls.joystick.originY).toBe(440)
+
+    // Tap padlock medallion -> locks at (150, 440) without starting joystick or world click
+    const lockBtn = computeJoystickLockButtonMetrics(150, 440, 1068, 600)
+    expect(mapper.handleTouchStart(2, lockBtn.cx, lockBtn.cy, 1100)).toBe('hud')
+    mapper.handleTouchEnd(2, lockBtn.cx, lockBtn.cy, 1120)
+    expect(hud.touchControls.joystickMode).toBe('fixed')
+    expect(hud.touchControls.joystick.originX).toBe(150)
+    expect(hud.touchControls.joystick.originY).toBe(440)
+
+    // Touch inside fixed ring (offset +50px right) keeps origin fixed and emits movement
+    expect(mapper.handleTouchStart(3, 200, 440, 1200)).toBe('joystick')
+    expect(hud.touchControls.joystick.originX).toBe(150)
+    expect(hud.touchControls.joystick.originY).toBe(440)
+    mapper.handleTouchEnd(3, 200, 440, 1250)
+
+    // Touch in bottom-left 35% area OUTSIDE fixed ring (> 92px away) routes to 'world' instead of joystick!
+    const worldX = 150 + JOYSTICK_OUTER_RADIUS + JOYSTICK_FIXED_HIT_PADDING + 30
+    const worldY = 260
+    expect(hud.isPointInterceptedByHud(worldX, worldY)).toBe(false)
+    expect(mapper.handleTouchStart(4, worldX, worldY, 1300)).toBe('world')
+    mapper.handleTouchEnd(4, worldX, worldY, 1350)
   })
 })
 

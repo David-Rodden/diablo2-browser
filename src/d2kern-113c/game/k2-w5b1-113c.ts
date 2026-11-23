@@ -3677,8 +3677,8 @@ export function SKILLS_SrvSt32_EnsureWeaponOrQuiverOrStartCast_6FC6C840_113c(
   if ((SKILLS_EnsurePlayerWeaponOrQuiverQuantity_6FCBEB80_113c(m, ebxUnit) | 0) !== 0) {
     return 1
   }
-  PLAYER_ScheduleSkillActionFrameEvents113c(m, esiGame, ebxUnit, 0, 0)
-  PLAYER_StartModeCast113c(m, esiGame, ebxUnit)
+  PLAYER_ScheduleSkillActionFrameEvents113c(m, esiGame, ebxUnit)
+  PLAYER_StartModeCast113c(m, esiGame, ebxUnit, 0, '1HS', true)
   return 0
 }
 

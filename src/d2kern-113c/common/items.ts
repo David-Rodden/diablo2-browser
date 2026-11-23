@@ -59,6 +59,13 @@ import {
   SGPT_MAGICAFFIX_TXT_COUNT_VA,
   SGPT_MAGICAFFIX_TXT_PTR_VA,
 } from '../tables/datatbls-113c.ts'
+export {
+  /**
+   * `@va D2Common:0x6FD72F20` (`D2Common.#10696`, misnamed `ITEMS_GetQuiverType` in earlier exports):
+   * reads `BYTE PTR [pItemsTxt + 0x104]`, which is `BinField` `'rangeadder'` at `D2Common.dll@0x6FDC8C1A`.
+   */
+  ITEMS_GetQuiverType113c as ITEMS_GetRangeAdder113c,
+} from '../tables/datatbls-113c.ts'
 import { DATATBLS_GetItemIdFromItemCode113c } from '../tables/item-tbls-113c.ts'
 import { SGP_ANIMDATA_TABLE_VA_113C } from '../tables/anim-tbls-113c.ts'
 import { COMPOSIT_GetWeaponClassCode113c } from './composit.ts'
@@ -95,7 +102,7 @@ import {
   INVENTORY_RemoveItemInternal113c,
   INVENTORY_UnitIsItem113c,
   ITEMS_GetComponentFromItem113c,
-  ITEMS_GetInvWidthFromId113c,
+  ITEMS_Is2HandedById113c,
   ITEMS_GetWeaponClassCodeIdx113c,
 } from './inventory.ts'
 import { STATLIST_GetStatsByIdFromList113c } from './missile.ts'
@@ -3593,15 +3600,18 @@ export function ITEMS_GetSubTypeFromItem113c(m: Memory113c, pItem: number): numb
 }
 
 /**
- * `@va D2Common:0x6FD74BF0` (`D2Common.#10326` `ITEMS_GetInvWidthFromItem`,
- * `__stdcall(pItem) -> u8`, `ret 4`).
+ * `@va D2Common:0x6FD74BF0` (`D2Common.#10326`, misnamed `ITEMS_GetInvWidthFromItem` in earlier exports —
+ * checks `pItem != 0 && pItem->dwUnitType == 4`, then tail-jumps `jmp 0x6FD72E70` which returns
+ * `D2ItemsTxt + 0x11C` = `BinField` `'2handed'` at `D2Common.dll@0x6FDC91E1`, `__stdcall(pItem) -> u8`, `ret 4`).
  */
-export function ITEMS_GetInvWidthFromItem113c(m: Memory113c, pItem: number): number {
+export function ITEMS_Is2Handed113c(m: Memory113c, pItem: number): number {
   hitD2CommonVa113c(0x6FD74BF0)
   const ptr = pItem >>> 0
   if (ptr === 0 || m.get(ptr, D2UnitStrc.dwUnitType) !== UNIT_ITEM) return 0
-  return ITEMS_GetInvWidthFromId113c(m, m.get(ptr, D2UnitStrc.dwClassId))
+  return ITEMS_Is2HandedById113c(m, m.get(ptr, D2UnitStrc.dwClassId))
 }
+
+export const ITEMS_GetInvWidthFromItem113c = ITEMS_Is2Handed113c
 
 /**
  * `@va D2Common:0x6FD74F90` (internal `ITEMS_CountSocketedItemsInGemSocketable`,
@@ -8072,24 +8082,33 @@ type ItemModFuncById113c = (
 ) => number
 
 const ITEMMODS_FUNC_TABLE_6FDEB0C8: readonly (ItemModFuncById113c | null)[] = [
-  null as unknown as ItemModFuncById113c | null,
-  ITEMMODS_ApplyPropertyCondResetAndSeedRoll113c as unknown as ItemModFuncById113c | null,
-  ITEMMODS_ApplyPropertyResetAndSeedRoll113c as unknown as ItemModFuncById113c | null,
-  ITEMMODS_ApplyPropertyCondResetAndRoll113c as unknown as ItemModFuncById113c | null,
-  ITEMMODS_ApplyPropertyResetAndRoll113c as unknown as ItemModFuncById113c | null,
+  null,
+  (m, nType, pAlt, pIt, pPr, bSet, wSt, nLay, nRol, nSt, fFl, u8) =>
+    ITEMMODS_ApplyPropertyCondResetAndSeedRoll113c(m, nType, pAlt, pIt, pPr, bSet, wSt, nLay, nRol, nSt, fFl, u8),
+  (m, nType, pAlt, pIt, pPr, bSet, wSt, nLay, nRol, nSt, fFl, u8) =>
+    ITEMMODS_ApplyPropertyResetAndSeedRoll113c(m, nType, pAlt, pIt, pPr, bSet, wSt, nLay, nRol, nSt, fFl, u8),
+  (m, nType, pAlt, pIt, pPr, bSet, wSt, nLay, nRol, nSt, fFl, u8) =>
+    ITEMMODS_ApplyPropertyCondResetAndRoll113c(m, nType, pAlt, pIt, pPr, bSet, wSt, nLay, nRol, nSt, fFl, u8),
+  (m, nType, pAlt, pIt, pPr, bSet, wSt, nLay, nRol, nSt, fFl, u8) =>
+    ITEMMODS_ApplyPropertyResetAndRoll113c(m, nType, pAlt, pIt, pPr, bSet, wSt, nLay, nRol, nSt, fFl, u8),
   (m, _t, pAlt, pIt, pPr, bSet, wSt, nLay, nRol, nSt, fFl, u8) =>
     ITEMMODS_ApplyMinDamagePercentProperty113c(m, pAlt, pIt, pPr, bSet, wSt, nLay, nRol, nSt, fFl, u8),
   (m, _t, pAlt, pIt, pPr, bSet, wSt, nLay, nRol, nSt, fFl, u8) =>
     ITEMMODS_ApplyMaxDamagePercentProperty113c(m, pAlt, pIt, pPr, bSet, wSt, nLay, nRol, nSt, fFl, u8),
   (m, _t, pAlt, pIt, pPr, bSet, wSt, nLay, nRol, nSt, fFl, u8) =>
     ITEMMODS_ApplyEnhancedDamagePercentProperty113c(m, pAlt, pIt, pPr, bSet, wSt, nLay, nRol, nSt, fFl, u8),
-  ITEMMODS_ApplyPropertySimpleLayer0_113c as unknown as ItemModFuncById113c | null,
-  ITEMMODS_ApplyPropertyOskill113c as unknown as ItemModFuncById113c | null,
-  ITEMMODS_ApplyPropertyClassSkillTab113c as unknown as ItemModFuncById113c | null,
+  (m, nType, pAlt, pIt, pPr, bSet, wSt, nLay, nRol, nSt, fFl, u8) =>
+    ITEMMODS_ApplyPropertySimpleLayer0_113c(m, nType, pAlt, pIt, pPr, bSet, wSt, nLay, nRol, nSt, fFl, u8),
+  (m, nType, pAlt, pIt, pPr, bSet, wSt, nLay, nRol, nSt, fFl, u8) =>
+    ITEMMODS_ApplyPropertyOskill113c(m, nType, pAlt, pIt, pPr, bSet, wSt, nLay, nRol, nSt, fFl, u8),
+  (m, nType, pAlt, pIt, pPr, bSet, wSt, nLay, nRol, nSt, fFl, u8) =>
+    ITEMMODS_ApplyPropertyClassSkillTab113c(m, nType, pAlt, pIt, pPr, bSet, wSt, nLay, nRol, nSt, fFl, u8),
   (m, _t, pAlt, pIt, pPr, bSet, wSt, nLay, nRol, nSt, fFl, u8) =>
     ITEMMODS_ApplyChargedSkillProperty113c(m, pAlt, pIt, pPr, bSet, wSt, nLay, nRol, nSt, fFl, u8),
-  ITEMMODS_ApplyPropertySkillOnHit113c as unknown as ItemModFuncById113c | null,
-  ITEMMODS_ApplyPropertyCondResetRollDurability113c as unknown as ItemModFuncById113c | null,
+  (m, nType, pAlt, pIt, pPr, bSet, wSt, nLay, nRol, nSt, fFl, u8) =>
+    ITEMMODS_ApplyPropertySkillOnHit113c(m, nType, pAlt, pIt, pPr, bSet, wSt, nLay, nRol, nSt, fFl, u8),
+  (m, nType, pAlt, pIt, pPr, bSet, wSt, nLay, nRol, nSt, fFl, u8) =>
+    ITEMMODS_ApplyPropertyCondResetRollDurability113c(m, nType, pAlt, pIt, pPr, bSet, wSt, nLay, nRol, nSt, fFl, u8),
   (m, _t, _pAlt, pIt, pPr, bSet, wSt, nLay, nRol, nSt, fFl, u8) =>
     ITEMS_CraftModRollSockets113c(m, pIt, pPr, bSet, wSt, nLay, nRol, nSt, fFl, u8),
   (m, _t, pAlt, pIt, pPr, bSet, wSt, nLay, nRol, nSt, fFl, u8) =>
@@ -8098,27 +8117,33 @@ const ITEMMODS_FUNC_TABLE_6FDEB0C8: readonly (ItemModFuncById113c | null)[] = [
     ITEMMODS_ApplyStatMaxProperty113c(m, pAlt, pIt, pPr, bSet, wSt, nLay, nRol, nSt, fFl, u8),
   (m, _t, pAlt, pIt, pPr, bSet, wSt, nLay, nRol, nSt, fFl, u8) =>
     ITEMMODS_ApplyStatRolledProperty113c(m, pAlt, pIt, pPr, bSet, wSt, nLay, nRol, nSt, fFl, u8),
-  ITEMMODS_ApplyPropertyPackedDuration113c as unknown as ItemModFuncById113c | null,
+  (m, nType, pAlt, pIt, pPr, bSet, wSt, nLay, nRol, nSt, fFl, u8) =>
+    ITEMMODS_ApplyPropertyPackedDuration113c(m, nType, pAlt, pIt, pPr, bSet, wSt, nLay, nRol, nSt, fFl, u8),
   (m, _t, pAlt, pIt, pPr, _bSet, wSt, _nLay, _nRol, nSt, fFl) =>
     ITEMMODS_ApplyCastSkillPropStat113c(m, pAlt, pIt, pPr, wSt, nSt, fFl),
-  ITEMMODS_ApplyPropertyIndestructible113c as unknown as ItemModFuncById113c | null,
-  ITEMMODS_ApplyPropertySingleSkill113c as unknown as ItemModFuncById113c | null,
-  ITEMMODS_ApplyPropertyAura113c as unknown as ItemModFuncById113c | null,
+  (m, nType, pAlt, pIt, pPr, bSet, wSt, nLay, nRol, nSt, fFl, u8) =>
+    ITEMMODS_ApplyPropertyIndestructible113c(m, nType, pAlt, pIt, pPr, bSet, wSt, nLay, nRol, nSt, fFl, u8),
+  (m, nType, pAlt, pIt, pPr, bSet, wSt, nLay, nRol, nSt, fFl, u8) =>
+    ITEMMODS_ApplyPropertySingleSkill113c(m, nType, pAlt, pIt, pPr, bSet, wSt, nLay, nRol, nSt, fFl, u8),
+  (m, nType, pAlt, pIt, pPr, bSet, wSt, nLay, nRol, nSt, fFl, u8) =>
+    ITEMMODS_ApplyPropertyAura113c(m, nType, pAlt, pIt, pPr, bSet, wSt, nLay, nRol, nSt, fFl, u8),
   (m, _t, _pAlt, pIt, pPr, bSet, wSt, nLay, nRol, nSt, fFl, u8) =>
     ITEMS_CraftModMakeEthereal113c(m, pIt, pPr, bSet, wSt, nLay, nRol, nSt, fFl, u8),
-  ITEMMODS_ApplyPropertySimpleStat113c as unknown as ItemModFuncById113c | null,
-  null as unknown as ItemModFuncById113c | null,
-  null as unknown as ItemModFuncById113c | null,
-  null as unknown as ItemModFuncById113c | null,
-  null as unknown as ItemModFuncById113c | null,
-  null as unknown as ItemModFuncById113c | null,
-  null as unknown as ItemModFuncById113c | null,
-  null as unknown as ItemModFuncById113c | null,
-  null as unknown as ItemModFuncById113c | null,
-  null as unknown as ItemModFuncById113c | null,
-  null as unknown as ItemModFuncById113c | null,
-  null as unknown as ItemModFuncById113c | null,
-  ITEMMODS_ApplyPropertyClassSkill113c as unknown as ItemModFuncById113c | null,
+  (m, nType, pAlt, pIt, pPr, bSet, wSt, nLay, nRol, nSt, fFl, u8) =>
+    ITEMMODS_ApplyPropertySimpleStat113c(m, nType, pAlt, pIt, pPr, bSet, wSt, nLay, nRol, nSt, fFl, u8),
+  null,
+  null,
+  null,
+  null,
+  null,
+  null,
+  null,
+  null,
+  null,
+  null,
+  null,
+  (m, nType, pAlt, pIt, pPr, bSet, wSt, nLay, nRol, nSt, fFl, u8) =>
+    ITEMMODS_ApplyPropertyClassSkill113c(m, nType, pAlt, pIt, pPr, bSet, wSt, nLay, nRol, nSt, fFl, u8),
 ]
 
 type LegacyPropFunc113c = (
@@ -8134,7 +8159,11 @@ type LegacyPropFunc113c = (
   s7: number,
 ) => number
 
-const ITEMMODS_LEGACY_TABLE_6FDEA928: readonly [LegacyPropFunc113c | null, number][] = [
+let itemModsLegacyTable6FDEA928: readonly [LegacyPropFunc113c | null, number][] | null = null
+
+function getItemModsLegacyTable6FDEA928(): readonly [LegacyPropFunc113c | null, number][] {
+  if (itemModsLegacyTable6FDEA928 !== null) return itemModsLegacyTable6FDEA928
+  itemModsLegacyTable6FDEA928 = [
   [ITEMS_ApplyElemMasteryOrPierceMaxOnly113c as unknown as LegacyPropFunc113c | null, 31],
   [ITEMS_ApplyElemMasteryOrPierceMaxOnly113c as unknown as LegacyPropFunc113c | null, 32],
   [ITEMS_ApplyElemMasteryOrPierceMaxOnly113c as unknown as LegacyPropFunc113c | null, 33],
@@ -8379,7 +8408,9 @@ const ITEMMODS_LEGACY_TABLE_6FDEA928: readonly [LegacyPropFunc113c | null, numbe
   [ITEMMODS_StubReturnOne113c as unknown as LegacyPropFunc113c | null, 4294967295],
   [STATLIST_RemoveItemDurabilityStatsModHandler113c as unknown as LegacyPropFunc113c | null, 4294967295],
   [ITEMMODS_ApplyCastSkillOnItemPropStat113c as unknown as LegacyPropFunc113c | null, 204],
-]
+  ]
+  return itemModsLegacyTable6FDEA928
+}
 
 const SET_MASK_ACTIVE_COUNT_6FDE3200: readonly number[] = [
   0, 1, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3, 2, 3, 3, 4,
@@ -8496,7 +8527,7 @@ export function ITEMMODS_ApplyItemProperty113c(
   const dt = m.u32(ITEMS_SGPT_DATATABLES_VA_113C) >>> 0
   const nPropCount = m.u32((dt + 0xac) >>> 0) | 0
   if (nPropId >= nPropCount) return
-  const entry = ITEMMODS_LEGACY_TABLE_6FDEA928[nPropId]
+  const entry = getItemModsLegacyTable6FDEA928()[nPropId]
   if (entry === undefined) return
   const fn = entry[0]
   if (fn === null) return
@@ -8632,28 +8663,27 @@ export function ITEMS_ApplyItemQualityMods113c(
       if (q === 1 && i >= 12) throw new D2CommonAssertError('', 129)
       pProp = q === 0 ? ((pCur + 0x18) >>> 0) : pCur
     } else if (q === 2 || q === 5) {
-      pProp = DRLG_GetAutomapCoordSlotPtr113c(propsBase, i, pSeed) >>> 0
+      pProp = DRLG_GetAutomapCoordSlotPtr113c(propsBase, pSeed, i) >>> 0
     } else if (q === 6 || q === 7) {
       pProp = pCur
     } else {
       return
     }
-    if (pProp !== 0 && (m.u32(pProp) | 0) >= 0) {
-      ITEMMODS_ApplyItemProperty113c(
-        m,
-        item,
-        0x40,
-        0,
-        pProp,
-        q | 0,
-        0,
-        propsBase,
-        i,
-        pSeed,
-        unit,
-        _nUnused2,
-      )
-    }
+    if (pProp === 0 || (m.u32(pProp) | 0) < 0) return
+    ITEMMODS_ApplyItemProperty113c(
+      m,
+      item,
+      0x40,
+      0,
+      pProp,
+      q | 0,
+      0,
+      propsBase,
+      i,
+      pSeed,
+      unit,
+      _nUnused2,
+    )
     pCur = (pCur + 0x10) >>> 0
   }
 }

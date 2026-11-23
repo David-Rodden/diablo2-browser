@@ -823,6 +823,9 @@ def write_glb(model: UnitModel, path: str) -> None:
     if images:
         gltf["images"] = images
         gltf["textures"] = textures
+    extras = getattr(model, "extras", None)
+    if extras:
+        gltf["extras"] = extras
     while len(b.bin) % 4:
         b.bin.append(0)
     gltf["buffers"][0]["byteLength"] = len(b.bin)

@@ -56,6 +56,8 @@ import {
   STATES_ToggleGfxStateFlag113c,
   STATLIST_AllocList113c,
   STATLIST_FreeStatListIfNonExtended113c,
+  STATLIST_GetState113c,
+  STATLIST_GetStatListFromUnitAndFlag113c,
   STATLIST_GetUnitBaseStat113c,
   STATLIST_GetUnitStat113c,
   STATLIST_MergeStatLists113c,
@@ -108,6 +110,7 @@ import {
   STATES_CreateOrUpdateAuraStatList113c,
 } from './k2-gap-itemdef-113c.ts'
 import {
+  dispatchUnlinkedCurseRemoveProc113c,
   MISSILE_CreateServerProjectile113c,
   MISSILE_ProcessTargetCollisionHit113c,
   SKILLS_ResolveChargedSrvMissileId113c,
@@ -140,6 +143,7 @@ import {
 import {
   CLIENTS_GetClientGame_6FC69A80_113c,
   SKILLS_AddDamagePercentStat_6FC6C190_113c,
+  SKILLS_ApplyCurseSpecialMonsterAiState_6FC700A0_113c,
 } from './k2-laneL-0x6fc6-w1-113c.ts'
 import {
   ACT5Q3_EnsureAnyaTownPortalSpawned_6FC77CB0_113c,
@@ -690,6 +694,10 @@ export function ITEMS_DuplicateItemWithSocketFillers_6FC307E0_113c(
     let remBytes = (nTotalBytes - rootBytesRead) | 0
     ITEMS_SetOrClearCommandFlags113c(m, pNewItem, 0x80000, 1)
     ITEMS_SetOrClearCommandFlags113c(m, pNewItem, 0x2000, 0)
+    const srcStack = STATLIST_GetUnitStat113c(m, srcItem, 0x46, 0) | 0
+    if (srcStack !== 0 && (STATLIST_GetUnitStat113c(m, pNewItem, 0x46, 0) | 0) === 0) {
+      STATLIST_SetUnitStat113c(m, pNewItem, 0x46, srcStack, 0)
+    }
     if (bCloneSockets !== 0) {
       const nSocketCount = i32(m, (pHeader + 0x14) >>> 0)
       if (nSocketCount > 0) {
@@ -1752,8 +1760,9 @@ function MONSTER_SetNpcIntroFlag_6FCDD330_113c(
   m: D2KernMemory113c,
   pInteractUnit: number,
   pGame: number,
+  pClient = 0,
 ): void {
-  NPC_SendHirelingListPacketsToClient_6FCDD330_113c(m, pInteractUnit, pGame, 0)
+  NPC_SendHirelingListPacketsToClient_6FCDD330_113c(m, pInteractUnit, pGame, pClient)
 }
 function UNIT_SetInteractUnit_6FCFFAE0_113c(
   m: D2KernMemory113c,
@@ -1865,6 +1874,54 @@ function SKILLS_IsCurseDurationDifficultyScaled_6FC6DF80_113c(...args: Parameter
 function SKILLS_ScaleCurseDurationByDifficulty_6FC6DF60_113c(...args: Parameters<typeof SKILLS_DivideValueByMonLvlHp113c>): ReturnType<typeof SKILLS_DivideValueByMonLvlHp113c> {
   return SKILLS_DivideValueByMonLvlHp113c(...args)
 }
+function applyCurseWithUnlinkRemoveProc113c(
+  m: D2KernMemory113c,
+  pTarget: number,
+  pCurseCtx: number,
+  fnVa: number,
+): number {
+  const target = pTarget >>> 0;
+  const ctx = pCurseCtx >>> 0;
+  const va = fnVa >>> 0;
+  const pOldCurse = STATLIST_GetStatListFromUnitAndFlag113c(m, target, 0x20) >>> 0;
+  const oldState = pOldCurse !== 0 ? (STATLIST_GetState113c(m, pOldCurse) | 0) : -1;
+  const oldFpRemove = pOldCurse !== 0 ? (m.u32((pOldCurse + 0x38) >>> 0) >>> 0) : 0;
+
+  let rc = 0;
+  if (va === 0x6fc70250) {
+    rc = SKILLS_ApplyCurseStateAndStatsCallback_6FC70250_113c(m, target, ctx) | 0;
+  } else if (va === 0x6fc70b70) {
+    rc = SKILLS_ApplyAttractCurseCallback_6FC70B70_113c(m, target, ctx) | 0;
+  }
+
+  if (pOldCurse !== 0) {
+    const pNowCurse = STATLIST_GetStatListFromUnitAndFlag113c(m, target, 0x20) >>> 0;
+    if (pNowCurse !== pOldCurse) {
+      dispatchUnlinkedCurseRemoveProc113c(m, target, oldState, oldFpRemove, pOldCurse);
+      if (pNowCurse !== 0) {
+        const newState = STATLIST_GetState113c(m, pNowCurse) | 0;
+        if (newState === oldState && newState >= 0) {
+          STATES_ToggleGfxStateFlag113c(m, target, newState, 1);
+        }
+        if (
+          va === 0x6fc70250 &&
+          oldFpRemove === 0x6fc70130 &&
+          ctx !== 0 &&
+          (m.u32((ctx + 0x08) >>> 0) | 0) !== 0
+        ) {
+          SKILLS_ApplyCurseSpecialMonsterAiState_6FC700A0_113c(
+            m,
+            m.u32((ctx + 0x10) >>> 0) | 0,
+            target,
+            m.u32(ctx) >>> 0,
+          );
+        }
+      }
+    }
+  }
+  return rc;
+}
+
 function AURA_ExecuteRadiusFilterAtTargetPos_6FCC0AD0_113c(
   m: D2KernMemory113c,
   pGame: number,
@@ -1882,10 +1939,8 @@ function AURA_ExecuteRadiusFilterAtTargetPos_6FCC0AD0_113c(
     pUnit,
     radius,
     (mm, pTarget, pArg) => {
-      if (pfnCallback === 0x6fc70250) {
-        SKILLS_ApplyCurseStateAndStatsCallback_6FC70250_113c(mm, pTarget, pArg)
-      } else if (pfnCallback === 0x6fc70b70) {
-        SKILLS_ApplyAttractCurseCallback_6FC70B70_113c(mm, pTarget, pArg)
+      if (pfnCallback === 0x6fc70250 || pfnCallback === 0x6fc70b70) {
+        applyCurseWithUnlinkRemoveProc113c(mm, pTarget, pArg, pfnCallback);
       }
     },
     pCurseCtx,
@@ -2263,7 +2318,7 @@ export function SKILLS_SrvDo029_ApplySingleTargetMonsterCurse_6FC49000_113c(
     }
     m.setU32((pCurseCtx + 0x4c) >>> 0, wAuraTargetState >>> 0);
 
-    SKILLS_ApplyCurseStateAndStatsCallback_6FC70250_113c(m, pTarget, pCurseCtx);
+    applyCurseWithUnlinkRemoveProc113c(m, pTarget, pCurseCtx, 0x6fc70250);
   } finally {
     k2W7B1StackPtr = savedSp;
   }
@@ -3234,7 +3289,7 @@ export function NPC_StartPlayerNpcInteraction_6FC687A0_113c(
     pGame,
     pClient,
   ) | 0;
-  MONSTER_SetNpcIntroFlag_6FCDD330_113c(m, pInteractUnit, introFlag);
+  MONSTER_SetNpcIntroFlag_6FCDD330_113c(m, pInteractUnit, introFlag, pClient);
   UNIT_SetInteractUnit_6FCFFAE0_113c(m, pUnit, 1, m.u32((pInteractUnit + 0x0c) >>> 0));
   m.setU32((pNode + 0x04) >>> 0, 0);
 
@@ -3664,7 +3719,7 @@ export function SKILLS_ApplyDimVisionToTarget_6FC70470_113c(
       m.setU32((pCurseCtx + 0x34 + idx * 4) >>> 0, val);
     }
     m.setU32((pCurseCtx + 0x4c) >>> 0, i16(m, (pSkillTxt + 0x82) >>> 0) >>> 0);
-    SKILLS_ApplyCurseStateAndStatsCallback_6FC70250_113c(m, pTarget, pCurseCtx);
+    applyCurseWithUnlinkRemoveProc113c(m, pTarget, pCurseCtx, 0x6fc70250);
   } finally {
     k2W7B1StackPtr = savedSp;
   }

@@ -1155,7 +1155,7 @@ function findItemDropPosition6FC2E930(
   ) >>> 0
 }
 
-function findTargetForPlayerOrPet6FCD1C90W13B1(
+export function findTargetForPlayerOrPet6FCD1C90W13B1(
   m: D2KernMemory113c,
   pGame: number,
   pOriginUnit: number,
@@ -1163,6 +1163,7 @@ function findTargetForPlayerOrPet6FCD1C90W13B1(
   pnOutDist: number,
   pbOutInMelee: number,
 ): number {
+  hitD2GameVa113c(0x6FCD1C90)
   if (pnOutDist !== 0) m.setU32(pnOutDist >>> 0, 0)
   if (pbOutInMelee !== 0) m.setU32(pbOutInMelee >>> 0, 0)
   if (pOriginUnit === 0) return 0
@@ -4398,8 +4399,8 @@ export function D2Game_6FCDE2A0_113c(
     const pItem = ITEMS_SpawnItemWithParams_6FC31980_113c(
       m,
       itemLvl,
-      1,
       0,
+      1,
       pNpc,
       nItemId,
       pGame,
@@ -4844,8 +4845,8 @@ export function D2Game_6FCDEE30_113c(
       pItem = ITEMS_SpawnItemWithParams_6FC31980_113c(
         m,
         nItemLevel,
-        1,
         0,
+        1,
         pNpc,
         nItemId,
         pGame,

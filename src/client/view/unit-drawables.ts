@@ -192,6 +192,8 @@ export interface RenderableUnitInput {
   readonly token?: string | undefined
   readonly equipmentAppearance?: SorceressAppearanceSpec | undefined
   readonly appearanceKey?: string | undefined
+  /** Paper-doll selection key for mesh skins (`encodeMeshPaperdollSelection`), when equipment is known. */
+  readonly meshPaperdoll?: string | undefined
   readonly overlays?: readonly UnitOverlayState[] | undefined
   readonly states?: ReadonlySet<number> | readonly number[] | Iterable<number> | undefined
   readonly isHovered?: boolean | undefined
@@ -315,6 +317,8 @@ export interface SceneUnitDrawable {
   readonly tintColor: readonly [number, number, number] | null
   readonly equipmentAppearance?: SorceressAppearanceSpec | undefined
   readonly appearanceKey?: string | undefined
+  /** Paper-doll selection key for mesh skins (`encodeMeshPaperdollSelection`), when equipment is known. */
+  readonly meshPaperdoll?: string | undefined
   readonly overlays: readonly SceneOverlayDrawable[]
   readonly warpId?: number | undefined
   readonly toLevelId?: number | undefined
@@ -1986,6 +1990,7 @@ export function buildSceneDrawables(
         }
         return unit.appearanceKey !== undefined ? { appearanceKey: unit.appearanceKey } : {}
       })(),
+      ...(unit.meshPaperdoll !== undefined ? { meshPaperdoll: unit.meshPaperdoll } : {}),
       overlays: unitOverlays,
       ...(warpId !== undefined ? { warpId } : {}),
       ...(unit.toLevelId !== undefined ? { toLevelId: unit.toLevelId } : {}),

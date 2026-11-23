@@ -46,9 +46,13 @@ import { ANIMSEQ_GetEventAtFrame113c } from '../common/composit.ts'
 import { mulDiv113c } from '../common/int-math.ts'
 import {
   SKILLS_AddSkillToUnit113c,
+  SKILLS_EvalCalcByOffset113c,
+  SKILLS_EvaluateSkillLevel113c,
   SKILLS_GetCharges113c,
   SKILLS_GetHighestLevelSkillFromUnitAndIdFastcall113c,
   SKILLS_GetSkillById113c,
+  SKILLS_GetSkillIdFromSkill113c,
+  SKILLS_GetSkillSlotIndex113c,
   SKILLS_SetCharges113c,
   SKILLS_SetRightSkill113c,
   SKILLS_SetSkillLevelOnUnit113c,
@@ -82,12 +86,11 @@ import {
   applyHireableModeVelocityOverrideK3_113c,
   awardMonsterKillExperienceWithMercK3_113c,
   hydrateMercHireableSnapshotStateK3_113c,
-  onMonsterStartSkillModeK3_113c,
   recordPlayerWalkBreadcrumbK3_113c,
   runHireableAiThinkK3_113c,
   stepMonsterAttackOrSkillActionK3_113c,
 } from './k3-merc-hireable-replay-113c.ts'
-import { D2COMMON_SGPT_DATATABLES_VA_113C } from '../common/inline-helpers.ts'
+import { D2COMMON_SGPT_DATATABLES_VA_113C, D2CommonAssertError } from '../common/inline-helpers.ts'
 import {
   DATATBLS_CalculateMonsterStatsByLevel113c,
   STATLIST_FreeModStats113c,
@@ -136,6 +139,7 @@ import {
   UNITS_HasAnyGfxStateFlag113c,
   UNITS_IsUnitMovingBool113c,
   UNITS_SetSeed113c,
+  UNITS_SetSeqFrameFromLowByte113c,
   UNITS_SetUnitAnimMode113c,
   UNITS_UpdateAnimFrame113c,
 } from '../common/unit.ts'
@@ -165,6 +169,7 @@ import {
   EVENT_AllocChunk113c,
   EVENT_DeleteEventByArg14_113c,
   EVENT_DeleteEventByType113c,
+  EVENT_FreeNode113c,
   EVENT_GetNextEventFrame113c,
   EVENT_InitTimerQueue113c,
   EVENT_SetEventFull113c,
@@ -183,6 +188,7 @@ import {
   MONSTER_IsContinuousMode113c,
   MONSTER_RegisterContinuousModeEvent113c,
   SUNIT_IsDeadOrDying113c,
+  UNITS_ChangeAnimMode113c,
   registerMonsterAiThinkVaHandler113c,
 } from './monster-events.ts'
 import {
@@ -215,9 +221,10 @@ import {
   C2S_Packet0B_Noop1Byte113c,
   C2S_Packet3C_SelectSkill113c,
   C2S_Packet5F_UpdatePlayerPos113c,
+  PLAYER_StartModeOnUnit113c,
   type C2SPacketCallees113c,
 } from './c2s-packet-113c.ts'
-import { SUNIT_HASH_OFFSET_BY_TYPE_113C } from './game-strc.ts'
+import { SUNIT_GetServerUnit113c, SUNIT_HASH_OFFSET_BY_TYPE_113C } from './game-strc.ts'
 import {
   DUNGEON_AllocAct113c,
   DUNGEON_AreAllAdjacentRoomsActive113c,
@@ -258,16 +265,21 @@ import {
   PLAYER_GetParam158_113c,
   PLAYER_GetParam15C_113c,
   REGPOP_CanPopulateRoom113c,
+  SKILLS_GetRecordPtrFast113c,
   SUNIT_AllocUnitData113c,
   SUNIT_DeactivateUnitStatesAndEvents113c,
+  SUNIT_InitUnitAnimData113c,
   SUNIT_IsUnitInActiveClientRoom113c,
   SUNIT_PlaceServerUnitInRoom113c,
   SUNIT_ValidatePathTargetUnit113c,
   type RegpopSpawnHooks113c,
 } from './regpop-spawn-113c.ts'
 import {
+  AI_FallenShaman113c,
+  AI_Skeleton113c,
   AIGENERAL_InitBossGroup113c,
   AIGENERAL_LinkMinionToLeader113c,
+  MONSTER_StartAttackOrCast113c,
   SUNITDMG_FreeAttackerCombatList113c,
 } from './ai-fallen-113c.ts'
 import {
@@ -285,8 +297,10 @@ import {
   S2C_SendPacket0E_UnitCorpseState113c,
   S2C_SendPacket0F_UnitWalkToTarget113c,
   S2C_SendPacket9C_ItemActionWorld113c,
+  SKILLS_CheckSkillManaAndCharges113c,
   SKILLS_DoUsedSkillAction113c,
   SKILLS_StartUsedSkill113c,
+  SUNIT_AreUnitsHostileOrUnaligned113c,
   SUNIT_DispatchItemEventCallbacks113c,
   UNITROOM_BroadcastGroundItemIfUpdated113c,
   UNITROOM_IsClientInUnitRoom113c,
@@ -301,6 +315,8 @@ import {
 } from './replay-final11-113c.ts'
 import {
   D2GAME_FP_REMOVE_TIMED_STATE_VA_113C,
+  MISSILES_GetTxtRecordFast113c,
+  MISSILE_DestroyDataAndEvents113c,
   MISSILE_DispatchFrameTick113c,
   MONSTER_Event03_RegenAndPoisonTick113c,
   MONSTER_Event12_ExpireTimedStats113c,
@@ -319,7 +335,6 @@ import {
   ITEMEVENT_ManaAfterKill113c,
   ITEMS_DeactivateEquippedItemStats113c,
   ITEMS_GetScrollOrTomeSkillId113c,
-  MONSTER_SetLastHitModeField54_113c,
   NET_SendUnitTargetedSkillAction113c,
   SKILLS_Event08_AuraPulseTick113c,
   setItemdefGapMonsterKillHook113c,
@@ -331,10 +346,46 @@ import {
   D2GAME_ITEMS_SnapshotUnitStatsAndSkills113c,
   D2GAME_ITEMS_UpdateAllInventoryAndEquipmentStats113c,
 } from './boot-init-gap-b-113c.ts'
-import { SUNIT_FindItemEventNode113c } from './k2-items-tc-w1-113c.ts'
+import {
+  MONSTER_Event7_MonUModEvent2_113c,
+  SUNIT_FindItemEventNode113c,
+} from './k2-items-tc-w1-113c.ts'
+import {
+  SKILLS_SpawnBlazeTrailMissileOnStep_6FC639A0_113c,
+  SKILLS_SrvDo_DruidChargeUpHit_6FC66000_113c,
+} from './k2-w3b4-113c.ts'
 import { MONSTER_StartGetHitOrScheduleAi_6FC965E0_113c } from './k2-w3b7-113c.ts'
-import { MONSTER_TickPathStepAndAnim_6FC96A10_113c } from './k2-w4b4-113c.ts'
-import { SKILLS_ApplyMeleeHitAuraStatesAndExecuteEvents_6FCC3220_113c } from './k2-w4b6-113c.ts'
+import {
+  AI_ThinkBurrowerSpawner_6FCA77B0_113c,
+  AI_ThinkChargerRunOrAttack_6FCA2EC0_113c,
+  AI_ThinkDualAttackMelee_6FCA3AC0_113c,
+  AI_ThinkMeleeBasic_6FCA1F50_113c,
+  AI_ThinkMonsterSpawnerNest_6FCA7A60_113c,
+  AI_ThinkPackFollowerMelee_6FCA4800_113c,
+  AI_ThinkSimpleMeleeVariantA_6FCA2430_113c,
+  AI_ThinkSimpleMeleeVariantB_6FCA2570_113c,
+  MONSTER_TickPathStepAndAnim_6FC96A10_113c,
+  NET_SendPacketA3_AuraTargetSkill_6FCABA90_113c,
+} from './k2-w4b4-113c.ts'
+import {
+  AI_AttackWestOffsetThenDie_6FCC4B90_113c,
+  AI_TickAmbientMode8OrStall30_6FCC58D0_113c,
+  AI_TickAncientStatueRevertCheck_6FCC4F40_113c,
+  AI_TickEmergeQuadrantAttackAndSubmerge_6FCC5580_113c,
+  AI_TickSummonedFollowTeleportSkill292_6FCC5350_113c,
+  AI_TickSummonedTimedAttacker_6FCC4D10_113c,
+  AI_TickTimedSkillCasterOrExpire_6FCC57E0_113c,
+  SKILLS_ApplyMeleeHitAuraStatesAndExecuteEvents_6FCC3220_113c,
+  SKILLS_ApplySkillDelayState121OnPlayer_6FCBFF70_113c,
+  SKILLS_DispatchStateOnSrvDoFuncForSkill_6FCBE8E0_113c,
+} from './k2-w4b6-113c.ts'
+import {
+  AI_Thinker_MeleeRangedApproachStall_6FC38A90_113c,
+  AI_Thinker_PutridDefiler_6FC38730_113c,
+  PLAYER_SendInventoryItemsSyncPackets_6FC57C90_113c,
+  SKILLS_SrvSt32_EnsureWeaponOrQuiverOrStartCast_6FC6C840_113c,
+} from './k2-w5b1-113c.ts'
+import { NET_SendMonsterSkillCastPacket4COr4D_6FD134C0_113c } from './k2-w5b10-113c.ts'
 import {
   COLLISION_CheckMaskWithPattern2_113c,
   COLLISION_SetMaskWithPattern113c,
@@ -345,7 +396,9 @@ import {
   MISSILE_BuildK3Hooks113c,
   PLAYER_HandleC2SRightSkillK3_113c,
   PLAYER_IsNonMeleeSequenceSkillK3_113c,
+  PLAYER_StartCastSkillOnUnitK3_113c,
   PLAYER_StepSkillKeyframeK3_113c,
+  SKILLS_DoUsedSkillActionK3_113c,
 } from './k3-p52-sorc-handlers-113c.ts'
 import {
   dispatchAttackerMeleeHitItemEventsK3_113c,
@@ -389,24 +442,47 @@ import {
 } from './k2-real-itemdrop-113c.ts'
 import { OBJECTS_SpawnSingleDensityObjectInRoom_6FC52BC0_113c } from './k2-laneJ-0x6fc4-w1-113c.ts'
 import {
+  AI_SpawnPackMinionOrStartMode_6FC3BCA0_113c,
+  AI_StepTurnAndCastSkill4_6FC3C1E0_113c,
   OBJECTS_DispatchPresetObjectSpawner_6FC4E830_113c,
   OBJECTS_PopulateBarrelClustersInRoom_6FC50800_113c,
   OBJECTS_PopulateCrateClustersInRoom_6FC50150_113c,
 } from './k2-w3b2-113c.ts'
+import { MISSILES_SrvDo13_SpawnOppositeSubMissilesAlongStep_6FC5F9F0_113c } from './k2-w3b3-113c.ts'
 import {
   ACT5Q1_InitPresetQuestObject21F_6FC7A5C0_113c,
   ACT5Q3_InitPresetQuestObject1CB_6FC79E10_113c,
   ACT5Q3_InitPresetQuestObject1CD_6FC79D30_113c,
 } from './k2-w3b5-113c.ts'
 import {
+  AI_ThinkPackIdlePatrol_6FC373D0_113c,
+  AI_ThinkPutridDefiler_6FC389E0_113c,
   OBJECTS_SpawnChestClusterInRoom_6FC52DF0_113c,
   OBJECTS_SpawnShrineFromGroupEntry_6FC527D0_113c,
   OBJECTS_SpawnWellFromGroupEntry_6FC52A10_113c,
 } from './k2-w4b1-113c.ts'
-import { MONSTER_SpawnUniqueBossWithChampionMinionPack_6FC679B0_113c } from './k2-w12b1-113c.ts'
-import { MONAI_CorruptRogueArcherThink_6FCA26B0_113c } from './k2-w5b6-113c.ts'
-
-registerMonsterAiThinkVaHandler113c(0x6fca26b0, MONAI_CorruptRogueArcherThink_6FCA26B0_113c)
+import {
+  AI_ThinkMercenaryMain_6FC3DD40_113c,
+  AI_Think_BurrowingScarabOrFrog_6FCA9C30_113c,
+  AI_Think_Raven_6FCCA1D0_113c,
+  AI_Think_SandMaggot_6FCA9870_113c,
+  AI_Think_ShadowWarriorAndMaster_6FCC9E80_113c,
+  MONSTER_SpawnUniqueBossWithChampionMinionPack_6FC679B0_113c,
+} from './k2-w12b1-113c.ts'
+import {
+  MONAI_AuraKnightOrZealotThink_6FCA9430_113c,
+  MONAI_BaalThroneThink_6FCC8430_113c,
+  MONAI_BlunderboreThink_6FCA3CE0_113c,
+  MONAI_CorpseSpitterThink_6FCA3FE0_113c,
+  MONAI_CorruptRogueArcherThink_6FCA26B0_113c,
+  MONAI_FetishShamanOrCasterThink_6FCA8D80_113c,
+  MONAI_GloamPackLightningDanceThink_6FCA0F20_113c,
+  MONAI_OblivionKnightThink_6FCA7E60_113c,
+  MONAI_SandMaggotThink_6FCA1C80_113c,
+  MONAI_SiegeRunnerThink_6FCC66E0_113c,
+  MONAI_SuccubusThink_6FCA8A70_113c,
+  MONAI_TentacleBeastHeadThink_6FCA43F0_113c,
+} from './k2-w5b6-113c.ts'
 import {
   NET_QueuePacketToClient113c,
   drainFrameS2CPackets113c,
@@ -458,6 +534,9 @@ import {
 import {
   AIGENERAL_FindAiCommandByType113c,
   AIGENERAL_GetOrAllocAiCommandByType113c,
+  AI_RogueTownMem113c,
+  AI_SimpleMapAiNpc113c,
+  AI_TownNpcMem113c,
 } from './town-npc-ai-113c.ts'
 import {
   AIGENERAL_AllocAiCommand113c,
@@ -500,10 +579,168 @@ import {
   SUNITDMG_RollDodgeAvoidEvadeBlock113c,
   SUNITDMG_RollMeleeToHitAndBlock_6FCFE5A0_113c,
   UNITS_GetDistanceToCoordinates113c,
+  getDefaultSUnitDmgHooks113c,
+  notifyNewlyEnteredRoomClientsK2,
   registerKernelMonsterAiBridge113c,
+  setDefaultSUnitDmgHooks113c,
   type MonsterSliceWorldLike113c,
   type SUnitDmgHooks113c,
 } from './k2-real-s2c-combat-113c.ts'
+import { AITHINK_Fn146_UberMephistoNoop113c } from './k2-combat-core-w1-113c.ts'
+import {
+  AI_InitClearFreezeAndStall_6FC36060_113c,
+  AI_ThinkMeleeOrApproach7_6FC372B0_113c,
+  AI_ThinkSingleStrikeTurret_6FC360B0_113c,
+  AI_ThinkSpecialGuard_6FC39640_113c,
+  AI_ThinkStaticTrapAttack_6FC36190_113c,
+  AI_ThinkTimedExpireOrStall_6FC36410_113c,
+} from './k2-laneI-0x6fc3-w1-113c.ts'
+import { AI_Think_TeleportLeashOrApproachOwner_6FCC9D40_113c } from './k2-w11b1-113c.ts'
+import {
+  D2Game_6FCCA4D0_113c,
+  D2Game_6FCCB070_113c,
+  D2Game_6FCCB360_113c,
+  D2Game_6FCCB580_113c,
+  D2Game_6FCCC410_113c,
+  findTargetForPlayerOrPet6FCD1C90W13B1,
+} from './k2-w13b1-113c.ts'
+import {
+  AI_MercOrShadowWarriorThink_6FCCC8E0_113c,
+  ITEMS_EvaluateMonsterDropTableEntry_6FC3E900_113c,
+} from './k2-w14b1-113c.ts'
+import { NET_SendPacketA5_StateSkill_6FCABA10_113c } from './k2-w2b3-113c.ts'
+import { MONAI_NoOpStub_6FCBC990_113c } from './k2-w2b4-113c.ts'
+import {
+  MONAI_NoOpRet4_6FCC39D0_113c,
+  MONAI_Stall200IfUnitHasRoom_6FCC5D40_113c,
+} from './k2-w2b5-113c.ts'
+import { AIBAAL_NoopThink_6FCD6C80_113c } from './k2-w2b6-113c.ts'
+import {
+  AI_ThinkBaalThroneSpawner_6FC35E00_113c,
+  AI_ThinkBloodHawk_6FC376B0_113c,
+  AI_ThinkBloodLordFrenzy_6FC36270_113c,
+  AI_ThinkClawViper_6FC38CE0_113c,
+  AI_ThinkDelayedMeleeAttack_6FC38360_113c,
+  AI_ThinkDualAttack95Pct_6FC381A0_113c,
+  AI_ThinkGiantSpider_6FC377E0_113c,
+  AI_ThinkMinionSpawner_6FC37BC0_113c,
+  AI_ThinkPainWormSpawner_6FC364A0_113c,
+  AI_ThinkPatrolAndAttack_6FC36E30_113c,
+  AI_ThinkSandMaggot_6FC38480_113c,
+  AI_ThinkThornedHulk_6FC379A0_113c,
+} from './k2-w3b1-113c.ts'
+import {
+  AI_AlternatingMeleeOrApproach_6FC9F9A0_113c,
+  AI_AuraBuffAndLineOfSightSkillCaster_6FC9E640_113c,
+  AI_BasicMeleeOrStepApproach_6FC9D7C0_113c,
+  AI_CardinalBeamTurret_6FC9C910_113c,
+  AI_CastSkillAtRandomOffsetAroundSelf_6FC9D400_113c,
+  AI_ChargeRunOrTripleSkillMelee_6FC9FB30_113c,
+  AI_ComboMeleeAndDualSkill_6FC9F760_113c,
+  AI_FoulCrowNestSpawner_6FC9D170_113c,
+  AI_InitialStall5ThenMeleeApproach_6FC9E4D0_113c,
+  AI_LinkedOwnerTurretCycle_6FC9CB10_113c,
+  AI_MeleeOrDualSkillPathType7_6FC9FE60_113c,
+  AI_MeleeOrPathType13Approach_6FC9DF00_113c,
+  AI_MeleeStrafeOrStepApproach_6FC9F370_113c,
+  AI_MosquitoNestSpawner_6FC9CFD0_113c,
+  AI_OneShotSkillTrap_6FC9D310_113c,
+  AI_PackBroadcastOrMeleeApproach_6FC9D910_113c,
+  AI_RegeneratingMultiStateMonster_6FCA0450_113c,
+  AI_SelfBuffOrSkillAndStrafe_6FC9DB70_113c,
+  AI_StationaryMeleeTrap_6FC9BF50_113c,
+  AI_TentacleMeleeAttack_6FC9C580_113c,
+  AI_TentacleSkillCastA_6FC9C060_113c,
+  AI_TentacleSkillCastB_6FC9C1D0_113c,
+  AI_ThreeStageSuicideMinion_6FC9F5A0_113c,
+  AI_WallTrapHorizontalY_6FC9C340_113c,
+  AI_WallTrapVerticalX_6FC9C460_113c,
+  UNIT_SendStatB2Packet11ToClient_6FC9A570_113c,
+} from './k2-w3b8-113c.ts'
+import {
+  MONAI_ImpregnateChaseThink_6FCC7F60_113c,
+  MONAI_MeleeAndRangedSkillThink_6FCC6530_113c,
+  MONAI_MeleeSkillOrApproachWithTimerThink_6FCC5D70_113c,
+  MONAI_MinionSwitchToBaseAiThink_6FCC5C80_113c,
+  MONAI_NestOrMeleeWanderThink_6FCC5B30_113c,
+  MONAI_PutridDefilerThink_6FCC7290_113c,
+} from './k2-w4b7-113c.ts'
+import {
+  AI_ReverseCheckAndCastRandomPosSkill_6FCC4FD0_113c,
+  SKILLS_ConsumeThrowOrQuiverQuantityForPlayer_6FCC1790_113c,
+} from './k2-w5b3-113c.ts'
+import {
+  AI_ThinkCurseCaster_6FC3AF80_113c,
+  AI_ThinkSuccubus_6FC3A9F0_113c,
+  MISSILE_SrvDo_PeriodicRadialDamageAndStep_6FC60280_113c,
+  MISSILE_SrvHit_RadialStatsDamageByAuraRange_6FC5B5F0_113c,
+  MISSILE_SrvHit_SpawnSubMissileAndCopyTargetX_6FC5AB30_113c,
+} from './k2-w6b1-113c.ts'
+import {
+  MONAI_BarricadeTauntAndAttackThink_6FCC80C0_113c,
+  MONAI_DeathSentryTrapThink_6FCC7C20_113c,
+  MONAI_PutridDefilerImpregnateThink_6FCA5500_113c,
+  MONAI_SkirmishApproachFleeAttackThink_6FCA51E0_113c,
+  MONAI_StationaryMeleeWithin25ThinkA_6FCC8270_113c,
+  MONAI_StationaryMeleeWithin25ThinkB_6FCC8350_113c,
+  MONAI_StationarySentryTrapThink_6FCC7DC0_113c,
+  SKILLS_CreateProjectileAtOffsetWithAmmoCheck_6FCC1880_113c,
+} from './k2-w6b2-113c.ts'
+import {
+  AI_ThinkAct2SewerTownNpc_6FC3B950_113c,
+  AI_ThinkBladeCreeper_6FCC6B70_113c,
+  AI_ThinkBloodLord_6FCA8810_113c,
+  AI_ThinkChargeStateIconMelee_6FCA4A90_113c,
+  AI_ThinkFetishMelee_6FC9ED90_113c,
+  AI_ThinkFetishShaman_6FCA7BB0_113c,
+  AI_ThinkGiantMosquito_6FCA6280_113c,
+  AI_ThinkHomeLeashedCaster_6FC39E70_113c,
+  AI_ThinkImpregnatedMonster_6FC366D0_113c,
+  AI_ThinkLowLifeFleeCaster_6FC9E070_113c,
+  AI_ThinkMephistoBoss_6FCA5B60_113c,
+  AI_ThinkMinionCommandSkirmisher_6FC3B2F0_113c,
+  AI_ThinkMultiStrikeComboMelee_6FCA08A0_113c,
+  AI_ThinkOblivionKnightCaster_6FCA4DB0_113c,
+  AI_ThinkPackLeaderCommand1Melee_6FCA20D0_113c,
+  AI_ThinkPackRegroupSkirmisher_6FC3B780_113c,
+  AI_ThinkPutridDefiler_6FC3A550_113c,
+  AI_ThinkRegenBoostRetreatMelee_6FCA2990_113c,
+  AI_ThinkSelfBuffRetreatSkirmisher_6FCA0B00_113c,
+  AI_ThinkSlinger_6FCA74A0_113c,
+  AI_ThinkSpecialAiState3_6FCBCC00_113c,
+  AI_ThinkTerrorCurse_6FCC6FC0_113c,
+  AI_ThinkThornHulk_6FCA64A0_113c,
+  AI_ThinkThreePhaseMeleeRetreat_6FCA00C0_113c,
+  AI_ThinkTownRogueGuard_6FC39740_113c,
+  AI_ThinkVampire_6FCA6900_113c,
+  AI_ThinkWillowisp_6FCA7010_113c,
+  AI_ThinkZakarumHealerOrPriest_6FC39080_113c,
+} from './k2-w6b3-113c.ts'
+import { AI_ThinkTyraelOrIzualGhost_6FC39880_113c } from './k2-w6b4-113c.ts'
+import { SKILLS_SrvDo_ExecuteMultiStrikeMelee_6FCB9D20_113c } from './k2-w6b5-113c.ts'
+import {
+  AI_Think_CainAndAnyaPrisonPortal_6FC3BF60_113c,
+  AI_Think_Overlord_6FC37CB0_113c,
+  QUESTS_Act3KurastTemplesSequenceFilter_6FC5BB60_113c,
+  SKILLS_EventFunc05_MoltenBoulderOrPerFrameAura_6FC65AF0_113c,
+} from './k2-w7b1-113c.ts'
+import { AI_Thinker_Izual_6FC9EA10_113c } from './k2-w7b2-113c.ts'
+import {
+  AIBAAL_CloneThink_6FCD8460_113c,
+  AIBAAL_CombatThink_6FCC9610_113c,
+  AIBAAL_ThroneRoomThink_6FCD8610_113c,
+  MONAI_NihlathakThink_6FCC7580_113c,
+  MONAI_RescuedBarbarianSoldierThink_6FCC7A10_113c,
+  MONAI_WorldstoneMinionThink_6FCC7410_113c,
+} from './k2-w7b3-113c.ts'
+import {
+  MONAI_DarkWandererThink_6FCC6E60_113c,
+  MONAI_SiegeMinionThinkDispatch_6FCC7530_113c,
+} from './k2-w8b2-113c.ts'
+import {
+  AI_GreaterMummyThink_6FCA8380_113c,
+  AI_SummonerThink_6FCA5780_113c,
+} from './k2-w9b1-113c.ts'
 
 export {
   AIGENERAL_AllocAiCommand113c,
@@ -531,6 +768,173 @@ export {
   UNITS_GetDistanceToCoordinates113c,
 }
 import { hitD2CommonVa113c, hitD2GameVa113c } from '../va-trace-113c.ts'
+
+const K2_ALL_MONSTER_AI_THINK_HANDLERS_113C: ReadonlyArray<
+  readonly [number, (m: Memory113c, pGame: number, pUnit: number, pAiParam: number) => void]
+> = [
+  [0x6fc35e00, (m, pGame, pUnit, pAiParam) => AI_ThinkBaalThroneSpawner_6FC35E00_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fc36060, AI_InitClearFreezeAndStall_6FC36060_113c],
+  [0x6fc360b0, AI_ThinkSingleStrikeTurret_6FC360B0_113c],
+  [0x6fc36190, AI_ThinkStaticTrapAttack_6FC36190_113c],
+  [0x6fc36270, (m, pGame, pUnit, pAiParam) => AI_ThinkBloodLordFrenzy_6FC36270_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fc36410, AI_ThinkTimedExpireOrStall_6FC36410_113c],
+  [0x6fc364a0, (m, pGame, pUnit, pAiParam) => AI_ThinkPainWormSpawner_6FC364A0_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fc366d0, (m, pGame, pUnit, pAiParam) => AI_ThinkImpregnatedMonster_6FC366D0_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fc36e30, (m, pGame, pUnit, pAiParam) => AI_ThinkPatrolAndAttack_6FC36E30_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fc372b0, AI_ThinkMeleeOrApproach7_6FC372B0_113c],
+  [0x6fc373d0, (m, pGame, pUnit, pAiParam) => AI_ThinkPackIdlePatrol_6FC373D0_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fc376b0, (m, pGame, pUnit, pAiParam) => AI_ThinkBloodHawk_6FC376B0_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fc377e0, (m, pGame, pUnit, pAiParam) => AI_ThinkGiantSpider_6FC377E0_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fc379a0, (m, pGame, pUnit, pAiParam) => AI_ThinkThornedHulk_6FC379A0_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fc37bc0, (m, pGame, pUnit, pAiParam) => AI_ThinkMinionSpawner_6FC37BC0_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fc37cb0, (m, pGame, pUnit, pAiParam) => AI_Think_Overlord_6FC37CB0_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fc381a0, (m, pGame, pUnit, pAiParam) => AI_ThinkDualAttack95Pct_6FC381A0_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fc38360, (m, pGame, pUnit, pAiParam) => AI_ThinkDelayedMeleeAttack_6FC38360_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fc38480, (m, pGame, pUnit, pAiParam) => AI_ThinkSandMaggot_6FC38480_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fc38730, (m, pGame, pUnit, pAiParam) => AI_Thinker_PutridDefiler_6FC38730_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fc389e0, (m, pGame, pUnit, pAiParam) => AI_ThinkPutridDefiler_6FC389E0_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fc38a90, (m, pGame, pUnit, pAiParam) => AI_Thinker_MeleeRangedApproachStall_6FC38A90_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fc38ce0, (m, pGame, pUnit, pAiParam) => AI_ThinkClawViper_6FC38CE0_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fc39080, (m, pGame, pUnit, pAiParam) => AI_ThinkZakarumHealerOrPriest_6FC39080_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fc39640, AI_ThinkSpecialGuard_6FC39640_113c],
+  [0x6fc39740, (m, pGame, pUnit, pAiParam) => AI_ThinkTownRogueGuard_6FC39740_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fc39880, (m, pGame, pUnit, pAiParam) => AI_ThinkTyraelOrIzualGhost_6FC39880_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fc39e70, (m, pGame, pUnit, pAiParam) => AI_ThinkHomeLeashedCaster_6FC39E70_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fc3a550, (m, pGame, pUnit, pAiParam) => AI_ThinkPutridDefiler_6FC3A550_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fc3a9f0, (m, pGame, pUnit, pAiParam) => AI_ThinkSuccubus_6FC3A9F0_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fc3af80, (m, pGame, pUnit, pAiParam) => AI_ThinkCurseCaster_6FC3AF80_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fc3b2f0, (m, pGame, pUnit, pAiParam) => AI_ThinkMinionCommandSkirmisher_6FC3B2F0_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fc3b780, (m, pGame, pUnit, pAiParam) => AI_ThinkPackRegroupSkirmisher_6FC3B780_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fc3b950, (m, pGame, pUnit, pAiParam) => AI_ThinkAct2SewerTownNpc_6FC3B950_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fc3bc60, AI_SimpleMapAiNpc113c],
+  [0x6fc3bca0, (m, pGame, pUnit, pAiParam) => AI_SpawnPackMinionOrStartMode_6FC3BCA0_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fc3bf60, (m, pGame, pUnit, pAiParam) => AI_Think_CainAndAnyaPrisonPortal_6FC3BF60_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fc3c1e0, (m, pGame, pUnit, pAiParam) => AI_StepTurnAndCastSkill4_6FC3C1E0_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fc3db40, AI_TownNpcMem113c],
+  [0x6fc3dd40, (m, pGame, pUnit, pAiParam) => AI_ThinkMercenaryMain_6FC3DD40_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fc3e900, (m, pGame, pUnit, pAiParam) => ITEMS_EvaluateMonsterDropTableEntry_6FC3E900_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fc9b4e0, AITHINK_Fn146_UberMephistoNoop113c],
+  [0x6fc9bf50, (m, pGame, pUnit, pAiParam) => AI_StationaryMeleeTrap_6FC9BF50_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fc9c060, (m, pGame, pUnit, pAiParam) => AI_TentacleSkillCastA_6FC9C060_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fc9c1d0, (m, pGame, pUnit, pAiParam) => AI_TentacleSkillCastB_6FC9C1D0_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fc9c340, (m, pGame, pUnit, pAiParam) => AI_WallTrapHorizontalY_6FC9C340_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fc9c460, (m, pGame, pUnit, pAiParam) => AI_WallTrapVerticalX_6FC9C460_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fc9c580, (m, pGame, pUnit, pAiParam) => AI_TentacleMeleeAttack_6FC9C580_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fc9c910, (m, pGame, pUnit, pAiParam) => AI_CardinalBeamTurret_6FC9C910_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fc9cb10, (m, pGame, pUnit, pAiParam) => AI_LinkedOwnerTurretCycle_6FC9CB10_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fc9cfd0, (m, pGame, pUnit, pAiParam) => AI_MosquitoNestSpawner_6FC9CFD0_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fc9d170, (m, pGame, pUnit, pAiParam) => AI_FoulCrowNestSpawner_6FC9D170_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fc9d310, (m, pGame, pUnit, pAiParam) => AI_OneShotSkillTrap_6FC9D310_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fc9d400, (m, pGame, pUnit, pAiParam) => AI_CastSkillAtRandomOffsetAroundSelf_6FC9D400_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fc9d7c0, (m, pGame, pUnit, pAiParam) => AI_BasicMeleeOrStepApproach_6FC9D7C0_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fc9d910, (m, pGame, pUnit, pAiParam) => AI_PackBroadcastOrMeleeApproach_6FC9D910_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fc9db70, (m, pGame, pUnit, pAiParam) => AI_SelfBuffOrSkillAndStrafe_6FC9DB70_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fc9df00, (m, pGame, pUnit, pAiParam) => AI_MeleeOrPathType13Approach_6FC9DF00_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fc9e070, (m, pGame, pUnit, pAiParam) => AI_ThinkLowLifeFleeCaster_6FC9E070_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fc9e4d0, (m, pGame, pUnit, pAiParam) => AI_InitialStall5ThenMeleeApproach_6FC9E4D0_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fc9e640, (m, pGame, pUnit, pAiParam) => AI_AuraBuffAndLineOfSightSkillCaster_6FC9E640_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fc9ea10, (m, pGame, pUnit, pAiParam) => AI_Thinker_Izual_6FC9EA10_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fc9ed90, (m, pGame, pUnit, pAiParam) => AI_ThinkFetishMelee_6FC9ED90_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fc9f370, (m, pGame, pUnit, pAiParam) => AI_MeleeStrafeOrStepApproach_6FC9F370_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fc9f5a0, (m, pGame, pUnit, pAiParam) => AI_ThreeStageSuicideMinion_6FC9F5A0_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fc9f760, (m, pGame, pUnit, pAiParam) => AI_ComboMeleeAndDualSkill_6FC9F760_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fc9f9a0, (m, pGame, pUnit, pAiParam) => AI_AlternatingMeleeOrApproach_6FC9F9A0_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fc9fb30, (m, pGame, pUnit, pAiParam) => AI_ChargeRunOrTripleSkillMelee_6FC9FB30_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fc9fe60, (m, pGame, pUnit, pAiParam) => AI_MeleeOrDualSkillPathType7_6FC9FE60_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fca00c0, (m, pGame, pUnit, pAiParam) => AI_ThinkThreePhaseMeleeRetreat_6FCA00C0_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fca0450, (m, pGame, pUnit, pAiParam) => AI_RegeneratingMultiStateMonster_6FCA0450_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fca08a0, (m, pGame, pUnit, pAiParam) => AI_ThinkMultiStrikeComboMelee_6FCA08A0_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fca0b00, (m, pGame, pUnit, pAiParam) => AI_ThinkSelfBuffRetreatSkirmisher_6FCA0B00_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fca0f20, (m, pGame, pUnit, pAiParam) => MONAI_GloamPackLightningDanceThink_6FCA0F20_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fca1c80, (m, pGame, pUnit, pAiParam) => MONAI_SandMaggotThink_6FCA1C80_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fca1f50, (m, pGame, pUnit, pAiParam) => AI_ThinkMeleeBasic_6FCA1F50_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fca20d0, (m, pGame, pUnit, pAiParam) => AI_ThinkPackLeaderCommand1Melee_6FCA20D0_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fca2430, (m, pGame, pUnit, pAiParam) => AI_ThinkSimpleMeleeVariantA_6FCA2430_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fca2570, (m, pGame, pUnit, pAiParam) => AI_ThinkSimpleMeleeVariantB_6FCA2570_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fca26b0, (m, pGame, pUnit, pAiParam) => MONAI_CorruptRogueArcherThink_6FCA26B0_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fca2990, (m, pGame, pUnit, pAiParam) => AI_ThinkRegenBoostRetreatMelee_6FCA2990_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fca2ec0, (m, pGame, pUnit, pAiParam) => AI_ThinkChargerRunOrAttack_6FCA2EC0_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fca3130, AiFallen113c],
+  [0x6fca3550, AI_Skeleton113c],
+  [0x6fca38b0, AiZombie113c],
+  [0x6fca3ac0, (m, pGame, pUnit, pAiParam) => AI_ThinkDualAttackMelee_6FCA3AC0_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fca3ce0, (m, pGame, pUnit, pAiParam) => MONAI_BlunderboreThink_6FCA3CE0_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fca3fe0, (m, pGame, pUnit, pAiParam) => MONAI_CorpseSpitterThink_6FCA3FE0_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fca43f0, (m, pGame, pUnit, pAiParam) => MONAI_TentacleBeastHeadThink_6FCA43F0_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fca4800, (m, pGame, pUnit, pAiParam) => AI_ThinkPackFollowerMelee_6FCA4800_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fca4a90, (m, pGame, pUnit, pAiParam) => AI_ThinkChargeStateIconMelee_6FCA4A90_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fca4db0, (m, pGame, pUnit, pAiParam) => AI_ThinkOblivionKnightCaster_6FCA4DB0_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fca51e0, (m, pGame, pUnit, pAiParam) => MONAI_SkirmishApproachFleeAttackThink_6FCA51E0_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fca5500, (m, pGame, pUnit, pAiParam) => MONAI_PutridDefilerImpregnateThink_6FCA5500_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fca5780, (m, pGame, pUnit, pAiParam) => AI_SummonerThink_6FCA5780_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fca5b60, (m, pGame, pUnit, pAiParam) => AI_ThinkMephistoBoss_6FCA5B60_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fca6280, (m, pGame, pUnit, pAiParam) => AI_ThinkGiantMosquito_6FCA6280_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fca64a0, (m, pGame, pUnit, pAiParam) => AI_ThinkThornHulk_6FCA64A0_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fca6900, (m, pGame, pUnit, pAiParam) => AI_ThinkVampire_6FCA6900_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fca7010, (m, pGame, pUnit, pAiParam) => AI_ThinkWillowisp_6FCA7010_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fca74a0, (m, pGame, pUnit, pAiParam) => AI_ThinkSlinger_6FCA74A0_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fca77b0, (m, pGame, pUnit, pAiParam) => AI_ThinkBurrowerSpawner_6FCA77B0_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fca7a60, (m, pGame, pUnit, pAiParam) => AI_ThinkMonsterSpawnerNest_6FCA7A60_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fca7bb0, (m, pGame, pUnit, pAiParam) => AI_ThinkFetishShaman_6FCA7BB0_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fca7e60, (m, pGame, pUnit, pAiParam) => MONAI_OblivionKnightThink_6FCA7E60_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fca8380, (m, pGame, pUnit, pAiParam) => AI_GreaterMummyThink_6FCA8380_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fca8810, (m, pGame, pUnit, pAiParam) => AI_ThinkBloodLord_6FCA8810_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fca8a70, (m, pGame, pUnit, pAiParam) => MONAI_SuccubusThink_6FCA8A70_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fca8d80, (m, pGame, pUnit, pAiParam) => MONAI_FetishShamanOrCasterThink_6FCA8D80_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fca90a0, AI_FallenShaman113c],
+  [0x6fca9430, (m, pGame, pUnit, pAiParam) => MONAI_AuraKnightOrZealotThink_6FCA9430_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fca9870, (m, pGame, pUnit, pAiParam) => AI_Think_SandMaggot_6FCA9870_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fca9c30, (m, pGame, pUnit, pAiParam) => AI_Think_BurrowingScarabOrFrog_6FCA9C30_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fcbc990, (m, pGame) => MONAI_NoOpStub_6FCBC990_113c(m, pGame)],
+  [0x6fcbcb00, AI_RogueTownMem113c],
+  [0x6fcbcc00, (m, pGame, pUnit, pAiParam) => AI_ThinkSpecialAiState3_6FCBCC00_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fcc39d0, MONAI_NoOpRet4_6FCC39D0_113c],
+  [0x6fcc4b90, (m, pGame, pUnit, pAiParam) => AI_AttackWestOffsetThenDie_6FCC4B90_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fcc4d10, (m, pGame, pUnit, pAiParam) => AI_TickSummonedTimedAttacker_6FCC4D10_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fcc4f40, (m, pGame, pUnit, pAiParam) => AI_TickAncientStatueRevertCheck_6FCC4F40_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fcc4fd0, (m, pGame, pUnit, pAiParam) => AI_ReverseCheckAndCastRandomPosSkill_6FCC4FD0_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fcc5350, (m, pGame, pUnit, pAiParam) => AI_TickSummonedFollowTeleportSkill292_6FCC5350_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fcc5580, (m, pGame, pUnit, pAiParam) => AI_TickEmergeQuadrantAttackAndSubmerge_6FCC5580_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fcc57e0, (m, pGame, pUnit, pAiParam) => AI_TickTimedSkillCasterOrExpire_6FCC57E0_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fcc58d0, (m, pGame, pUnit, pAiParam) => AI_TickAmbientMode8OrStall30_6FCC58D0_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fcc5b30, (m, pGame, pUnit, pAiParam) => MONAI_NestOrMeleeWanderThink_6FCC5B30_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fcc5c80, (m, pGame, pUnit, pAiParam) => MONAI_MinionSwitchToBaseAiThink_6FCC5C80_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fcc5d40, MONAI_Stall200IfUnitHasRoom_6FCC5D40_113c],
+  [0x6fcc5d70, (m, pGame, pUnit, pAiParam) => MONAI_MeleeSkillOrApproachWithTimerThink_6FCC5D70_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fcc6530, (m, pGame, pUnit, pAiParam) => MONAI_MeleeAndRangedSkillThink_6FCC6530_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fcc66e0, (m, pGame, pUnit, pAiParam) => MONAI_SiegeRunnerThink_6FCC66E0_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fcc6b70, (m, pGame, pUnit, pAiParam) => AI_ThinkBladeCreeper_6FCC6B70_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fcc6e60, (m, pGame, pUnit, pAiParam) => MONAI_DarkWandererThink_6FCC6E60_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fcc6fc0, (m, pGame, pUnit, pAiParam) => AI_ThinkTerrorCurse_6FCC6FC0_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fcc7290, (m, pGame, pUnit, pAiParam) => MONAI_PutridDefilerThink_6FCC7290_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fcc7410, (m, pGame, pUnit, pAiParam) => MONAI_WorldstoneMinionThink_6FCC7410_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fcc7530, (m, pGame, pUnit, pAiParam) => MONAI_SiegeMinionThinkDispatch_6FCC7530_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fcc7580, (m, pGame, pUnit, pAiParam) => MONAI_NihlathakThink_6FCC7580_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fcc7a10, (m, pGame, pUnit, pAiParam) => MONAI_RescuedBarbarianSoldierThink_6FCC7A10_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fcc7c20, (m, pGame, pUnit, pAiParam) => MONAI_DeathSentryTrapThink_6FCC7C20_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fcc7dc0, (m, pGame, pUnit, pAiParam) => MONAI_StationarySentryTrapThink_6FCC7DC0_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fcc7f60, (m, pGame, pUnit, pAiParam) => MONAI_ImpregnateChaseThink_6FCC7F60_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fcc80c0, (m, pGame, pUnit, pAiParam) => MONAI_BarricadeTauntAndAttackThink_6FCC80C0_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fcc8270, (m, pGame, pUnit, pAiParam) => MONAI_StationaryMeleeWithin25ThinkA_6FCC8270_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fcc8350, (m, pGame, pUnit, pAiParam) => MONAI_StationaryMeleeWithin25ThinkB_6FCC8350_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fcc8430, (m, pGame, pUnit, pAiParam) => MONAI_BaalThroneThink_6FCC8430_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fcc9610, (m, pGame, pUnit, pAiParam) => AIBAAL_CombatThink_6FCC9610_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fcc9d40, (m, pGame, pUnit, pAiParam) => AI_Think_TeleportLeashOrApproachOwner_6FCC9D40_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fcc9e80, (m, pGame, pUnit, pAiParam) => AI_Think_ShadowWarriorAndMaster_6FCC9E80_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fcca1d0, (m, pGame, pUnit, pAiParam) => AI_Think_Raven_6FCCA1D0_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fcca4d0, (m, pGame, pUnit, pAiParam) => D2Game_6FCCA4D0_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fccb070, (m, pGame, pUnit, pAiParam) => D2Game_6FCCB070_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fccb360, (m, pGame, pUnit, pAiParam) => D2Game_6FCCB360_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fccb580, (m, pGame, pUnit, pAiParam) => D2Game_6FCCB580_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fccc410, (m, pGame, pUnit, pAiParam) => D2Game_6FCCC410_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fccc8e0, (m, pGame, pUnit, pAiParam) => AI_MercOrShadowWarriorThink_6FCCC8E0_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fcd6c80, AIBAAL_NoopThink_6FCD6C80_113c],
+  [0x6fcd8460, (m, pGame, pUnit, pAiParam) => AIBAAL_CloneThink_6FCD8460_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+  [0x6fcd8610, (m, pGame, pUnit, pAiParam) => AIBAAL_ThroneRoomThink_6FCD8610_113c(m as SparseMemory113c, pGame, pUnit, pAiParam)],
+]
+for (const [aiVa, aiHandler] of K2_ALL_MONSTER_AI_THINK_HANDLERS_113C) {
+  registerMonsterAiThinkVaHandler113c(aiVa, aiHandler)
+}
 
 const COLLIDE_MASK_INVALID_113C = 0xffff
 const PATHTYPE_TOWARD_FINISH_113C = 13
@@ -984,6 +1388,18 @@ export interface FallenSliceWorld113c {
   onMonsterStartSkillMode?: (m: Memory113c, pGame: number, pMonster: number) => void
   onApplyHireableVelocityOverride?: (m: Memory113c, pMonster: number, pAiCtrl: number) => boolean
   onMonsterExpireDeathSubLists?: (m: Memory113c, pMonster: number) => void
+  onUnitEnteredClientRoom?: (m: Memory113c, pGame: number, pUnit: number, pClient: number) => void
+  findAlliedMonsterTarget?: (
+    m: Memory113c,
+    pGame: number,
+    pMonster: number,
+  ) => { pTarget: number; distance: number; inMeleeRange: number }
+  onTownNpcThink?: (
+    world: MonsterSliceWorldLike113c,
+    pMonster: number,
+    pfnThink: number,
+    pAiTickParam: number,
+  ) => boolean
   onMonsterAwardKillExp?: (
     world: MonsterSliceWorldLike113c,
     pMonster: number,
@@ -1166,7 +1582,28 @@ function attachSliceWorldCallbacks113c(world: FallenSliceWorld113c): void {
   if (world.onMonsterStartSkillMode === undefined) {
     world.onMonsterStartSkillMode = (mem, pg, pMonster) => {
       if (world.hasFullDrlg !== true) return
-      onMonsterStartSkillModeK3_113c(mem, pg, pMonster)
+      const pUsed = SKILLS_GetUsedSkillMemPort113c(mem, pMonster) >>> 0
+      if (pUsed === 0) return
+      bindK2KernelGlobals113c(mem)
+      MONSTER_StartAttackOrCast113c(
+        mem,
+        pg,
+        pMonster,
+        {
+          onSkillDoStart(m2, pUnit, g2) {
+            const used = SKILLS_GetUsedSkillMemPort113c(m2, pUnit) >>> 0
+            if (used === 0) return 0
+            const skId = SKILLS_GetSkillIdFromSkill113c(m2, used, 0, 0) | 0
+            const pSkTxt = skId >= 0 ? SKILLS_GetRecordPtrFast113c(m2, skId) : 0
+            const wSrvSt = pSkTxt !== 0 ? ((m2.u16((pSkTxt + 0x2c) >>> 0) << 16) >> 16) : 0
+            if (wSrvSt === 4 || wSrvSt === 32) {
+              SKILLS_SrvSt32_EnsureWeaponOrQuiverOrStartCast_6FC6C840_113c(m2, g2, pUnit)
+            }
+            return SKILLS_StartUsedSkill113c(m2, pUnit, g2)
+          },
+        },
+        true,
+      )
     }
   }
   if (world.onApplyHireableVelocityOverride === undefined) {
@@ -1232,6 +1669,58 @@ function attachSliceWorldCallbacks113c(world: FallenSliceWorld113c): void {
       awardMonsterKillExperienceWithMercK3_113c(world, pMonster, pKiller, row)
     }
   }
+  if (world.onUnitEnteredClientRoom === undefined) {
+    world.onUnitEnteredClientRoom = (mem, _pg, pUnit, pClient) => {
+      const pPlr = (mem.u32((pClient + 0x174) >>> 0) || mem.u32((pClient + 0x1a8) >>> 0)) >>> 0
+      buildClientRoomSyncCallees113c(world, pClient, pPlr).onUnitPreSync!(mem, world.pGame, pUnit, pClient)
+    }
+  }
+  if (world.findAlliedMonsterTarget === undefined) {
+    world.findAlliedMonsterTarget = (mem, pg, pMonster) => {
+      const sm = mem as SparseMemory113c
+      const savedSp = replayStackPtr113c
+      replayStackPtr113c = (savedSp + 0x10) >>> 0
+      try {
+        const spDist = savedSp
+        const spMelee = (savedSp + 0x04) >>> 0
+        const pMonData = sm.get(pMonster, D2UnitStrc.pUnitData) >>> 0
+        const pAiCtrl = pMonData !== 0 ? (sm.get(pMonData, D2MonsterDataStrc.pAiControl) >>> 0) : 0
+        const pTarget = findTargetForPlayerOrPet6FCD1C90W13B1(sm, pg, pMonster, pAiCtrl, spDist, spMelee) >>> 0
+        const distance = pTarget !== 0 ? (sm.u32(spDist) | 0) : 0x7fffffff
+        const inMeleeRange = pTarget !== 0 ? (sm.u32(spMelee) | 0) : 0
+        return { pTarget, distance, inMeleeRange }
+      } finally {
+        replayStackPtr113c = savedSp
+      }
+    }
+  }
+  if (world.onTownNpcThink === undefined) {
+    world.onTownNpcThink = (_w, pMonster, pfnThink, pAiTickParam) => {
+      const va = pfnThink >>> 0
+      const sm = world.m as SparseMemory113c
+      if (va === 0x6fc3db40) {
+        AI_TownNpcMem113c(world.m, world.pGame, pMonster, pAiTickParam)
+        return true
+      }
+      if (va === 0x6fc3bc60) {
+        AI_SimpleMapAiNpc113c(world.m, world.pGame, pMonster, pAiTickParam)
+        return true
+      }
+      if (va === 0x6fcbcb00) {
+        AI_RogueTownMem113c(world.m, world.pGame, pMonster, pAiTickParam)
+        return true
+      }
+      if (va === 0x6fc39880) {
+        AI_ThinkTyraelOrIzualGhost_6FC39880_113c(sm, world.pGame, pMonster, pAiTickParam)
+        return true
+      }
+      if (va === 0x6fcca4d0) {
+        D2Game_6FCCA4D0_113c(sm, world.pGame, pMonster, pAiTickParam)
+        return true
+      }
+      return false
+    }
+  }
 }
 
 export const MONSTER_StepContinuousMove113c = MONSTER_StepWalk113c
@@ -1275,6 +1764,9 @@ export function runMonsterAiDriver113c(
   if (SUNIT_IsDeadOrDying113c(world.m, pMonster) !== 0) return
   attachSliceWorldCallbacks113c(world)
   AI_DispatchTargetByAiFlag113c(world, pMonster, pfnThink)
+  if (world.hasFullDrlg === true) {
+    syncActRoomsAndUnitsIntoWorld113c(world)
+  }
 }
 
 /**
@@ -1329,9 +1821,6 @@ function buildSliceMeleeCombatHooks113c(
         pNode = pNext
       }
     },
-    onMonsterAttackerHit: (mem, _pg, pAtt) => {
-      MONSTER_SetLastHitModeField54_113c(mem, pAtt, 3)
-    },
     onPlayerDodgeOrAvoid: (mem, pg, pDef, pAtt, wResultFlags) => {
       PLAYER_TryStartDodgeOrAvoidModeK3_113c(
         mem,
@@ -1364,8 +1853,23 @@ function buildSliceMeleeCombatHooks113c(
       startPlayerBlockMode113c(world, pDef)
     },
     onKillUnit: (mem, _pg, pDef, pAtt) => {
-      if (mem.get(pDef, D2UnitStrc.dwUnitType) === UNIT_MONSTER) {
-        MONSTER_StartDeath113c(world, pDef, pAtt)
+      const defType = mem.get(pDef, D2UnitStrc.dwUnitType)
+      if (defType === UNIT_MONSTER) {
+        const curMode = mem.get(pDef, D2UnitStrc.dwAnimMode)
+        if (curMode !== 0 && curMode !== 12) {
+          MONSTER_StartDeath113c(world, pDef, pAtt)
+        }
+      } else if (defType === UNIT_PLAYER) {
+        const curMode = mem.get(pDef, D2UnitStrc.dwAnimMode) | 0
+        if (curMode !== 0 && curMode !== 0x11) {
+          UNITS_ChangeAnimMode113c(mem, pDef, 0)
+          mem.setU32((pDef + 0xc4) >>> 0, (mem.u32((pDef + 0xc4) >>> 0) | 0x10000) >>> 0)
+          const pu = world.pathUnitByPtr.get(pDef)
+          if (pu !== undefined) {
+            pu.dwAnimMode = 0
+            pu.dwFlags = mem.get(pDef, D2UnitStrc.dwFlags) >>> 0
+          }
+        }
       }
     },
     onMonsterStartMode: (_mem, _pg, pDef, mode, pTarget) => {
@@ -2095,7 +2599,29 @@ function buildSliceC2SCallees113c(world: FallenSliceWorld113c): C2SPacketCallees
         startPlayerWalkOrRun113c(world, plr, nX, nY, 0, isRun)
       }
     },
-    onStartAttackOnUnit(_mem, _pg, plr, pTargetUnit) {
+    onStartAttackOnUnit(mem, pg, plr, pTargetUnit, mode) {
+      if (
+        mode !== undefined &&
+        hasHydratedAnimDataTable113c(mem) &&
+        isSgptDataTablesLoaded113c(mem)
+      ) {
+        SUNITDMG_FreeAttackerCombatList113c(mem, plr, pg)
+        UNITS_ChangeAnimMode113c(mem, plr, mode)
+        const pPath = mem.get(plr, D2UnitStrc.pPath)
+        if (pPath !== 0) {
+          const isDeadMonsterCorpse =
+            pTargetUnit !== 0 &&
+            mem.get(pTargetUnit, D2UnitStrc.dwUnitType) === UNIT_MONSTER &&
+            mem.get(pTargetUnit, D2UnitStrc.dwAnimMode) === 12
+          UNITS_SetTargetUnitForDynamicUnit113c(mem, plr, isDeadMonsterCorpse ? 0 : pTargetUnit)
+        }
+        SUNIT_InitUnitAnimData113c(mem, plr)
+        MONSTER_ClearModeEvents113c(mem, pg, plr)
+        SUNIT_ScheduleModeAnimEvents113c(mem, pg, plr, PLR_EVENT_MODE_STEP, PLR_EVENT_MODE_END)
+        mem.setU32((plr + 0xc4) >>> 0, (mem.u32((plr + 0xc4) >>> 0) & ~UNITFLAG_IN_SKILL_ACTION) >>> 0)
+        SKILLS_StartUsedSkill113c(mem, plr, pg)
+        return
+      }
       startPlayerAttackWithTarget113c(world, plr, pTargetUnit)
     },
     onAfterModeStarted(mem, plr) {
@@ -2108,12 +2634,136 @@ function buildSliceC2SCallees113c(world: FallenSliceWorld113c): C2SPacketCallees
   }
 }
 
-export function applyPlayerPacket113c(
-  world: FallenSliceWorld113c,
+function isActivePlayerSpecial1Skill113c(m: Memory113c, pPlayer: number): boolean {
+  const pSkill = SKILLS_GetUsedSkillMemPort113c(m, pPlayer) >>> 0
+  if (pSkill === 0) return false
+  const nSkillId = SKILLS_GetSkillIdFromSkill113c(m, pSkill, 0, 0) | 0
+  if (nSkillId <= 0) return false
+  if (!isSgptDataTablesLoaded113c(m)) return false
+  const pSkillsTxt = SKILLS_GetRecordPtrFast113c(m, nSkillId)
+  if (pSkillsTxt === 0) return false
+  // Exclude passive Dodge/Avoid/Evade (`Skills.txt.dwFlags[0] & 0x10`)
+  return (m.u8((pSkillsTxt + 0x04) >>> 0) & 0x10) === 0
+}
+
+function shouldUseTargetedMissileFallbackK3_113c(m: Memory113c, pPlayer: number): boolean {
+  const pSkill = SKILLS_GetUsedSkillMemPort113c(m, pPlayer) >>> 0
+  if (pSkill === 0) return false
+  const nSkillId = SKILLS_GetSkillIdFromSkill113c(m, pSkill, 0, 0) | 0
+  if (nSkillId < 0) return false
+  const pSkillsTxt = SKILLS_GetRecordPtrFast113c(m, nSkillId)
+  if (pSkillsTxt === 0) return false
+  const srvDo2e = (m.u16((pSkillsTxt + 0x2e) >>> 0) << 16) >> 16
+  const wDoFuncIdx = srvDo2e !== 0 ? srvDo2e : ((m.u16((pSkillsTxt + 0x0a) >>> 0) << 16) >> 16)
+  const wSrvMissile = (m.u16((pSkillsTxt + 0x46) >>> 0) << 16) >> 16
+  if (wDoFuncIdx > 0 || wSrvMissile < 0) return false
+  if ((m.u8((pSkillsTxt + 0x04) >>> 0) & 0x02) === 0) return false
+  return MISSILES_GetTxtRecordFast113c(m, wSrvMissile) !== 0
+}
+
+function stepTargetedMissileKeyframeK3_113c(
+  m: Memory113c,
+  pGame: number,
   pPlayer: number,
-  packetBytes: Uint8Array,
+  arg14: number,
+  arg18: number,
+): void {
+  if (pPlayer === 0 || m.u32((pPlayer + 0x2c) >>> 0) === 0) return
+  if (m.u32((pPlayer + 0x30) >>> 0) !== 0) {
+    UNITS_SetSeqFrameFromLowByte113c(m, pPlayer, arg18 | 0)
+  }
+  PLAYER_StartModeDispatch113c(m, pGame, pPlayer, arg14, arg18, '1HS', (mem, pg, plr) => {
+    const pSkill = SKILLS_GetUsedSkillMemPort113c(mem, plr) >>> 0
+    if (pSkill === 0) return 0
+    const nSkillId = SKILLS_GetSkillIdFromSkill113c(mem, pSkill, 0, 0) | 0
+    if (nSkillId < 0) return 0
+    const pSkillsTxt = SKILLS_GetRecordPtrFast113c(mem, nSkillId)
+    if (pSkillsTxt === 0) return 0
+    const pRoom = UNITS_GetRoom113c(mem, plr)
+    if (pRoom === 0) return 0
+    if ((mem.u8((pSkillsTxt + 0x05) >>> 0) & 0x01) === 0 && DUNGEON_CheckRoomIsTownMemPort113c(mem, pRoom) !== 0) {
+      return 0
+    }
+    if ((mem.u8((pSkillsTxt + 0x08) >>> 0) & 0x20) !== 0 && SKILLS_CheckSkillManaAndCharges113c(mem, plr) === 0) {
+      return 0
+    }
+    const effLevel = SKILLS_EvaluateSkillLevel113c(mem, plr, pSkill, 1) | 0
+    const wSrvMissile = (mem.u16((pSkillsTxt + 0x46) >>> 0) << 16) >> 16
+    if (wSrvMissile < 0 || MISSILES_GetTxtRecordFast113c(mem, wSrvMissile) === 0) return 0
+    mem.setU32((plr + 0xc4) >>> 0, (mem.u32((plr + 0xc4) >>> 0) | 0x40) >>> 0)
+    SKILLS_CreateProjectileAtOffsetWithAmmoCheck_6FCC1880_113c(
+      mem as SparseMemory113c,
+      0,
+      plr >>> 0,
+      pg >>> 0,
+      wSrvMissile,
+      nSkillId,
+      effLevel,
+      0,
+      0,
+      0,
+      0,
+    )
+    const rc = SKILLS_DoUsedSkillAction113c(mem, plr, pg)
+    if (rc !== 0) {
+      if ((mem.u8((pSkillsTxt + 0x04) >>> 0) & 0x01) !== 0) {
+        SKILLS_ConsumeThrowOrQuiverQuantityForPlayer_6FCC1790_113c(mem, plr, pg)
+      }
+      const delayCalc = mem.u32((pSkillsTxt + 0x190) >>> 0)
+      const delay = SKILLS_EvalCalcByOffset113c(mem, plr, delayCalc, nSkillId, effLevel) | 0
+      if (
+        delay > 0 &&
+        (mem.u32(plr >>> 0) | 0) === 0 &&
+        (mem.u8((pSkillsTxt + 0x10) >>> 0) !== 0x12 || (mem.u32((plr + 0x38) >>> 0) & 0xffffff00) === 0)
+      ) {
+        const expireFrame = ((mem.u32((pg + 0xa8) >>> 0) | 0) + delay) >>> 0
+        for (let ev = mem.u32((plr + 0xdc) >>> 0) >>> 0; ev !== 0; ) {
+          const nextEv = mem.u32((ev + 0x24) >>> 0) >>> 0
+          if (mem.u8(ev) === 0x0c && (mem.u32((ev + 0x10) >>> 0) >>> 0) === expireFrame) {
+            EVENT_FreeNode113c(mem, pg, ev)
+            break
+          }
+          ev = nextEv
+        }
+        SKILLS_ApplySkillDelayState121OnPlayer_6FCBFF70_113c(mem, delay, plr, pg)
+      }
+    }
+    return rc
+  })
+}
+
+export function applyPlayerPacket113c(
+  worldOrMem: FallenSliceWorld113c | Memory113c,
+  pPlayerOrGame: number,
+  packetBytesOrPlayer: Uint8Array | number,
+  nModeArg = 0,
+  pTargetUnitArg = 0,
 ): void {
   hitD2GameVa113c(0x6FC987C0)
+  if ('u32' in worldOrMem) {
+    const m = worldOrMem
+    const pGame = pPlayerOrGame >>> 0
+    const pUnit = (packetBytesOrPlayer as number) >>> 0
+    const nMode = nModeArg | 0
+    const pTargetUnit = pTargetUnitArg >>> 0
+    SUNITDMG_FreeAttackerCombatList113c(m, pUnit, pGame)
+    UNITS_ChangeAnimMode113c(m, pUnit, nMode)
+    if (pTargetUnit === 0) {
+      throw new D2CommonAssertError('0x6fd19ff9', 1214)
+    }
+    UNITS_SetTargetUnitForDynamicUnit113c(m, pUnit, pTargetUnit)
+    SUNIT_InitUnitAnimData113c(m, pUnit)
+    MONSTER_ClearModeEvents113c(m, pGame, pUnit)
+    SUNIT_ScheduleModeAnimEvents113c(m, pGame, pUnit)
+    if (pUnit !== 0) {
+      m.setU32((pUnit + 0xc4) >>> 0, (m.u32((pUnit + 0xc4) >>> 0) & 0xffffffbf) >>> 0)
+    }
+    SKILLS_StartUsedSkill113c(m, pUnit, pGame)
+    return
+  }
+  const world = worldOrMem
+  const pPlayer = pPlayerOrGame
+  const packetBytes = packetBytesOrPlayer as Uint8Array
   if (packetBytes.length === 0) return
   if (
     k4ReplayBridge !== null &&
@@ -2515,11 +3165,60 @@ export function hydrateFallenSliceFromMemdump113c(
  * 4. Clear per-tick room-sync dirty flags (`dwFlags &= ~0x80001`).
  */
 export function stepFallenSliceFrame113c(
-  world: FallenSliceWorld113c,
-  c2sPackets: ReadonlyArray<readonly [clientId: number, hexPayload: string]> = [],
+  worldOrMem: FallenSliceWorld113c | Memory113c,
+  c2sPacketsOrGame: ReadonlyArray<readonly [clientId: number, hexPayload: string]> | number = [],
+  dwTickMsArg?: number,
 ): number {
   hitD2GameVa113c(0x6FC4E050)
+  if ('u32' in worldOrMem) {
+    const m = worldOrMem
+    const pGame = (c2sPacketsOrGame as number) >>> 0
+    let dwTickMs = dwTickMsArg !== undefined ? (dwTickMsArg >>> 0) : 0
+    if (dwTickMsArg === undefined) {
+      try {
+        dwTickMs = m.u32(0x6fd18d10) >>> 0
+      } catch {
+        dwTickMs = 0
+      }
+    }
+    const dwFrame = ((m.u32((pGame + 0xa8) >>> 0) | 0) + 1) | 0
+    m.setU32((pGame + 0xa8) >>> 0, dwFrame >>> 0)
+    const debugHook = m.u32((pGame + 0x1dc8) >>> 0) | 0
+    if (debugHook === 3) {
+      throw new D2CommonAssertError('0x6fd19ff9', 0xdc7)
+    }
+    GAME_StepActEnvironmentCycles113c(m, pGame)
+    GAME_UpdateTickRateMetrics113c(m, pGame, { getTickCountMs: () => dwTickMs })
+    GAME_UpdateActRooms113c(m, pGame, {
+      refreshRoomUnits: (mem, pg, pr) => ROOM_RefreshUnitsAndLoadSaved113c(mem, pr, pg),
+    } as ActRoomsCallees113c)
+    EVENT_UpdateTimers113c(m, pGame, () => {})
+    GAME_StepClientJoinStatesAndTimeouts113c(m, pGame, dwTickMs)
+    GAME_ClearAllActRoomUpdateLists113c(m, pGame)
+    ACT_FreeAllActRoomPortalLists113c(m, pGame)
+    if (dwFrame % 20 === 0) {
+      QUESTS_StepQuestTimers113c(m, pGame)
+    }
+    if (dwFrame % 12 === 0) {
+      GAME_DeactivateUnusedRoomsTick113c(m, pGame)
+    }
+    if (dwFrame % 11 === 0) {
+      for (let actIdx = 0; actIdx < 5; actIdx++) {
+        const pActCur = m.u32((pGame + 0xbc + actIdx * 4) >>> 0) >>> 0
+        if (pActCur !== 0) {
+          DUNGEON_UpdateInactiveLevels113c(m, pActCur)
+        }
+      }
+    }
+    GAME_ExpireItemsAndMinionListsPeriodic113c(m, pGame)
+    return 0
+  }
+  const world = worldOrMem
+  const c2sPackets = c2sPacketsOrGame as ReadonlyArray<readonly [clientId: number, hexPayload: string]>
   attachSliceWorldCallbacks113c(world)
+  const prevDefaultSUnitDmgHooks = getDefaultSUnitDmgHooks113c()
+  setDefaultSUnitDmgHooks113c(buildSliceMeleeCombatHooks113c(world, () => {}))
+  try {
   const { m, pGame } = world
   world.lastFrameOrd.length = 0
   world.lastFrameDmg.length = 0
@@ -2570,7 +3269,7 @@ export function stepFallenSliceFrame113c(
     syncActRoomsAndUnitsIntoWorld113c(world)
   }
 
-  const k2MeleeDotHooks: K2GapMeleeDotHooks113c = MISSILE_BuildK3Hooks113c(
+  const k2MeleeDotHooksBase: K2GapMeleeDotHooks113c = MISSILE_BuildK3Hooks113c(
     (_mem, _pg, pDefender, pAttacker) => {
       if (m.get(pDefender, D2UnitStrc.dwUnitType) === UNIT_MONSTER) {
         const curMode = m.get(pDefender, D2UnitStrc.dwAnimMode)
@@ -2581,6 +3280,60 @@ export function stepFallenSliceFrame113c(
       }
     },
   )
+  const baseSrvDoMissile = k2MeleeDotHooksBase.srvDoMissile
+  const baseSrvHitMissile = k2MeleeDotHooksBase.srvHitMissile
+  const k2MeleeDotHooks: K2GapMeleeDotHooks113c = k2MeleeDotHooksBase
+  k2MeleeDotHooksBase.srvDoMissile = (mem, wSrvDoIdx, fnVa, pg, pMis) => {
+    if ((fnVa >>> 0) === 0x6fc60280) {
+      return MISSILE_SrvDo_PeriodicRadialDamageAndStep_6FC60280_113c(
+        mem as SparseMemory113c,
+        pg,
+        pMis,
+      )
+    }
+    if ((fnVa >>> 0) === 0x6fc5f9f0) {
+      return MISSILES_SrvDo13_SpawnOppositeSubMissilesAlongStep_6FC5F9F0_113c(
+        mem,
+        pg,
+        pMis,
+        k2MeleeDotHooks,
+      )
+    }
+    if (baseSrvDoMissile !== undefined) {
+      return baseSrvDoMissile(mem, wSrvDoIdx, fnVa, pg, pMis)
+    }
+    return 1
+  }
+  k2MeleeDotHooksBase.srvHitMissile = (mem, wSrvHitIdx, fnVa, pg, pMis, pTgt) => {
+    if ((fnVa >>> 0) === 0x6fc5ab30) {
+      return MISSILE_SrvHit_SpawnSubMissileAndCopyTargetX_6FC5AB30_113c(
+        mem,
+        pg,
+        pMis,
+        pTgt,
+      )
+    }
+    if ((fnVa >>> 0) === 0x6fc5b5f0) {
+      return MISSILE_SrvHit_RadialStatsDamageByAuraRange_6FC5B5F0_113c(
+        mem,
+        pg,
+        pMis,
+        pTgt,
+      )
+    }
+    if ((fnVa >>> 0) === 0x6fc5bb60) {
+      return QUESTS_Act3KurastTemplesSequenceFilter_6FC5BB60_113c(
+        mem,
+        pg,
+        pMis,
+        pTgt,
+      )
+    }
+    if (baseSrvHitMissile !== undefined) {
+      return baseSrvHitMissile(mem, wSrvHitIdx, fnVa, pg, pMis, pTgt)
+    }
+    return 1
+  }
 
   const fired = EVENT_UpdateTimers113c(m, pGame, (_mem, _g, pUnit, evType, arg14, arg18, _fn, pNode) => {
     if (pUnit === 0) return
@@ -2604,11 +3357,22 @@ export function stepFallenSliceFrame113c(
             if (mode === PLRMODE_RUN) {
               PLAYER_DrainRunStamina113c(mem, plr)
             }
+            if (
+              pg !== 0 &&
+              isSgptDataTablesLoaded113c(mem) &&
+              STATES_CheckState113c(mem, plr, 0x0d) !== 0
+            ) {
+              SKILLS_SpawnBlazeTrailMissileOnStep_6FC639A0_113c(mem as SparseMemory113c, plr, pg)
+              syncActRoomsAndUnitsIntoWorld113c(world)
+            }
             if (pg !== 0 && isSgptDataTablesLoaded113c(mem)) {
               SUNIT_ValidatePathTargetUnit113c(mem, plr, pg)
             }
             const stepped = PATH_Step113c(mem, plr, 0)
             if (UNITS_GetPathRoomRefreshFlag113c(mem, plr) !== 0) {
+              if (world.hasFullDrlg === true && pg !== 0) {
+                notifyNewlyEnteredRoomClientsK2(world, plr)
+              }
               SUNIT_UpdateUnitPositionAndRoom113c(mem, 0, plr, pg)
             }
             recordPlayerWalkBreadcrumbK3_113c(mem, pg, plr)
@@ -2631,6 +3395,69 @@ export function stepFallenSliceFrame113c(
                     targetId,
                   )
                   syncActRoomsAndUnitsIntoWorld113c(world)
+                  return 1
+                }
+                if (
+                  interactAction >= 0 &&
+                  isSgptDataTablesLoaded113c(mem) &&
+                  hasHydratedAnimDataTable113c(mem)
+                ) {
+                  const pSkill = SKILLS_GetHighestLevelSkillFromUnitAndIdFastcall113c(mem, plr, interactAction) >>> 0
+                  if (pSkill === 0) {
+                    PLAYER_FinishModeAndResetToNeutral113c(mem, pg, plr, arg14, arg18)
+                    syncPlayerNeutralAnimAfterReset113c(world, plr)
+                    mem.setU32((pPlayerData + 0x150) >>> 0, 0)
+                    return 1
+                  }
+                  const nPlrMode = SKILLS_GetSkillSlotIndex113c(mem, plr, pSkill) | 0
+                  let pTarget = 0
+                  if (targetType === UNIT_MONSTER) {
+                    const foundMon = world.monsterById.get(targetId)
+                    pTarget = foundMon !== undefined ? foundMon : 0
+                  } else {
+                    const foundAny = world.unitsByKey.get(unitKey(targetType, targetId))
+                    pTarget = foundAny !== undefined ? foundAny : 0
+                  }
+                  if (pTarget === 0 && pg !== 0) {
+                    pTarget = SUNIT_GetServerUnit113c(mem, pg, targetType, targetId) >>> 0
+                  }
+                  const arrivalCallees: C2SPacketCallees113c = {
+                    findServerUnit(_m2, _pg2, dwType2, dwId2) {
+                      if (dwType2 === UNIT_MONSTER) {
+                        const foundMon2 = world.monsterById.get(dwId2)
+                        return foundMon2 !== undefined ? foundMon2 : 0
+                      }
+                      const foundAny2 = world.unitsByKey.get(unitKey(dwType2, dwId2))
+                      return foundAny2 !== undefined ? foundAny2 : 0
+                    },
+                    onStartAttackOnUnit(m2, pg2, plr2, tgt2, mode2) {
+                      PLAYER_StartCastSkillOnUnitK3_113c(m2, pg2, plr2, mode2, tgt2)
+                    },
+                    onAfterModeStarted(m2, plr2) {
+                      const pu2 = world.pathUnitByPtr.get(plr2)
+                      if (pu2 !== undefined) {
+                        pu2.dwAnimMode = m2.get(plr2, D2UnitStrc.dwAnimMode)
+                        pu2.dwFlags = m2.get(plr2, D2UnitStrc.dwFlags)
+                      }
+                    },
+                  }
+                  if (pTarget !== 0) {
+                    PLAYER_StartModeOnUnit113c(
+                      mem,
+                      pg,
+                      plr,
+                      pTarget,
+                      nPlrMode,
+                      0,
+                      0,
+                      0,
+                      pSkill,
+                      arrivalCallees,
+                      targetType,
+                      targetId,
+                    )
+                  }
+                  mem.setU32((pPlayerData + 0x150) >>> 0, 0)
                   return 1
                 }
                 mem.setU32((pPlayerData + 0x150) >>> 0, 0)
@@ -2664,11 +3491,48 @@ export function stepFallenSliceFrame113c(
           mode === 14 ||
           mode === 15 ||
           mode === 16 ||
+          (mode === 13 && isActivePlayerSpecial1Skill113c(m, pUnit)) ||
           ((mode === 7 || mode === 8 || mode === 11 || mode === 12 || mode === 18) &&
             PLAYER_IsNonMeleeSequenceSkillK3_113c(m, pUnit))
         ) {
-          PLAYER_StepSkillKeyframeK3_113c(m, pGame, pUnit, arg14, arg18, k2MeleeDotHooks)
+          const prevMonsters = new Set<number>(world.monsterById.values())
+          const pUsedSeq = SKILLS_GetUsedSkillMemPort113c(m, pUnit) >>> 0
+          const seqFlags = pUsedSeq !== 0 ? (SKILLS_GetFlags113c(m, pUsedSeq) | 0) : 0
+          if (mode === 18 && (seqFlags & 1) !== 0 && isSgptDataTablesLoaded113c(m)) {
+            ensureSliceWorldPathMemory113c(world)
+            attachSliceWorldCallbacks113c(world)
+            PLAYER_StartModeDispatch113c(
+              m,
+              pGame,
+              pUnit,
+              arg14,
+              arg18,
+              '',
+              (mem, pg, plr) => SKILLS_DoUsedSkillActionK3_113c(mem, plr, pg, k2MeleeDotHooks),
+              true,
+            )
+            const puSeq = world.pathUnitByPtr.get(pUnit)
+            if (puSeq !== undefined) {
+              puSeq.dwAnimMode = m.get(pUnit, D2UnitStrc.dwAnimMode)
+              puSeq.dwFlags = m.get(pUnit, D2UnitStrc.dwFlags)
+            }
+          } else if (shouldUseTargetedMissileFallbackK3_113c(m, pUnit)) {
+            stepTargetedMissileKeyframeK3_113c(m, pGame, pUnit, arg14, arg18)
+          } else {
+            PLAYER_StepSkillKeyframeK3_113c(m, pGame, pUnit, arg14, arg18, k2MeleeDotHooks)
+          }
           syncActRoomsAndUnitsIntoWorld113c(world)
+          for (const u of world.monsterById.values()) {
+            if (prevMonsters.has(u)) continue
+            if (
+              m.get(u, D2UnitStrc.dwAnimMode) !== 1 &&
+              (m.get(u, D2UnitStrc.dwFlags) & 0x10) !== 0 &&
+              EVENT_GetNextEventFrame113c(m, u, MON_EVENT_MODE_END) === 0
+            ) {
+              MONSTER_ClearModeEvents113c(m, pGame, u)
+              SUNIT_ScheduleModeAnimEvents113c(m, pGame, u, MON_EVENT_MODE_STEP, MON_EVENT_MODE_END)
+            }
+          }
           pruneRemovedUnitsFromWorld113c(world)
         } else if (
           mode >= PLRMODE_ATTACK1 &&
@@ -2678,64 +3542,80 @@ export function stepFallenSliceFrame113c(
           mode !== 13
         ) {
           // 0x6FD279D0[mode] = 0x6FC99170 (`PLAYER_StartModeDispatch` -> `0x6FCC2060` -> `0x6FCC19A0` -> `0x6FCC2C40`)
-          if (arg14 === 1) {
+          if (arg14 === 1 || arg14 === 2) {
             const pPath = m.get(pUnit, D2UnitStrc.pPath)
             const pDef = pPath !== 0 ? m.get(pPath, D2DynamicPathStrc.pTargetUnit) : 0
-            if (pDef !== 0) {
-              const pUsed = SKILLS_GetUsedSkillMemPort113c(m, pUnit) >>> 0
-              if (pUsed !== 0 && isSgptDataTablesLoaded113c(m)) {
-                ensureSliceWorldPathMemory113c(world)
-                attachSliceWorldCallbacks113c(world)
-                let recordedHit = false
-                let hitAtt = pUnit
-                let hitDef = pDef
-                let hitRetDmg = 0
-                const meleeHooks = buildSliceMeleeCombatHooks113c(world, (pAtt, pD, ret) => {
-                  recordedHit = true
-                  hitAtt = pAtt
-                  hitDef = pD
-                  hitRetDmg = ret
-                })
-                PLAYER_StartModeDispatch113c(m, pGame, pUnit, arg14, arg18, '1HS', (mem, pg, plr) =>
-                  SKILLS_DoUsedSkillAction113c(
-                    mem,
-                    plr,
-                    pg,
-                    (doIdx, skId, effLvl) =>
-                      doIdx === 2
-                        ? SKILLS_ApplyMeleeHitAuraStatesAndExecuteEvents_6FCC3220_113c(
-                            mem,
-                            pg,
-                            plr,
-                            skId,
-                            effLvl,
-                            meleeHooks,
-                          )
-                        : 1,
-                    meleeHooks,
-                  ),
-                )
-                if (recordedHit) {
-                  world.lastFrameDmg.push({
-                    att: [m.get(hitAtt, D2UnitStrc.dwUnitType), m.get(hitAtt, D2UnitStrc.dwUnitId)],
-                    def: [m.get(hitDef, D2UnitStrc.dwUnitType), m.get(hitDef, D2UnitStrc.dwUnitId)],
-                    ret: hitRetDmg,
-                  })
-                }
-              } else {
-                const nextFlags =
-                  (m.get(pUnit, D2UnitStrc.dwFlags) | UNITFLAG_IN_SKILL_ACTION) >>> 0
-                m.set(pUnit, D2UnitStrc.dwFlags, nextFlags)
-                const pu = world.pathUnitByPtr.get(pUnit)
-                if (pu !== undefined) pu.dwFlags = nextFlags
-                SUNITDMG_ExecuteMissileOrMeleeDmg113c(world, pUnit, pDef)
+            const pUsed = SKILLS_GetUsedSkillMemPort113c(m, pUnit) >>> 0
+            if (pUsed !== 0 && isSgptDataTablesLoaded113c(m)) {
+              ensureSliceWorldPathMemory113c(world)
+              attachSliceWorldCallbacks113c(world)
+              let recordedHit = false
+              let hitAtt = pUnit
+              let hitDef = pDef
+              let hitRetDmg = 0
+              const meleeHooks = buildSliceMeleeCombatHooks113c(world, (pAtt, pD, ret) => {
+                recordedHit = true
+                hitAtt = pAtt
+                hitDef = pD
+                hitRetDmg = ret
+              })
+              PLAYER_StartModeDispatch113c(m, pGame, pUnit, arg14, arg18, '1HS', (mem, pg, plr) =>
+                SKILLS_DoUsedSkillAction113c(
+                  mem,
+                  plr,
+                  pg,
+                  (doIdx, skId, effLvl) => {
+                    if (doIdx === 2) {
+                      return SKILLS_ApplyMeleeHitAuraStatesAndExecuteEvents_6FCC3220_113c(
+                        mem,
+                        pg,
+                        plr,
+                        skId,
+                        effLvl,
+                        meleeHooks,
+                      )
+                    }
+                    if (doIdx === 120) {
+                      return SKILLS_SrvDo_DruidChargeUpHit_6FC66000_113c(
+                        mem as SparseMemory113c,
+                        pg,
+                        plr,
+                        skId,
+                        effLvl,
+                      )
+                    }
+                    return 1
+                  },
+                  meleeHooks,
+                ),
+              )
+              const puAtk = world.pathUnitByPtr.get(pUnit)
+              if (puAtk !== undefined) {
+                puAtk.dwAnimMode = m.get(pUnit, D2UnitStrc.dwAnimMode)
+                puAtk.dwFlags = m.get(pUnit, D2UnitStrc.dwFlags)
               }
+              syncActRoomsAndUnitsIntoWorld113c(world)
+              if (recordedHit) {
+                world.lastFrameDmg.push({
+                  att: [m.get(hitAtt, D2UnitStrc.dwUnitType), m.get(hitAtt, D2UnitStrc.dwUnitId)],
+                  def: [m.get(hitDef, D2UnitStrc.dwUnitType), m.get(hitDef, D2UnitStrc.dwUnitId)],
+                  ret: hitRetDmg,
+                })
+              }
+            } else if (pDef !== 0) {
+              const nextFlags =
+                (m.get(pUnit, D2UnitStrc.dwFlags) | UNITFLAG_IN_SKILL_ACTION) >>> 0
+              m.set(pUnit, D2UnitStrc.dwFlags, nextFlags)
+              const pu = world.pathUnitByPtr.get(pUnit)
+              if (pu !== undefined) pu.dwFlags = nextFlags
+              SUNITDMG_ExecuteMissileOrMeleeDmg113c(world, pUnit, pDef)
             }
           }
         }
       } else if (evType === PLR_EVENT_MODE_END) {
         const curPlrMode = m.get(pUnit, D2UnitStrc.dwAnimMode)
         if (
+          curPlrMode === 4 ||
           curPlrMode === PLRMODE_ATTACK1 ||
           curPlrMode === 8 ||
           curPlrMode === PLRMODE_BLOCK ||
@@ -2746,11 +3626,46 @@ export function stepFallenSliceFrame113c(
         }
       } else if (evType === PLR_EVENT_STAMINA) {
         PLAYER_Event3_RegenTick113c(m, pGame, pUnit)
+      } else if (evType === 5) {
+        const sm = m as SparseMemory113c
+        SKILLS_DispatchStateOnSrvDoFuncForSkill_6FCBE8E0_113c(sm, pGame, pUnit, arg14, arg18, {
+          onSrvDoFunc: (_mem, pfn, pg, pu, skId, lvl) => {
+            if ((pfn >>> 0) === 0x6fc65af0) {
+              return SKILLS_EventFunc05_MoltenBoulderOrPerFrameAura_6FC65AF0_113c(
+                sm,
+                pg,
+                pu,
+                skId,
+                lvl,
+              )
+            }
+            return SKILLS_DispatchStateOnSrvDoFuncForSkill_6FCBE8E0_113c(sm, pg, pu, skId, lvl)
+          },
+        })
       } else if (evType === PLR_EVENT_IDLE) {
         PLAYER_Event11_PeriodicTick113c(m, pGame, pUnit)
       } else if (evType === 8) {
         SKILLS_Event08_AuraPulseTick113c(m, pGame, pUnit, arg14, arg18)
       } else if (evType === 12) {
+        let hadChannelStateRemove6FC62290 = false
+        const pEx = m.u32((pUnit + 0x5c) >>> 0) >>> 0
+        if (pEx !== 0 && (m.u32((pEx + 0x10) >>> 0) | 0) < 0) {
+          for (let listOff = 0x3c; listOff <= 0x40 && !hadChannelStateRemove6FC62290; listOff += 4) {
+            let sub = m.u32((pEx + listOff) >>> 0) >>> 0
+            while (sub !== 0) {
+              const sFlags = m.u32((sub + 0x10) >>> 0)
+              if (
+                (sFlags & 0x02) !== 0 &&
+                (nextFrame === 0 || (m.u32((sub + 0x18) >>> 0) | 0) <= (nextFrame | 0)) &&
+                m.u32((sub + 0x38) >>> 0) === 0x6fc62290
+              ) {
+                hadChannelStateRemove6FC62290 = true
+                break
+              }
+              sub = m.u32((sub + 0x2c) >>> 0) >>> 0
+            }
+          }
+        }
         PLAYER_Event0C_ExpireTimedStatsWithSyncK3_113c(
           m,
           pGame,
@@ -2759,6 +3674,12 @@ export function stepFallenSliceFrame113c(
           arg18,
           k2MeleeDotHooks,
         )
+        if (hadChannelStateRemove6FC62290) {
+          const nextFlags = (m.get(pUnit, D2UnitStrc.dwFlags) | UNITFLAG_IN_SKILL_ACTION) >>> 0
+          m.set(pUnit, D2UnitStrc.dwFlags, nextFlags)
+          const pu = world.pathUnitByPtr.get(pUnit)
+          if (pu !== undefined) pu.dwFlags = nextFlags
+        }
       }
       return
     }
@@ -2806,7 +3727,13 @@ export function stepFallenSliceFrame113c(
           MONSTER_Event03_RegenAndPoisonTick113c(mem, pg, pMon, a1, a2, dotHooks)
         },
         onOtherEvent(mem, pg, pMon, ev, _hVa, a1, a2) {
-          if (ev === 12) {
+          if (ev === 7) {
+            MONSTER_Event7_MonUModEvent2_113c(mem, pg, pMon, a1, a2)
+            syncActRoomsAndUnitsIntoWorld113c(world)
+            pruneRemovedUnitsFromWorld113c(world)
+          } else if (ev === 8) {
+            SKILLS_Event08_AuraPulseTick113c(mem, pg, pMon, a1, a2)
+          } else if (ev === 12) {
             MONSTER_Event12_ExpireTimedStats113c(mem, pg, pMon, a1, a2, k2MeleeDotHooks)
           }
         },
@@ -2815,7 +3742,28 @@ export function stepFallenSliceFrame113c(
     }
 
     if (uType === 3) {
-      MISSILE_DispatchFrameTick113c(m, pGame, pUnit, k2MeleeDotHooks)
+      const savedGame14 = m.u32((pGame + 0x14) >>> 0) >>> 0
+      const savedGameD8 = m.get(pGame, D2UnitStrc.pEventFirst) >>> 0
+      m.set(pGame, D2UnitStrc.pEventFirst, 0)
+      try {
+        MISSILE_DispatchFrameTick113c(m, pGame, pUnit, k2MeleeDotHooks)
+      } finally {
+        m.setU32((pGame + 0x14) >>> 0, savedGame14)
+        m.set(pGame, D2UnitStrc.pEventFirst, savedGameD8)
+      }
+      const misId = m.get(pUnit, D2UnitStrc.dwUnitId) >>> 0
+      let pBucketMis = m.u32((pGame + 0x1920 + (misId & 0x7f) * 4) >>> 0) >>> 0
+      let stillLinked = false
+      while (pBucketMis !== 0) {
+        if (pBucketMis === (pUnit >>> 0)) {
+          stillLinked = true
+          break
+        }
+        pBucketMis = m.u32((pBucketMis + 0xe4) >>> 0) >>> 0
+      }
+      if (!stillLinked && m.get(pUnit, D2UnitStrc.pEventFirst) !== 0) {
+        MISSILE_DestroyDataAndEvents113c(m, pUnit, pGame)
+      }
     } else if (uType === UNIT_ITEM) {
       dispatchItemTimerEventK3_113c(m, pGame, pUnit, evType)
     }
@@ -3029,6 +3977,9 @@ export function stepFallenSliceFrame113c(
   }
 
   return fired
+  } finally {
+    setDefaultSUnitDmgHooks113c(prevDefaultSUnitDmgHooks)
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -3074,13 +4025,24 @@ function buildClientRoomSyncCallees113c(
       const uType = mem.get(pUnit, D2UnitStrc.dwUnitType) & 0xff
       const uId = mem.get(pUnit, D2UnitStrc.dwUnitId) >>> 0
       if (opcode === 0xab) {
-        S2C_SendPacketAB_UnitHeal113c(
-          mem,
-          pCl,
-          mem.u8((pNode + 0x08) >>> 0),
-          mem.u32((pNode + 0x0c) >>> 0) >>> 0,
-          mem.u8((pNode + 0x10) >>> 0),
-        )
+        const pClientPlayer = CLIENTS_GetPlayerUnit113c(mem, pCl, 0) >>> 0
+        if (
+          pClientPlayer === 0 ||
+          SUNIT_AreUnitsHostileOrUnaligned113c(
+            mem,
+            pClientPlayer,
+            pUnit,
+            D2GAME_SUNIT_GetGameFromUnit113c(mem, pClientPlayer),
+          ) !== 0
+        ) {
+          S2C_SendPacketAB_UnitHeal113c(
+            mem,
+            pCl,
+            mem.u8((pNode + 0x08) >>> 0),
+            mem.u32((pNode + 0x0c) >>> 0) >>> 0,
+            mem.u8((pNode + 0x10) >>> 0),
+          )
+        }
       } else if (opcode === 0x99) {
         const skillId = mem.u16((pNode + 0x08) >>> 0)
         const slvl = mem.u8((pNode + 0x0a) >>> 0)
@@ -3104,6 +4066,28 @@ function buildClientRoomSyncCallees113c(
         const skillId = mem.u16((pNode + 0x0c) >>> 0)
         const bLeft = mem.u8((pNode + 0x0e) >>> 0)
         S2C_SendPacket23_SetSkill113c(mem, pCl, uType, uId, bLeft, skillId, itemGuid)
+      } else if (opcode === 0xa5) {
+        NET_SendPacketA5_StateSkill_6FCABA10_113c(
+          mem,
+          mem.u8((pNode + 0x08) >>> 0),
+          mem.u32((pNode + 0x0c) >>> 0) >>> 0,
+          pCl,
+          mem.u16((pNode + 0x10) >>> 0),
+        )
+      } else if (opcode === 0xa3) {
+        NET_SendPacketA3_AuraTargetSkill_6FCABA90_113c(
+          mem,
+          mem.u8((pNode + 0x08) >>> 0),
+          mem.u16((pNode + 0x0a) >>> 0),
+          pCl,
+          mem.u16((pNode + 0x0c) >>> 0),
+          mem.u32((pNode + 0x10) >>> 0) & 0xff,
+          mem.u32((pNode + 0x14) >>> 0) >>> 0,
+          mem.u32((pNode + 0x18) >>> 0) & 0xff,
+          mem.u32((pNode + 0x1c) >>> 0) >>> 0,
+          mem.u32((pNode + 0x20) >>> 0) | 0,
+          mem.u32((pNode + 0x24) >>> 0) | 0,
+        )
       }
     },
   }
@@ -3160,6 +4144,25 @@ function buildClientRoomSyncCallees113c(
         onUnitFullSyncPostSwitch(m2, uType, cl2, u2) {
           if (uType === UNIT_MONSTER) {
             D2GAME_MONSTER_SendMonsterMovementSync113c(m2, u2, pg, cl2, monsterSyncCallees)
+            if (
+              (m2.get(u2, D2UnitStrc.dwFlags) & 0x01) !== 0 &&
+              m2.get(u2, D2UnitStrc.dwAnimMode) !== 1
+            ) {
+              D2GAME_MONSTER_SendMonsterMovementSync113c(m2, u2, pg, cl2, monsterSyncCallees)
+            }
+            const cls = m2.u32((u2 + 0x04) >>> 0) >>> 0
+            if (
+              STATES_CheckState113c(m2, u2, 0x5d) !== 0 ||
+              cls === 0x123 ||
+              cls === 0x1a1 ||
+              cls === 0x1a2
+            ) {
+              PLAYER_SendInventoryItemsSyncPackets_6FC57C90_113c(
+                m2 as SparseMemory113c,
+                cl2,
+                u2,
+              )
+            }
           } else if (uType === UNIT_ITEM) {
             UNITROOM_SendDroppedGroundItemToClient113c(m2, u2, cl2)
           }
@@ -3174,7 +4177,11 @@ function buildClientRoomSyncCallees113c(
             dispatchPlayerModeHandler(m3, modeIdx, g3, u3, cl3) {
               if (modeIdx === 2 || modeIdx === 3 || modeIdx === 6) {
                 SPLAYER_BroadcastUnitMovementToClient113c(m3, g3, u3, cl3, modeIdx)
-              } else if (modeIdx === 4 || modeIdx === PLRMODE_BLOCK || modeIdx === 13) {
+              } else if (
+                modeIdx === 4 ||
+                modeIdx === PLRMODE_BLOCK ||
+                (modeIdx === 13 && !isActivePlayerSpecial1Skill113c(m3, u3))
+              ) {
                 if (u3 === pPlr) {
                   emitPlayer0DPacket113c(m3, cl3, u3, modeIdx === 4 ? 0x06 : 0x12)
                 }
@@ -3203,6 +4210,41 @@ function buildClientRoomSyncCallees113c(
     onMonsterPostSync(mem, u, pCl) {
       UNIT_FlushEventNotifyQueueToClient113c(mem, pCl, u, notifyCallees)
     },
+    syncMonsterSkillCast(mem, u, _nFlag, pTargetUnit, pCl) {
+      if (pCl !== 0 && mem.u32((pCl + 0x1a8) >>> 0) === 0 && world.pGame !== 0) {
+        mem.setU32((pCl + 0x1a8) >>> 0, world.pGame >>> 0)
+      }
+      const pTargetRoom = pTargetUnit !== 0 ? (UNITS_GetRoom113c(mem, pTargetUnit) >>> 0) : 0
+      let boundTmpRoomClient = false
+      let savedClientsPtr = 0
+      let savedClientsCnt = 0
+      if (
+        world.hasFullDrlg !== true &&
+        pTargetRoom !== 0 &&
+        (mem.u32((pTargetRoom + 0x78) >>> 0) | 0) === 0
+      ) {
+        savedClientsPtr = mem.u32((pTargetRoom + 0x48) >>> 0) >>> 0
+        savedClientsCnt = mem.u32((pTargetRoom + 0x78) >>> 0) >>> 0
+        const pTmpArr = 0x004ff0f0
+        mem.setU32(pTmpArr, pCl >>> 0)
+        mem.setU32((pTargetRoom + 0x48) >>> 0, pTmpArr)
+        mem.setU32((pTargetRoom + 0x78) >>> 0, 1)
+        boundTmpRoomClient = true
+      }
+      try {
+        NET_SendMonsterSkillCastPacket4COr4D_6FD134C0_113c(
+          mem as SparseMemory113c,
+          u,
+          pCl,
+          pTargetUnit,
+        )
+      } finally {
+        if (boundTmpRoomClient && pTargetRoom !== 0) {
+          mem.setU32((pTargetRoom + 0x48) >>> 0, savedClientsPtr)
+          mem.setU32((pTargetRoom + 0x78) >>> 0, savedClientsCnt)
+        }
+      }
+    },
     onMonsterSyncFlag8000(mem, u, pCl) {
       MONSTER_SendPacket0x0C_LifeSync113c(mem, u, pCl)
     },
@@ -3214,6 +4256,9 @@ function buildClientRoomSyncCallees113c(
     },
     syncItemUnitToClient(mem, u, pCl) {
       UNITROOM_BroadcastGroundItemIfUpdated113c(mem, u, pCl)
+    },
+    onMonsterSyncStatFlag100(mem, u, pCl) {
+      UNIT_SendStatB2Packet11ToClient_6FC9A570_113c(mem, u, pCl)
     },
     onMonsterMovementPacket(mem, pCl, op, dwUnitId, nAction, nPosOrTypeX, nPosOrGuidY, a7, a8, a9) {
       const foundMon = world.monsterById.get(dwUnitId >>> 0)
@@ -5234,6 +6279,9 @@ export function hydrateSnapshotKernelTables113c(
           replayStackPtr113c = savedSp
         }
 
+        if (savedHp !== 0) {
+          STATLIST_SetUnitStat113c(m, pUnit, 6, 0, 0)
+        }
         STATLIST_SetUnitStat113c(m, pUnit, 6, savedHp, 0)
         STATLIST_SetUnitStat113c(m, pUnit, 8, savedMana, 0)
         STATLIST_SetUnitStat113c(m, pUnit, 10, savedStam, 0)
@@ -5309,6 +6357,24 @@ export function hydrateSnapshotKernelTables113c(
     const pPlrData = m.u32((pPlr + 0x14) >>> 0) >>> 0
     if (pPlrData === 0 || !isAddrLoaded(pPlrData)) continue
     const pPets = m.u32((pPlrData + 0x44) >>> 0) >>> 0
+    if (pPets !== 0 && isAddrLoaded(pPets)) {
+      const pSlots = m.u32(pPets) >>> 0
+      if (pSlots !== 0 && isAddrLoaded((pSlots + 0x54) >>> 0)) {
+        let pMercPetNode = m.u32((pSlots + 0x54) >>> 0) >>> 0
+        while (pMercPetNode !== 0 && isAddrLoaded(pMercPetNode)) {
+          const mercGuid = m.u32((pMercPetNode + 0x04) >>> 0) >>> 0
+          const pMercMon = monsterById.get(mercGuid)
+          if (
+            pMercMon !== undefined &&
+            pMercMon !== 0 &&
+            (m.u32((pMercMon + 0x10) >>> 0) === 12 || (m.u32((pMercMon + 0xc4) >>> 0) & 0x10000) !== 0)
+          ) {
+            m.setU32(pMercPetNode, (m.u32(pMercPetNode) | 1) >>> 0)
+          }
+          pMercPetNode = m.u32((pMercPetNode + 0x14) >>> 0) >>> 0
+        }
+      }
+    }
     const pDataTblPets = m.u32(D2COMMON_SGPT_DATATABLES_VA_113C) >>> 0
     const petTypesCnt = pDataTblPets !== 0 ? (m.u32((pDataTblPets + 0xbf0) >>> 0) >>> 0) : 0
     if (pDataTblPets !== 0 && petTypesCnt > 0) {

@@ -4,13 +4,16 @@
  *   (`tests/fixtures/oracle/k6/<scenario>.snap-f002.ndjson.gz`) through the pure `ReplayKernel113c`
  *   (`src/d2kern-113c/`) against real 1.13c goldens (`<scenario>.oracle.ndjson.gz`).
  * - Locks full-horizon zero-divergence (`strictHorizon === lastGoldenFrame`, `0` divergence on
- *   units + `t4` items + `s2c` packets, `runtimeExecGap === 0` across `D2Common` 609/609 and
- *   `D2Game` 487/487) on `k6-bloodmoor-consumables-auras-combat` (`F2..F380`).
+ *   units + `t4` items + `s2c` packets) across all 7/7 `[K6]` Wave 1 scenarios, with
+ *   `runtimeExecGap === 0` across `D2Common` 609/609 and `D2Game` 487/487 on
+ *   `k6-bloodmoor-consumables-auras-combat` (`F2..F380`).
  * - Enforces upward-only ratchet horizons (`tests/fixtures/oracle/k6/horizons.json`), negative
  *   controls, and exact real-DLL INT3 coverage hit counts (`<scenario>.coverage.ndjson.gz`).
  */
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
+// Ensure items.ts initializes after statlist.ts exports settle under Vite SSR circular-import evaluation
+import '../../../src/d2kern-113c/common/items.ts'
 import { describe, expect, it } from 'vitest'
 import { D2UnitStrc } from '../../../src/d2kern-113c/mem/layout.generated.ts'
 import {
@@ -71,8 +74,8 @@ const K6_SCENARIO_SPECS_113C: readonly K6ScenarioSpec113c[] = [
     totalHits: 1248,
     d2CommonExecuted: 719,
     d2GameExecuted: 529,
-    minStrictHorizon: 230,
-    minPosHorizon: 231,
+    minStrictHorizon: 390,
+    minPosHorizon: 390,
   },
   {
     name: 'k6-assassin-skills',
@@ -80,8 +83,8 @@ const K6_SCENARIO_SPECS_113C: readonly K6ScenarioSpec113c[] = [
     totalHits: 1327,
     d2CommonExecuted: 745,
     d2GameExecuted: 582,
-    minStrictHorizon: 58,
-    minPosHorizon: 78,
+    minStrictHorizon: 390,
+    minPosHorizon: 390,
   },
   {
     name: 'k6-items-potions-belt-combat',
@@ -98,8 +101,8 @@ const K6_SCENARIO_SPECS_113C: readonly K6ScenarioSpec113c[] = [
     totalHits: 991,
     d2CommonExecuted: 578,
     d2GameExecuted: 413,
-    minStrictHorizon: 47,
-    minPosHorizon: 120,
+    minStrictHorizon: 275,
+    minPosHorizon: 275,
   },
   {
     name: 'k6-nightmare-bloodmoor-combat',
@@ -107,8 +110,8 @@ const K6_SCENARIO_SPECS_113C: readonly K6ScenarioSpec113c[] = [
     totalHits: 1070,
     d2CommonExecuted: 577,
     d2GameExecuted: 493,
-    minStrictHorizon: 307,
-    minPosHorizon: 307,
+    minStrictHorizon: 360,
+    minPosHorizon: 360,
   },
 ]
 
@@ -242,6 +245,145 @@ describe('[K6] Wave 1 full-horizon zero-divergence multi-subsystem gate (k6-act3
     expect(f140.t4!.some((it) => it[0] === 13 && it[1] === 547 && it[2] === 0)).toBe(true)
     expect(f140.t0![0]![3]).toBe(5125)
     expect(f140.t0![0]![4]).toBe(5172)
+  })
+})
+
+describe('[K6] Wave 1 full-horizon zero-divergence multi-subsystem gate (k6-nightmare-bloodmoor-combat)', () => {
+  it('replays all 360 frames with zero divergence across units, t4 items, gs, and s2c packets', () => {
+    const name: K6ReplayScenarioName113c = 'k6-nightmare-bloodmoor-combat'
+    const r = getReplay(name)
+    const cov = loadK6Coverage113c(name)
+    const exec = computeK6RuntimeExecSummary113c(cov, r.tsExecutedVas)
+
+    expect(r.bootCheck).toBeNull()
+    expect(r.lastGoldenFrame).toBe(360)
+    expect(r.strictHorizon).toBe(360)
+    expect(r.posHorizon).toBe(360)
+    expect(r.firstStrictDivergence).toBeNull()
+    expect(r.firstPosDivergence).toBeNull()
+    expect(r.unportedHit).toBeNull()
+
+    expect(exec.d2CommonDll).toBe(577)
+    expect(exec.d2GameDll).toBe(493)
+
+    // Verify genuine Nightmare Blood Moor multi-subsystem outcomes across F2..F360:
+    // Battle Orders increases max life (127232 -> 157952), player reaches (5682, 5788),
+    // Nightmare Quill Rats #9..#11 take combat damage below max life, and #10 enters attack/combat mode 4.
+    const golden = loadK6Golden113c(name)
+    const f2 = golden.frames.get(2)!
+    const f360 = golden.frames.get(360)!
+    expect(playerStat(golden.header, f360.t0![0]!, 7)).toBeGreaterThan(
+      playerStat(golden.header, f2.t0![0]!, 7),
+    )
+    expect(f360.t0![0]![3]).toBe(5682)
+    expect(f360.t0![0]![4]).toBe(5788)
+    const q9 = f360.t1!.find((m) => m[0] === 9)!
+    const q10 = f360.t1!.find((m) => m[0] === 10)!
+    const q11 = f360.t1!.find((m) => m[0] === 11)!
+    expect(q9[1]).toBe(63)
+    expect(q10[2]).toBe(4)
+    expect(playerStat(golden.header, q9, 6)).toBeLessThan(playerStat(golden.header, q9, 7))
+    expect(playerStat(golden.header, q10, 6)).toBeLessThan(playerStat(golden.header, q10, 7))
+    expect(playerStat(golden.header, q11, 6)).toBeLessThan(playerStat(golden.header, q11, 7))
+  })
+})
+
+describe('[K6] Wave 1 full-horizon zero-divergence multi-subsystem gate (k6-town-npc-gamble-waypoint)', () => {
+  it('replays all 275 frames with zero divergence across units, t4 items, gs, and s2c packets', () => {
+    const name: K6ReplayScenarioName113c = 'k6-town-npc-gamble-waypoint'
+    const r = getReplay(name)
+    const cov = loadK6Coverage113c(name)
+    const exec = computeK6RuntimeExecSummary113c(cov, r.tsExecutedVas)
+
+    expect(r.bootCheck).toBeNull()
+    expect(r.lastGoldenFrame).toBe(275)
+    expect(r.firstStrictDivergence).toBeNull()
+    expect(r.strictHorizon).toBe(275)
+    expect(r.posHorizon).toBe(275)
+    expect(r.firstPosDivergence).toBeNull()
+    expect(r.unportedHit).toBeNull()
+
+    expect(exec.d2CommonDll).toBe(578)
+    expect(exec.d2GameDll).toBe(413)
+
+    // Verify genuine Rogue Encampment town NPC interact, stash deposit, vendor stock/purchase, and waypoint state across F2..F275
+    const golden = loadK6Golden113c(name)
+    const f2 = golden.frames.get(2)!
+    const f275 = golden.frames.get(275)!
+    expect(playerStat(golden.header, f2.t0![0]!, 14)).toBe(250000)
+    expect(playerStat(golden.header, f275.t0![0]!, 14)).toBe(238000)
+    expect(playerStat(golden.header, f275.t0![0]!, 15)).toBe(12000)
+    expect(f275.t0![0]![3]).toBe(5619)
+    expect(f275.t0![0]![4]).toBe(5920)
+    expect(f275.t4!.length).toBeGreaterThan(f2.t4!.length)
+    expect(f275.t4!.some((it) => it[0] === 12)).toBe(false)
+    expect(f275.t4!.some((it) => it[0] === 75 && it[1] === 526)).toBe(true)
+  })
+})
+
+describe('[K6] Wave 1 full-horizon zero-divergence multi-subsystem gate (k6-druid-skills)', () => {
+  it('replays all 390 frames with zero divergence across units, t4 items, gs, and s2c packets', () => {
+    const name: K6ReplayScenarioName113c = 'k6-druid-skills'
+    const r = getReplay(name)
+    const cov = loadK6Coverage113c(name)
+    const exec = computeK6RuntimeExecSummary113c(cov, r.tsExecutedVas)
+
+    expect(r.bootCheck).toBeNull()
+    expect(r.lastGoldenFrame).toBe(390)
+    expect(r.strictHorizon).toBe(390)
+    expect(r.posHorizon).toBe(390)
+    expect(r.firstStrictDivergence).toBeNull()
+    expect(r.firstPosDivergence).toBeNull()
+    expect(r.unportedHit).toBeNull()
+
+    expect(exec.d2CommonDll).toBe(719)
+    expect(exec.d2GameDll).toBe(529)
+
+    // Verify genuine Druid summoning, Oak Sage life aura, unsummon death, and Grizzly outcomes across F2..F390
+    const golden = loadK6Golden113c(name)
+    const f2 = golden.frames.get(2)!
+    const f390 = golden.frames.get(390)!
+    expect(playerStat(golden.header, f390.t0![0]!, 7)).toBeGreaterThan(
+      playerStat(golden.header, f2.t0![0]!, 7),
+    )
+    expect(f390.t0![0]![3]).toBe(5661)
+    expect(f390.t0![0]![4]).toBe(5829)
+    expect(f390.t1!.some((m) => m[0] === 12 && m[1] === 424)).toBe(true) // Oak Sage
+    expect(f390.t1!.some((m) => m[0] === 13 && m[1] === 425)).toBe(true) // Poison Creeper
+    expect(f390.t1!.some((m) => m[0] === 14 && m[1] === 420 && m[2] === 12)).toBe(true) // replaced Wolf
+    expect(f390.t1!.some((m) => m[0] === 16 && m[1] === 428 && m[2] === 2)).toBe(true) // Grizzly
+  })
+})
+
+describe('[K6] Wave 1 full-horizon zero-divergence multi-subsystem gate (k6-assassin-skills)', () => {
+  it('replays all 390 frames with zero divergence across units, t4 items, gs, and s2c packets', () => {
+    const name: K6ReplayScenarioName113c = 'k6-assassin-skills'
+    const r = getReplay(name)
+    const cov = loadK6Coverage113c(name)
+    const exec = computeK6RuntimeExecSummary113c(cov, r.tsExecutedVas)
+
+    expect(r.bootCheck).toBeNull()
+    expect(r.lastGoldenFrame).toBe(390)
+    expect(r.strictHorizon).toBe(390)
+    expect(r.posHorizon).toBe(390)
+    expect(r.firstStrictDivergence).toBeNull()
+    expect(r.firstPosDivergence).toBeNull()
+    expect(r.unportedHit).toBeNull()
+
+    expect(exec.d2CommonDll).toBe(745)
+    expect(exec.d2GameDll).toBe(582)
+
+    // Verify genuine Assassin Shadow Master, Mind Blast / Fire Blast / trap kills (#10/#11), and sentries across F2..F390
+    const golden = loadK6Golden113c(name)
+    const f390 = golden.frames.get(390)!
+    expect(f390.t0![0]![3]).toBe(5663)
+    expect(f390.t0![0]![4]).toBe(5810)
+    expect(f390.t1!.some((m) => m[0] === 9 && m[1] === 418)).toBe(true) // Shadow Master
+    expect(f390.t1!.find((m) => m[0] === 10)![2]).toBe(12)
+    expect(f390.t1!.find((m) => m[0] === 11)![2]).toBe(12)
+    expect(f390.t1!.some((m) => m[0] === 13 && m[1] === 410)).toBe(true)
+    expect(f390.t1!.some((m) => m[0] === 14 && m[1] === 412)).toBe(true)
+    expect(f390.t1!.some((m) => m[0] === 15 && m[1] === 416)).toBe(true)
   })
 })
 

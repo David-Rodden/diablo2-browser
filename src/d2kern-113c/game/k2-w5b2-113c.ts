@@ -223,7 +223,10 @@ import {
   NET_CheckPartyMemberStatSyncDelta_6FCAC910_113c,
   NET_SendPacket9D_ItemActionOwned_6FCAB0F0_113c,
 } from './k2-w4b4-113c'
-import { MONSTER_ShouldSyncBossLifeBarDelta_6FCAD500_113c } from './k2-w4b5-113c'
+import {
+  MONSTER_ShouldSyncBossLifeBarDelta_6FCAD500_113c,
+  SKILLS_ApplyRadialDamageCallback_6FCB3040_113c,
+} from './k2-w4b5-113c'
 import { SKILLS_ClampLifeManaStaminaToMaxAndRefreshAnim_6FCBE6B0_113c } from './k2-w4b6-113c'
 import {
   MONSTER_ClearModeEvents113c,
@@ -429,14 +432,8 @@ function sunitdmgKillUnit_6FCFEEE0(
     const curMode = m.u32((def + 0x10) >>> 0) | 0
     if (curMode === 0 || curMode === 0x0c) return
     if ((MONSTATS_CheckFlagBit113c(m, m.u32((def + 4) >>> 0) | 0, 0x0f) | 0) === 0) return
-    SUNITDMG_FreeAttackerCombatList113c(m, def, game)
-    MONSTER_ClearModeEvents113c(m, game, def)
-    UNITS_ChangeAnimMode113c(m, def, 0)
-    m.setU32((def + 0xc4) >>> 0, (m.u32((def + 0xc4) >>> 0) | 0x10000) >>> 0)
-    if (game !== 0) {
-      const nextFrame = ((m.u32((game + 0xa8) >>> 0) | 0) + 1) | 0
-      EVENT_SetEventFull113c(m, game, def, 1, nextFrame, 0, 0, 0)
-    }
+    hitD2GameVa113c(0x6FCFEEE0)
+    MONSTER_StartMode113c(m, game, def, 0, 0, 0, 0, 0x64, 1)
   } else if (defType === 0) {
     const curMode = m.u32((def + 0x10) >>> 0) | 0
     if (curMode === 0 || curMode === 0x11) return
@@ -1647,6 +1644,7 @@ function inventoryFreeAllItems_6FCAF470(
   pInventory: number,
   pGame: number,
 ): void {
+  hitD2GameVa113c(0x6FCAF470)
   if (pInventory === 0) return
   let pItem = INVENTORY_GetFirstItem113c(m, pInventory >>> 0) >>> 0
   while (pItem !== 0) {
@@ -1836,9 +1834,23 @@ export function NPCS_FreePlayerGambleInventoryForNpc_6FCAF620_113c(
   hitD2GameVa113c(0x6FCAF620)
   const _savedSp_k2W5B2StackPtr = k2W5B2StackPtr
   try {
-    const npcRec = pNpcRecord >>> 0
+    let npcRec = pNpcRecord >>> 0
     const player = pPlayer >>> 0
     const game = pGame >>> 0
+    if (npcRec !== 0 && (m.u32(npcRec) >>> 0) !== 1 && game !== 0) {
+      for (let b = 0; b < 128; b += 1) {
+        let pMon = m.u32((game + 0x1320 + b * 4) >>> 0) >>> 0
+        while (pMon !== 0) {
+          const pMonData = m.u32((pMon + 0x14) >>> 0) >>> 0
+          if (pMonData !== 0 && (m.u32((pMonData + 0x30) >>> 0) >>> 0) === npcRec) {
+            npcRec = pMon
+            b = 128
+            break
+          }
+          pMon = m.u32((pMon + 0xe4) >>> 0) >>> 0
+        }
+      }
+    }
     const dwNpcClassId = npcRec !== 0 ? m.u32((npcRec + 0x04) >>> 0) >>> 0 : 0xffffffff
     const pOutIdx = allocW5B2Stack(m, 4) >>> 0
     const pSlot = D2GAME_ARENA_FindPlayerSlotByUnit113c(m, pOutIdx, game, dwNpcClassId) >>> 0
@@ -1887,9 +1899,23 @@ export function NPCS_FreePlayerGambleAndMercNodesForNpc_6FCAFAF0_113c(
   hitD2GameVa113c(0x6FCAFAF0)
   const _savedSp_k2W5B2StackPtr = k2W5B2StackPtr
   try {
-    const npcRec = pNpcRecord >>> 0
+    let npcRec = pNpcRecord >>> 0
     const player = pPlayer >>> 0
     const game = pGame >>> 0
+    if (npcRec !== 0 && (m.u32(npcRec) >>> 0) !== 1 && game !== 0) {
+      for (let b = 0; b < 128; b += 1) {
+        let pMon = m.u32((game + 0x1320 + b * 4) >>> 0) >>> 0
+        while (pMon !== 0) {
+          const pMonData = m.u32((pMon + 0x14) >>> 0) >>> 0
+          if (pMonData !== 0 && (m.u32((pMonData + 0x30) >>> 0) >>> 0) === npcRec) {
+            npcRec = pMon
+            b = 128
+            break
+          }
+          pMon = m.u32((pMon + 0xe4) >>> 0) >>> 0
+        }
+      }
+    }
     const dwNpcClassId = npcRec !== 0 ? m.u32((npcRec + 0x04) >>> 0) >>> 0 : 0xffffffff
     const pOutIdx = allocW5B2Stack(m, 4) >>> 0
     const pSlot = D2GAME_ARENA_FindPlayerSlotByUnit113c(m, pOutIdx, game, dwNpcClassId) >>> 0
@@ -2487,53 +2513,7 @@ function skillsApplyRadialDamageCallback_6FCB3040(
   pAuraCtx: number,
   pTargetUnit: number,
 ): number {
-  const _savedSp_k2W5B2StackPtr = k2W5B2StackPtr
-  try {
-    const pSub = m.u32((pAuraCtx + 0x0c) >>> 0) >>> 0
-    const pSrcDmg = m.u32(pSub) >>> 0
-    const pDmg = allocW5B2Stack(m, 0x70) >>> 0
-    for (let i = 0; i < 0x70; i += 4) {
-      m.setU32((pDmg + i) >>> 0, m.u32((pSrcDmg + i) >>> 0) >>> 0)
-    }
-
-    const pGame = m.u32(pAuraCtx >>> 0) >>> 0
-    const pAttacker = m.u32((pAuraCtx + 0x04) >>> 0) >>> 0
-    const nToHitBonus = m.u32((pSub + 0x04) >>> 0) | 0
-    const wPresetResult = m.u16((pSub + 0x08) >>> 0)
-
-    if ((wPresetResult & 1) === 0) {
-      const wRolled =
-        sunitdmgRollMeleeToHitAndBlock_6FCFE5A0(m, pTargetUnit >>> 0, pAttacker, pGame, nToHitBonus, 0) &
-        0xffff
-      m.setU16((pDmg + 0x04) >>> 0, wRolled)
-      if ((wRolled & 1) === 0) {
-        return 1
-      }
-    } else {
-      m.setU16((pDmg + 0x04) >>> 0, wPresetResult)
-    }
-
-    if ((m.u8((pDmg + 0x04) >>> 0) & 1) !== 0) {
-      m.setU32(pDmg, (m.u32(pDmg) | m.u32((pSub + 0x0c) >>> 0)) >>> 0)
-      const bSrcDam = m.u8((pSub + 0x10) >>> 0)
-      if (bSrcDam !== 0) {
-        SUNITDMG_FillDamageValues113c(
-          m,
-          pGame,
-          pAttacker,
-          pTargetUnit >>> 0,
-          pDmg,
-          0,
-          bSrcDam,
-        )
-      }
-      SUNITDMG_AllocCombat113c(m, pGame, pAttacker, pTargetUnit >>> 0, pDmg, 0x80)
-      SUNITDMG_ExecuteEvents113c(m, pGame, pAttacker, pTargetUnit >>> 0, 1, pDmg)
-    }
-    return 1
-  } finally {
-    k2W5B2StackPtr = _savedSp_k2W5B2StackPtr
-  }
+  return SKILLS_ApplyRadialDamageCallback_6FCB3040_113c(m, pAuraCtx, pTargetUnit) | 0
 }
 
 function skillsGetUnitTargetOrFirstPathCoords_6FCBFA30(
@@ -4006,7 +3986,7 @@ export function SKILLS_SrvDo_SpawnLeapOrChargeProjectile_6FCB94C0_113c(
     PATH_SetType113c(m, pMissilePath, 0x0e)
     PATH_Compute113c(m, pMissilePath, pMissile, 0)
 
-    const nScaleBonus = SKILLS_ScaleValueByMasteryAndSkillParam1113c(m, caster, skillId) | 0
+    const nScaleBonus = SKILLS_ScaleValueByMasteryAndSkillParam1113c(m, caster, skillLevel) | 0
     if (nScaleBonus !== 0) {
       const nFactor = (nScaleBonus + 100) | 0
       const nBase34 = STATLIST_GetUnitBaseStat113c(m, pMissile, 0x34, 0) | 0

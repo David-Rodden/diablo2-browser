@@ -767,6 +767,15 @@ export async function startPlayApp(options?: {
   hudManager.touchControls.skillWheelBankMode = initialSettings.skillWheelBankMode ?? 'toggle'
   hudManager.touchControls.autoPickupGoldAndPotions = initialSettings.mobileAutoPickupGoldAndPotions ?? false
   hudManager.touchControls.hapticsEnabled = initialSettings.mobileHapticsEnabled ?? true
+  hudManager.touchControls.applyJoystickSettings(
+    initialSettings.mobileJoystickMode,
+    initialSettings.mobileJoystickAnchorRx,
+    initialSettings.mobileJoystickAnchorRy,
+    hudManager.viewportProfile.width,
+    hudManager.viewportProfile.height,
+    performance.now(),
+    false,
+  )
 
   const session = new OnlineSession({
     settingsStore,

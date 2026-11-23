@@ -1,18 +1,30 @@
 import { describe, expect, it } from 'vitest'
 import { parseGlbContainer } from '../../../src/common/formats/glb-reader.ts'
-import { validateCharacterSkinManifest } from '../../../src/common/units/character-skin.ts'
+import { resolveMeshWeaponClipKey, validateCharacterSkinManifest } from '../../../src/common/units/character-skin.ts'
 import {
   computeMeshSkinJointMatrices,
   createMeshSkinPose,
   meshSkinBillboardBasis,
   meshSkinCameraRotation,
   parseMeshSkinModel,
+  resolveMeshSkinLook,
   resolveMeshSkinOneShotTimeMs,
   sampleMeshSkinClip,
   shortestDir64Delta,
   skinMeshSkinGeoset,
 } from '../../../src/common/units/mesh-skin-model.ts'
 import { MESH_SKIN_BLEND_MS, MeshSkinAnimator } from '../../../src/client/render/mesh-skin-animator.ts'
+import { compositeMeshSkinCanvasPixels } from '../../../src/client/render/mesh-skin-renderer.ts'
+import { getEmbeddedDropTables } from '../../../src/common/items/embedded-drop-tables.ts'
+import {
+  MESH_PAPERDOLL_GLOW_RGB,
+  decodeMeshPaperdollSelection,
+  encodeMeshPaperdollSelection,
+  meshPaperdollGlowBySlot,
+  meshPaperdollGlowForQuality,
+  resolveMeshPaperdollKeyFromSlots,
+  resolveMeshPaperdollSelection,
+} from '../../../src/common/units/mesh-skin-paperdoll.ts'
 import { CharacterSkinService } from '../../../src/client/render/character-skin-cache.ts'
 import { PLR_MODES } from '../../../src/common/units/plr-mode.ts'
 
@@ -23,7 +35,14 @@ const MONSTER_MODES_FOR_TEST = ['dt', 'nu', 'wl', 'gh', 'a1', 'a2', 'bl', 'sc', 
  * Builds a tiny valid mesh skin GLB: a root joint and a child joint at pivot (0, 0, 10), one
  * triangle bound to the child, and clips that rotate / move the child.
  */
-function buildTestGlb(options: { readonly clipNames?: readonly string[]; readonly billboardChild?: boolean } = {}): Uint8Array {
+function buildTestGlb(
+  options: {
+    readonly clipNames?: readonly string[]
+    readonly billboardChild?: boolean
+    /** Adds a second geoset, three images and this root `extras.paperdoll` block. */
+    readonly paperdoll?: Record<string, unknown>
+  } = {},
+): Uint8Array {
   const chunks: Uint8Array[] = []
   const views: { buffer: 0; byteOffset: number; byteLength: number }[] = []
   const accessors: Record<string, unknown>[] = []
@@ -86,7 +105,14 @@ function buildTestGlb(options: { readonly clipNames?: readonly string[]; readonl
     }
   })
 
+  const imageViews = options.paperdoll ? [push(new Uint8Array([1])), push(new Uint8Array([2])), push(new Uint8Array([3]))] : []
   const json = {
+    ...(options.paperdoll
+      ? {
+          extras: { paperdoll: options.paperdoll },
+          images: imageViews.map((bufferView) => ({ bufferView, mimeType: 'image/png' })),
+        }
+      : {}),
     asset: { version: '2.0' },
     scene: 0,
     scenes: [{ nodes: [0, 2] }],
@@ -108,6 +134,16 @@ function buildTestGlb(options: { readonly clipNames?: readonly string[]; readonl
             material: 0,
             extras: { geoset: 0, layer: 0, alpha: 1, color: [1, 1, 1] },
           },
+          ...(options.paperdoll
+            ? [
+                {
+                  attributes: { POSITION: position, NORMAL: normal, TEXCOORD_0: uv, JOINTS_0: joints, WEIGHTS_0: weights },
+                  indices,
+                  material: 0,
+                  extras: { geoset: 1, layer: 0, alpha: 1, color: [1, 1, 1] },
+                },
+              ]
+            : []),
         ],
       },
     ],
@@ -466,5 +502,259 @@ describe('Mesh skin manifest (schema 2) and service wiring', () => {
     expect(service.getSelectedMinionSpec('ne', 'claygolem')?.name.zh).toBe('憎恶')
     // The campfire avatar is a sprite feature; mesh skins opt out instead of crashing on empty atlases.
     expect(await service.ensureSkinAvatar('ne')).toBeNull()
+  })
+})
+
+describe('Mesh skin paper-doll', () => {
+  const paperdoll = (overrides: Record<string, unknown> = {}): Record<string, unknown> => ({
+    canvas: 0,
+    hidden: [1],
+    defaults: { armor: 'none', weapon: 'none' },
+    slots: {
+      weapon: { none: {}, staff: { show: [1] } },
+      armor: {
+        none: {},
+        cloth: { layers: [{ image: 1, x: 0, y: 0, w: 2, h: 1, order: 30 }, { image: 2, x: 0, y: 1, w: 2, h: 1, order: 10 }] },
+        bare: { hide: [0] },
+      },
+    },
+    ...overrides,
+  })
+
+  it('parses the paper-doll block and resolves looks with defaults for unknown choices', () => {
+    expect(parseMeshSkinModel(buildTestGlb()).paperdoll).toBeNull()
+    expect(resolveMeshSkinLook(parseMeshSkinModel(buildTestGlb()), { weapon: 'staff' })).toBeNull()
+
+    const model = parseMeshSkinModel(buildTestGlb({ paperdoll: paperdoll() }))
+    expect(model.geosets).toHaveLength(2)
+    expect(model.paperdoll?.slots.weapon?.staff?.show).toEqual([1])
+
+    const bare = resolveMeshSkinLook(model, {})!
+    expect([...bare.visible]).toEqual([1, 0])
+    expect(bare.layers).toEqual([])
+    expect(bare.key).toBe('armor=none,weapon=none')
+    expect(bare.canvasKey).toBe('')
+
+    const dressed = resolveMeshSkinLook(model, { weapon: 'staff', armor: 'cloth', boots: 'ignored' })!
+    expect([...dressed.visible]).toEqual([1, 1])
+    // Layers are ordered by `order`, not by declaration.
+    expect(dressed.layers.map((l) => l.image)).toEqual([2, 1])
+    expect(dressed.key).toBe('armor=cloth,weapon=staff')
+    // The canvas identity ignores slots that add no texture layer, so they share one texture.
+    expect(dressed.canvasKey).toBe('armor=cloth')
+    expect(resolveMeshSkinLook(model, { armor: 'cloth' })!.canvasKey).toBe('armor=cloth')
+
+    expect([...resolveMeshSkinLook(model, { armor: 'bare', weapon: 'staff' })!.visible]).toEqual([0, 1])
+    // An option the model does not have falls back to the slot default.
+    expect(resolveMeshSkinLook(model, { weapon: 'bow', armor: 'plate' })!.key).toBe(bare.key)
+  })
+
+  it('rejects paper-doll blocks that reference missing geosets, images or defaults', () => {
+    expect(() => parseMeshSkinModel(buildTestGlb({ paperdoll: paperdoll({ hidden: [2] }) }))).toThrow(/missing geoset 2/)
+    expect(() => parseMeshSkinModel(buildTestGlb({ paperdoll: paperdoll({ canvas: 3 }) }))).toThrow(/missing image 3/)
+    expect(() =>
+      parseMeshSkinModel(buildTestGlb({ paperdoll: paperdoll({ defaults: { armor: 'none', weapon: 'sword' } }) })),
+    ).toThrow(/no valid default option/)
+    expect(() =>
+      parseMeshSkinModel(
+        buildTestGlb({
+          paperdoll: paperdoll({
+            slots: { weapon: { none: {} }, armor: { none: { layers: [{ image: 1, x: 0, y: 0, w: 0, h: 1 }] } } },
+          }),
+        }),
+      ),
+    ).toThrow(/invalid layer rectangle/)
+  })
+
+  it('composites layers over the canvas with straight alpha and nearest scaling', () => {
+    const base = { pixels: new Uint8Array([10, 20, 30, 255, 10, 20, 30, 255, 10, 20, 30, 255, 10, 20, 30, 255]), width: 2, height: 2 }
+    const opaque = { pixels: new Uint8Array([200, 100, 50, 255]), width: 1, height: 1, x: 0, y: 0, w: 2, h: 1 }
+    const half = { pixels: new Uint8Array([110, 220, 130, 128]), width: 1, height: 1, x: 1, y: 1, w: 1, h: 1 }
+    const out = compositeMeshSkinCanvasPixels(base, [opaque, half])
+    expect([...out.subarray(0, 8)]).toEqual([200, 100, 50, 255, 200, 100, 50, 255])
+    expect([...out.subarray(8, 12)]).toEqual([10, 20, 30, 255])
+    expect([...out.subarray(12, 16)]).toEqual([60, 120, 80, 255])
+    // The input canvas is left untouched.
+    expect(base.pixels[0]).toBe(10)
+  })
+
+  const NONE = { weapon: 'none', offhand: 'none', helm: 'none', armor: 'none', weaponGlow: 'none', offhandGlow: 'none' }
+
+  it('classifies every 1.13c body armour, helm and shield row; boots, belts and gloves are ignored', () => {
+    const tables = getEmbeddedDropTables() as unknown as {
+      armor: { all: readonly { code: string; type: string; name: string; normcode?: string; ubercode?: string; ultracode?: string }[] }
+    }
+    const armors = new Map<string, number>()
+    const helms = new Map<string, number>()
+    const offhands = new Map<string, number>()
+    for (const row of tables.armor.all) {
+      if (row.type === 'tors') {
+        const got = resolveMeshPaperdollSelection({ armor: row.code }).armor
+        expect(got, row.name).toMatch(/^(quilted|leather|studded|ring|scale|breast|plate|gothic)[123]$/)
+        // The tier digit is the row's position in its normal / exceptional / elite chain.
+        const tier = row.code === row.ultracode ? 3 : row.code === row.ubercode ? 2 : 1
+        expect(got.endsWith(String(tier)), row.name).toBe(true)
+        armors.set(got, (armors.get(got) ?? 0) + 1)
+        // Body armour never reads as another slot.
+        expect(resolveMeshPaperdollSelection({ helm: row.code, hand1: row.code })).toEqual(NONE)
+      } else if (['helm', 'circ', 'pelt', 'phlm'].includes(row.type)) {
+        const got = resolveMeshPaperdollSelection({ helm: row.code }).helm
+        expect(got, row.name).not.toBe('none')
+        helms.set(got, (helms.get(got) ?? 0) + 1)
+        expect(resolveMeshPaperdollSelection({ armor: row.code, hand1: row.code })).toEqual(NONE)
+      } else if (['shie', 'ashd', 'head'].includes(row.type)) {
+        const got = resolveMeshPaperdollSelection({ hand2: row.code }).offhand
+        expect(got).not.toBe('none')
+        offhands.set(got, (offhands.get(got) ?? 0) + 1)
+        // A shield is never the weapon, whichever hand holds it.
+        expect(resolveMeshPaperdollSelection({ hand1: row.code }).weapon).toBe('none')
+      } else {
+        // Gloves, boots and belts do not change the model in any slot.
+        expect(['glov', 'boot', 'belt']).toContain(row.type)
+        expect(resolveMeshPaperdollSelection({ helm: row.code, armor: row.code, hand1: row.code, hand2: row.code }), row.name).toEqual(NONE)
+      }
+    }
+    // 15 base armours x 3 tiers: families of 1, 2 or 3 base items, one look per tier.
+    const perTier = { quilted: 1, leather: 2, studded: 1, ring: 2, scale: 2, breast: 2, plate: 2, gothic: 3 }
+    expect(Object.fromEntries(armors)).toEqual(
+      Object.fromEntries(Object.entries(perTier).flatMap(([fam, n]) => [1, 2, 3].map((t) => [`${fam}${String(t)}`, n]))),
+    )
+    // 8 helm families x 3 tiers, 4 circlets, 15 druid pelts, 15 barbarian helms.
+    expect(Object.fromEntries(helms)).toEqual({
+      cap: 3, skullcap: 3, helm: 3, fullhelm: 3, greathelm: 3, crown: 3, mask: 3, bone: 3, circlet: 4, pelt: 15, barbarian: 15,
+    })
+    // 8 shield families x 3 tiers by shape, 15 paladin shields, 15 necromancer heads.
+    expect(Object.fromEntries(offhands)).toEqual({ buckler: 3, shield: 6, kite: 6, tower: 3, spiked: 6, paladin: 15, head: 15 })
+    expect(resolveMeshPaperdollSelection({ armor: 'qui' }).armor).toBe('quilted1')
+    expect(resolveMeshPaperdollSelection({ armor: 'xui' }).armor).toBe('quilted2')
+    expect(resolveMeshPaperdollSelection({ armor: 'uui' }).armor).toBe('quilted3')
+    expect(resolveMeshPaperdollSelection({ armor: 'aar' }).armor).toBe('gothic1')
+    expect(resolveMeshPaperdollSelection({ armor: 'utp' }).armor).toBe('breast3')
+  })
+
+  it('classifies every 1.13c weapon row into one weapon family', () => {
+    const tables = getEmbeddedDropTables() as unknown as {
+      weapons: { all: readonly { code: string; type: string; name: string; normcode?: string; twoHanded?: boolean }[] }
+    }
+    const byFamily = new Map<string, Set<string>>()
+    for (const row of tables.weapons.all) {
+      const got = resolveMeshPaperdollSelection({ hand1: row.code })
+      expect(got.weapon, `${row.code} ${row.name}`).not.toBe('none')
+      expect(got.offhand).toBe('none')
+      // Either hand gives the same answer.
+      expect(resolveMeshPaperdollSelection({ hand2: row.code }).weapon).toBe(got.weapon)
+      // All three tiers of a base item share one family.
+      const set = byFamily.get(row.normcode ?? row.code) ?? new Set<string>()
+      set.add(got.weapon)
+      byFamily.set(row.normcode ?? row.code, set)
+    }
+    for (const [family, set] of byFamily) expect([...set], family).toHaveLength(1)
+    const expectFamily = (codes: readonly string[], want: string): void => {
+      for (const code of codes) expect(resolveMeshPaperdollSelection({ hand1: code }).weapon, code).toBe(want)
+    }
+    expectFamily(['hax', 'axe', '2ax', 'wax', '9ha', '7ha'], 'axe')
+    expectFamily(['mpi', '9mp', '7mp'], 'pick')
+    expectFamily(['lax', 'bax', 'btx', 'gax', 'gix'], 'axe2h')
+    expectFamily(['clb', 'spc', 'leg'], 'club')
+    expectFamily(['mac', 'mst', 'fla'], 'mace')
+    expectFamily(['whm', 'hdm', 'hfh'], 'hammer')
+    expectFamily(['mau', 'gma'], 'hammer2h')
+    expectFamily(['scp', 'gsc', 'wsp'], 'scepter')
+    expectFamily(['ssd', 'crs', 'bsd', 'lsd', 'wsd'], 'sword')
+    expectFamily(['scm', 'sbr', 'flc'], 'saber')
+    expectFamily(['2hs', 'clm', 'gis', 'bsw', 'flb', 'gsd'], 'sword2h')
+    expectFamily(['dgr', 'dir', 'kri', 'bld'], 'dagger')
+    expectFamily(['spr', 'brn', 'spt', 'pik', 'am3', 'am4'], 'spear')
+    expectFamily(['tri'], 'trident')
+    expectFamily(['bar', 'vou', 'pax', 'hal'], 'polearm')
+    expectFamily(['scy', 'wsc'], 'scythe')
+    expectFamily(['ktr', 'wrb', 'axf', 'ces', 'clw', 'btl', 'skr'], 'claw')
+    expectFamily(['sst', 'lst', 'cst', 'bst', 'wst', 'hst', 'msf'], 'staff')
+    expectFamily(['wnd', 'ywn', 'bwn', 'gwn'], 'wand')
+    expectFamily(['ob1', 'ob5', 'obf'], 'orb')
+    expectFamily(['sbw', 'lwb', 'am1', 'am2'], 'bow')
+    expectFamily(['lxb', 'mxb', 'hxb', 'rxb'], 'crossbow')
+    expectFamily(['jav', 'pil', 'ssp', 'glv', 'tsp', 'am5'], 'javelin')
+    expectFamily(['tkf', 'bkf'], 'tknife')
+    expectFamily(['tax', 'bal'], 'taxe')
+    expectFamily(['gps', 'ops', 'opl'], 'tpotion')
+  })
+
+  it('combines slots, shows one weapon and reports quality glow per hand item', () => {
+    expect(resolveMeshPaperdollSelection({ helm: 'ci2', armor: 'uui', hand1: 'obf', hand2: 'uit' })).toEqual({
+      ...NONE, weapon: 'orb', offhand: 'kite', helm: 'circlet', armor: 'quilted3',
+    })
+    expect(resolveMeshPaperdollSelection({ helm: ' UAP ', armor: 'utp', hand1: '6ws' })).toEqual({
+      ...NONE, weapon: 'staff', helm: 'cap', armor: 'breast3',
+    })
+    expect(resolveMeshPaperdollSelection({ helm: 'zzz', armor: '', hand1: 'nope' })).toEqual(NONE)
+    // Dual wielding is not modelled: the first hand's weapon is the one shown.
+    expect(resolveMeshPaperdollSelection({ hand1: 'ssd', hand2: 'hax' }).weapon).toBe('sword')
+    expect(resolveMeshPaperdollSelection({ hand1: 'buc', hand2: 'hax' })).toMatchObject({ weapon: 'axe', offhand: 'buckler' })
+
+    expect([1, 2, 3, 4, 5, 6, 7, 8, 9, undefined].map(meshPaperdollGlowForQuality)).toEqual([
+      'none', 'none', 'none', 'magic', 'set', 'rare', 'unique', 'crafted', 'none', 'none',
+    ])
+    expect(
+      resolveMeshPaperdollSelection({ hand1: 'tow', hand1Quality: 7, hand2: 'mac', hand2Quality: 6 }),
+    ).toMatchObject({ weapon: 'mace', weaponGlow: 'rare', offhand: 'tower', offhandGlow: 'unique' })
+    // Quality of an item that is not shown is ignored.
+    expect(resolveMeshPaperdollSelection({ hand1: 'qui', hand1Quality: 7 })).toEqual(NONE)
+  })
+
+  it('encodes selections, honours the active weapon set and picks weapon clip variants', () => {
+    const sel = resolveMeshPaperdollSelection({ armor: 'qui', hand1: 'sst' })
+    const key = encodeMeshPaperdollSelection(sel)
+    expect(key).toBe('armor=quilted1,helm=none,offhand=none,weapon=staff')
+    expect(decodeMeshPaperdollSelection(key)).toEqual({ armor: 'quilted1', helm: 'none', offhand: 'none', weapon: 'staff' })
+    expect(meshPaperdollGlowBySlot(decodeMeshPaperdollSelection(key))).toEqual({})
+
+    const slots = new Map<number, string>([[1, 'cap'], [3, 'chn'], [10, 'hgl'], [11, 'ob1'], [12, 'buc']])
+    const qualities = new Map<number, number>([[11, 4], [12, 8], [4, 6]])
+    const at = (bodyLoc: number): string | undefined => slots.get(bodyLoc)
+    const q = (bodyLoc: number): number | undefined => qualities.get(bodyLoc)
+    // Set 0 with empty hands: the swap-set items are not worn.
+    expect(resolveMeshPaperdollKeyFromSlots(at, 0, q)).toBe('armor=ring1,helm=cap,offhand=none,weapon=none')
+    const swapKey = resolveMeshPaperdollKeyFromSlots(at, 1, q)
+    expect(swapKey).toBe('armor=ring1,helm=cap,offhand=buckler,weapon=orb,offhandGlow=crafted,weaponGlow=magic')
+    expect(meshPaperdollGlowBySlot(decodeMeshPaperdollSelection(swapKey))).toEqual({
+      weapon: MESH_PAPERDOLL_GLOW_RGB.magic,
+      offhand: MESH_PAPERDOLL_GLOW_RGB.crafted,
+    })
+    slots.set(4, 'sst')
+    expect(resolveMeshPaperdollKeyFromSlots(at, 1, q)).toBe('armor=ring1,helm=cap,offhand=none,weapon=staff,weaponGlow=rare')
+    // Without a quality source nothing glows.
+    expect(resolveMeshPaperdollKeyFromSlots(at, 1)).toBe('armor=ring1,helm=cap,offhand=none,weapon=staff')
+
+    const clips = { a1: {}, 'a1:staff': {}, nu: {} }
+    expect(resolveMeshWeaponClipKey('a1', 'staff', clips)).toBe('a1:staff')
+    expect(resolveMeshWeaponClipKey('a1', 'orb', clips)).toBe('a1')
+    expect(resolveMeshWeaponClipKey('nu', 'staff', clips)).toBe('nu')
+    expect(resolveMeshWeaponClipKey('a1', undefined, clips)).toBe('a1')
+  })
+
+  it('makes the item geosets of glowing slots emit their colour', () => {
+    const model = parseMeshSkinModel(buildTestGlb({ paperdoll: paperdoll() }))
+    const plain = resolveMeshSkinLook(model, { weapon: 'staff' })!
+    expect(plain.glow).toEqual([])
+    const glowing = resolveMeshSkinLook(model, { weapon: 'staff' }, { weapon: [0.2, 0.4, 1], armor: [1, 0, 0] })!
+    // Only slots whose option shows item geosets can glow (armour is texture layers here).
+    expect(glowing.glow).toEqual([{ geosets: [1], color: [0.2, 0.4, 1] }])
+    expect(glowing.key).not.toBe(plain.key)
+    expect(glowing.canvasKey).toBe(plain.canvasKey)
+    // An empty slot has nothing to glow.
+    expect(resolveMeshSkinLook(model, {}, { weapon: [0.2, 0.4, 1] })!.glow).toEqual([])
+  })
+
+  it('accepts weapon-specific clip keys in mesh manifests and rejects malformed ones', () => {
+    const clip = { anim: 'nu', loop: false, durationMs: 1000 }
+    const withClip = (key: string): Record<string, unknown> => {
+      const base = meshManifest()
+      const mesh = base.mesh as Record<string, unknown>
+      return { ...base, mesh: { ...mesh, clips: { ...(mesh.clips as Record<string, unknown>), [key]: clip } } }
+    }
+    expect(validateCharacterSkinManifest(withClip('a1:staff')).mesh?.clips['a1:staff']).toMatchObject({ anim: 'nu' })
+    expect(() => validateCharacterSkinManifest(withClip('a1:'))).toThrow(/clips key/)
+    expect(() => validateCharacterSkinManifest(withClip('attack:staff'))).toThrow(/clips key/)
   })
 })

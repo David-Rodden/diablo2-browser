@@ -1486,7 +1486,7 @@ describe('[K2] D2Game 1.13c Disassembly-Verified Promotion Wave 6 (+158 VAs: Lan
       expect(rRel).toBe(1)
       expect(hitsRel.has('D2Game:0x6FC663A0')).toBe(true)
       expect(hitsRel.has('D2Game:0x6FC65EE0')).toBe(true)
-      expect(STATLIST_GetStatListFromUnitAndState113c(m, caster.pUnit, 47)).not.toBe(0)
+      expect(STATLIST_GetStatListFromUnitAndState113c(m, target.pUnit, 47)).not.toBe(0)
 
       // 12b) 0x6FC833C0: Enable debug chat flag (0x6fd31c20 = 1) & verify exact .rdata 0x6fd1bed4 format
       const pClient = m.u32((caster.pUnitData + 0x9c) >>> 0) >>> 0

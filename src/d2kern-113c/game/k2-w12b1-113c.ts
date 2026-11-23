@@ -341,6 +341,7 @@ import { QUESTS_TriggerAct5PortalTransitionIfBelowLevel108_6FC56050_113c } from 
 import { ITEMS_DuplicateAndSocketAllSubItems_6FCF5080_113c } from './k2-w8b3-113c'
 import { PLAYER_LootPlayerCorpseUnit_6FC99910_113c } from './k2-w9b1-113c'
 import { ITEMS_PickupGroundItemToInventoryOrEquip_6FCF6E30_113c } from './k2-w9b2-113c'
+import { findTargetForPlayerOrPet6FCD1C90W13B1 } from './k2-w13b1-113c'
 import { SUNIT_IsDeadOrDying113c, UNITS_ChangeAnimMode113c } from './monster-events'
 import {
   AI_InitMonsterAiThinkFn113c,
@@ -583,6 +584,8 @@ export function AI_ThinkMercenaryMain_6FC3DD40_113c(
       pOwner = SUNIT_GetServerUnit113c(m, pGame, ownerType, ownerGuid) >>> 0
     }
     if (pOwner === 0 || m.u32(pOwner) !== 0) {
+      const nThinkIdx = nClassId === 0x10f ? 5 : 6
+      AI_InitMonsterAiThinkFn113c(m, pMerc, pGame, pAiGen, nThinkIdx)
       AI_Stall113c(world, pMerc, 10)
       return
     }
@@ -724,7 +727,7 @@ export function AI_ThinkMercenaryMain_6FC3DD40_113c(
   const pUnit = arg2
   const pAiTickParam = arg3
   if (pUnit === 0) {
-    AI_InitMonsterAiThinkFn113c(m, pUnit)
+    AI_InitMonsterAiThinkFn113c(m, pUnit, pGame, pAiTickParam !== 0 ? u32(m, pAiTickParam) : 0, 6)
     AI_Stall113c(m, pGame, pUnit, 10)
     return
   }
@@ -747,12 +750,13 @@ export function AI_ThinkMercenaryMain_6FC3DD40_113c(
 
   if (pOwner === 0 || u32(m, pOwner) !== 0) {
     const nThinkIdx = nClassId === 0x10f ? 5 : 6
-    const pMonData = u32(m, pUnit + 0x14)
-    const pAiGeneral = pMonData !== 0 ? u32(m, pMonData + 0x28) : 0
-    if (pAiGeneral !== 0) {
-      w32(m, pAiGeneral, nThinkIdx)
-    }
-    AI_InitMonsterAiThinkFn113c(m, pUnit)
+    AI_InitMonsterAiThinkFn113c(
+      m,
+      pUnit,
+      pGame,
+      pAiTickParam !== 0 ? u32(m, pAiTickParam) : 0,
+      nThinkIdx,
+    )
     AI_Stall113c(m, pGame, pUnit, 10)
     return
   }
@@ -824,22 +828,22 @@ export function AI_ThinkMercenaryMain_6FC3DD40_113c(
     bBlocked = 1
     const nRollCap = bNotAct3Or5Merc !== 0 ? 12 : 6
     if (SEED_RollMaskFast113c(m, (pUnit + 0x20) >>> 0, 0x80) < nRollCap) {
-      AI_IdleWander113c(m, pGame, pUnit)
+      AI_IdleWander113c(m, pGame, pUnit, 5)
       return
     }
   }
 
   if (DUNGEON_CheckRoomIsTownMemPort113c(m, UNITS_GetRoom113c(m, pUnit)) === 0) {
-    const pTargetDist = K2_W12B1_SCRATCH_BASE + 0x08
-    const pTargetCombat = K2_W12B1_SCRATCH_BASE + 0x0c
+    const pCanMelee = K2_W12B1_SCRATCH_BASE + 0x08
+    const pTargetDist = K2_W12B1_SCRATCH_BASE + 0x0c
+    w32(m, pCanMelee, 0)
     w32(m, pTargetDist, 0)
-    w32(m, pTargetCombat, 0)
     const pTarget = MONAI_FindTargetOrNearestBlockingObstacle_6FCD1BC0_113c(
       m,
       pUnit,
       pGame,
+      pCanMelee,
       pTargetDist,
-      pTargetCombat,
     )
     if (pTarget !== 0 && u32(m, pTargetDist) < 0x19) {
       AI_ExecuteHirelingCombatStep_6FC3C8A0_113c(
@@ -857,7 +861,7 @@ export function AI_ThinkMercenaryMain_6FC3DD40_113c(
   }
 
   if (bBlocked !== 0) {
-    AI_IdleWander113c(m, pGame, pUnit)
+    AI_IdleWander113c(m, pGame, pUnit, 5)
     return
   }
 
@@ -919,19 +923,6 @@ export function AI_FollowOwnerOrTeleportIfFar_6FC3E140_113c(
   const nDist = AI_CalcApproxUnitDistSubtiles113c(m, pPetUnit, pOwnerUnit) | 0
   const dwOwnerMode = i32(m, pOwnerUnit + 0x10)
   const pPlrData = u32(m, pOwnerUnit) === 0 ? UNITS_GetPlayerData113c(m, pOwnerUnit) : 0
-  if (pPlrData !== 0) {
-    const memInternal = m as unknown as { known?: Map<number, Uint8Array> }
-    const known = memInternal.known
-    if (known !== undefined) {
-      for (let i = 0; i < 0xcc; i++) {
-        const addr = (pPlrData + 0xa0 + i) >>> 0
-        const kp = known.get(addr >>> 12)
-        if (kp === undefined || kp[addr & 0xfff] === 0) {
-          m.setU8(addr, 0)
-        }
-      }
-    }
-  }
 
   let nTotalPets = 0
   if (pPlrData !== 0) {
@@ -1084,7 +1075,7 @@ export function MONUMOD_SpawnUniqueOrChampionBossPack_6FC44C70_113c(
     m,
     nMonHcIdx,
     nAnimMode,
-    1,
+    _nUnusedArg,
     pGame,
     pRoom,
     nX & 0xffff,
@@ -1093,7 +1084,7 @@ export function MONUMOD_SpawnUniqueOrChampionBossPack_6FC44C70_113c(
   )
   if (pMonster === 0) return 0
   MONUMOD_RollChampionOrUniqueUMods_6FC43CA0_113c(m, pGame, pMonster, bIsChampion)
-  MONUMOD_InitBossAndMinionPackUMods_6FC448A0_113c(m, 1, pRoom, pGame, pMonster)
+  MONUMOD_InitBossAndMinionPackUMods_6FC448A0_113c(m, 1, pRoom, pGame, pMonster, nAnimMode, 3, 6)
   return pMonster
 }
 
@@ -1340,7 +1331,16 @@ export function MONUMOD_SpawnSuperUniqueMonsterPack_6FC451F0_113c(
     nMaxGrp = (nMaxGrp + diffAdd) | 0
   }
 
-  MONUMOD_InitBossAndMinionPackUMods_6FC448A0_113c(m, 1, pRoom, pGame, pMonster)
+  MONUMOD_InitBossAndMinionPackUMods_6FC448A0_113c(
+    m,
+    1,
+    pRoom,
+    pGame,
+    pMonster,
+    0,
+    nMinGrp,
+    nMaxGrp,
+  )
 
   if (bHasAuraMod !== 0) {
     MONSTER_AssignAuraEnchantedSkill_6FC44CD0_113c(m, pMonster, 1)
@@ -1448,11 +1448,17 @@ export function MONUMOD_SpawnSuperUniqueMonsterPack_6FC451F0_113c(
     const pMonData = u32(m, pMonster + 0x14)
     if (pMonData !== 0) {
       const pMods = (pMonData + 0x1c) >>> 0
-      MONUMOD_MarkBossAndIncrementUniqueCount113c(m, pMonster, pGame)
-      for (let i = 0; i < 9; i += 1) {
-        if (u8(m, pMods + i) === 0) {
-          w8(m, pMods + i, 0x16)
-          break
+      if (pMods !== 0) {
+        MONUMOD_MarkBossAndIncrementUniqueCount113c(m, pMonster, pGame)
+        for (let i = 0; i < 9; i += 1) {
+          if (u8(m, pMods + i) === 0) {
+            w8(m, pMods + i, 0x16)
+            const pfn22 = u32(m, 0x6fd2e5a8)
+            if (pfn22 === 0x6fc44cd0) {
+              MONSTER_AssignAuraEnchantedSkill_6FC44CD0_113c(m, pMonster, 1)
+            }
+            break
+          }
         }
       }
     }
@@ -3114,13 +3120,25 @@ export function PLAYER_ChangeLevelOrActTransition_6FCBE170_113c(
   const nFromLevel = pRoom !== 0 ? DUNGEON_GetLevelIdFromRoom113c(m, pRoom) : 0
   if (nTargetAct !== u8(m, pClient + 0x1ac)) {
     NPCS_OnPlayerLevelChange113c(m, pGame, nFromLevel, pPlayerUnit, nTargetLevelId)
-    ACT_WarpClientPlayerToActTown_6FCBDF40_113c(
-      m,
-      pGame,
-      pClient,
-      nTargetLevelId,
-      bAllowCollisionFallback,
-    )
+    const needScratchArena = pGame !== 0 && u32(m, pGame + 0x1d28) === 0
+    if (needScratchArena) {
+      const pTmpArena = (K2_W12B1_SCRATCH_BASE + 0x440) >>> 0
+      m.fill(pTmpArena, 0x10, 0)
+      w32(m, pGame + 0x1d28, pTmpArena)
+    }
+    try {
+      ACT_WarpClientPlayerToActTown_6FCBDF40_113c(
+        m,
+        pGame,
+        pClient,
+        nTargetLevelId,
+        bAllowCollisionFallback,
+      )
+    } finally {
+      if (needScratchArena) {
+        w32(m, pGame + 0x1d28, 0)
+      }
+    }
     return
   }
   const pOutX = (K2_W12B1_SCRATCH_BASE + 0x428) >>> 0
@@ -3279,12 +3297,32 @@ export function AI_Think_ShadowWarriorAndMaster_6FCC9E80_113c(
     }
   }
 
-  const nearestOwner = AI_FindNearestPlayerOrAlly113c(m, pGame, pOwner)
-  const pOwnerTarget = nearestOwner.pTarget
-  const nearestUnit = AI_FindNearestPlayerOrAlly113c(m, pGame, pUnit)
-  const pUnitTarget = nearestUnit.pTarget
-  const nUnitDist = nearestUnit.distance | 0
-  const bUnitInCombat = nearestUnit.inMeleeRange | 0
+  const pOwnerDist = (K2_W12B1_SCRATCH_BASE + 0x5c0) >>> 0
+  const pOwnerInCombat = (K2_W12B1_SCRATCH_BASE + 0x5c4) >>> 0
+  const pUnitDist = (K2_W12B1_SCRATCH_BASE + 0x5c8) >>> 0
+  const pUnitInCombat = (K2_W12B1_SCRATCH_BASE + 0x5cc) >>> 0
+  w32(m, pOwnerDist, 0)
+  w32(m, pOwnerInCombat, 0)
+  w32(m, pUnitDist, 0)
+  w32(m, pUnitInCombat, 0)
+  const pOwnerTarget = findTargetForPlayerOrPet6FCD1C90W13B1(
+    m,
+    pGame,
+    pOwner,
+    pAiControl,
+    pOwnerDist,
+    pOwnerInCombat,
+  )
+  const pUnitTarget = findTargetForPlayerOrPet6FCD1C90W13B1(
+    m,
+    pGame,
+    pUnit,
+    pAiControl,
+    pUnitDist,
+    pUnitInCombat,
+  )
+  const nUnitDist = i32(m, pUnitDist)
+  const bUnitInCombat = i32(m, pUnitInCombat)
 
   let pChosenTarget = 0
   if (
@@ -3946,10 +3984,10 @@ export function ITEMS_PlaceItemInUnitInventoryGrid_6FCF76A0_113c(
   if (bUpdateClient !== 0) {
     ITEMS_SetItemFlag113c(m, pItem, 2, 1)
     if (ITEMS_HasSocketedSubItems113c(m, pItem) !== 0) {
-      ITEMS_SetItemFlag113c(m, pItem, 1, 1)
+      ITEMS_SetOrClearCommandFlags113c(m, pItem, 1, 1)
     }
     if (ITEMS_CheckCommandFlags113c(m, pItem, 0x4000, 0x8ef, 0x6fd1b14c) !== 0) {
-      ITEMS_SetItemFlag113c(m, pItem, 0x4000, 0)
+      ITEMS_SetOrClearCommandFlags113c(m, pItem, 0x4000, 0)
     }
     UNITS_SetUnitUpdateFlags113c(m, pOwnerUnit, 1)
     INVENTORY_AppendItemGuidNode113c(m, pInventory, pItem)

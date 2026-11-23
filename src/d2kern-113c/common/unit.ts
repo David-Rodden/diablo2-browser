@@ -81,6 +81,7 @@ import {
 import {
   ITEMS_CheckItemTypeIdMem113c,
   ITEMS_GetActiveWeaponForAttack113c,
+  ITEMS_GetRangeAdder113c,
   UNITS_GetAnimDataStringOrPath113c,
 } from './items.ts'
 import {
@@ -117,7 +118,6 @@ import {
   COMPOSIT_GetUnitWeaponClassCode113c,
   COMPOSIT_GetWeaponClassCode113c,
 } from './composit.ts'
-import { ITEMS_GetQuiverType113c } from '../tables/datatbls-113c.ts'
 import { UNITS_IsInMovingMode113c } from './waypoint.ts'
 import {
   PATH_AddUnitCollisionFootprint113c,
@@ -2928,6 +2928,10 @@ export function UNITS_GetAnimOrSeqEventAtFrame113c(
 /**
  * `@va D2Common:0x6FD825C0` (`D2Common.#11133` `UNITS_GetEquippedWeaponAdder`,
  * stdcall `[esp+4] = pUnit`, `ret 4` -> `int32`).
+ *
+ * Disassembly (`D2Common.dll@0x6FD825C0..0x6FD8266C`):
+ * - For players (`dwUnitType == 0`), calls `INVENTORY_GetActiveWeapon` (`0x6FD70700`) then
+ *   `ITEMS_GetRangeAdder` (`0x6FD72F20`, `BYTE PTR [pItemsTxt + 0x104]` `'rangeadder'`) and zero-extends `AL`.
  */
 export function UNITS_GetEquippedWeaponAdder113c(m: Memory113c, pUnit: number): number {
   hitD2CommonVa113c(0x6FD825C0)
@@ -2939,7 +2943,7 @@ export function UNITS_GetEquippedWeaponAdder113c(m: Memory113c, pUnit: number): 
   if (uType === 0) {
     const pWeapon = INVENTORY_GetActiveWeaponMem113c(m, m.u32((esi + 0x60) >>> 0))
     if (pWeapon === 0) return 0
-    return ITEMS_GetQuiverType113c(m, pWeapon) & 0xff
+    return ITEMS_GetRangeAdder113c(m, pWeapon) & 0xff
   }
   if (uType !== 1) return 0
   const pMonStats2 = DATATBLS_GetMonStats2TxtRecordFromMonStatsIdInline113c(
@@ -2969,6 +2973,11 @@ export function UNITS_GetEquippedWeaponAdder113c(m: Memory113c, pUnit: number): 
 /**
  * `@va D2Common:0x6FD826C0` (`D2Common.#11138` `UNITS_CanUnitMeleeAttackTarget`,
  * stdcall `[esp+4] = pUnit1`, `[esp+8] = pUnit2`, `[esp+0xC] = nAdder`, `ret 0xC` -> `BOOL`).
+ *
+ * Disassembly (`D2Common.dll@0x6FD826C0..0x6FD8276B`): computes `maxDist = adder + nAdder + 1`
+ * (using `UNITS_GetEquippedWeaponAdder` `0x6FD825C0`) against `UNITS_GetDistanceToOtherUnit`,
+ * returning `1` when `dist <= 0` (or `baseId` in `{0x102, 0x105}` with `adder + 8 > dist`) and
+ * checking `UNITS_TestCollisionBetweenUnits` (`0x6FD814A0`, mask `0x0804`) otherwise.
  */
 export function UNITS_CanUnitMeleeAttackTarget113c(
   m: Memory113c,

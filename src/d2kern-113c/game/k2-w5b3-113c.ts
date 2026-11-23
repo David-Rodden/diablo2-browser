@@ -84,6 +84,8 @@ import {
   STATLIST_AllocList113c,
   STATLIST_GetExpireFrameEx113c,
   STATLIST_GetMaxLifeFromUnit113c,
+  STATLIST_GetState113c,
+  STATLIST_GetStatListFromUnitAndFlag113c,
   STATLIST_GetUnitStat113c,
   STATLIST_GetUnitStatWithLayer113c,
   STATLIST_MergeStatLists113c,
@@ -150,6 +152,7 @@ import {
   STATES_CreateOrUpdateAuraStatList113c,
 } from './k2-gap-itemdef-113c'
 import {
+  dispatchUnlinkedCurseRemoveProc113c,
   MISSILES_GetTxtRecordFast113c,
   MISSILE_CreateServerProjectile113c,
   STATES_OnTimedStateRemoved113c,
@@ -167,7 +170,10 @@ import {
   PLAYER_GetPlayerDataField48_6FC57440_113c,
   QUESTS_SpawnPresetMonsterAtCoord_6FC56820_113c,
 } from './k2-laneK-0x6fc5-w1-113c'
-import { SKILLS_CanCurseAffectTargetUnit_6FC6ECD0_113c } from './k2-laneL-0x6fc6-w1-113c'
+import {
+  SKILLS_ApplyCurseSpecialMonsterAiState_6FC700A0_113c,
+  SKILLS_CanCurseAffectTargetUnit_6FC6ECD0_113c,
+} from './k2-laneL-0x6fc6-w1-113c'
 import { S2C_QueueByteDwordPacket6_6FCAC3B0_113c } from './k2-w2b4-113c'
 import {
   MONAI_GetUnitMeleeVelocity_6FCD08A0_113c,
@@ -190,6 +196,7 @@ import {
   PARTY_ForEachSubPartyPlayerUnit_6FCBC160_113c,
   PETS_FindPetTypeByGuid_6FCB6600_113c,
 } from './k2-w4b5-113c'
+import { SKILLS_ApplyCurseStateAndStatsCallback_6FC70250_113c } from './k2-w6b1-113c'
 import {
   SKILLS_AllocAndFindUnitsInRadius_6FCBE570_113c,
   SKILLS_ApplySkillDelayState121OnPlayer_6FCBFF70_113c,
@@ -930,6 +937,36 @@ export function AURA_ForEachUnitInTargetRadius_6FCC0AD0_113c(
           if (AURA_CheckUnitMatchesFilterFlags113c(m, dwFilterFlags >>> 0, pUnit >>> 0, pCand) !== 0) {
             if (typeof pfnCallback === 'function') {
               pfnCallback(m, pCand, pCallbackArg >>> 0)
+            } else if ((pfnCallback >>> 0) === 0x6fc70250) {
+              const ctx = pCallbackArg >>> 0
+              const pOldCurse = STATLIST_GetStatListFromUnitAndFlag113c(m, pCand, 0x20) >>> 0
+              const oldState = pOldCurse !== 0 ? (STATLIST_GetState113c(m, pOldCurse) | 0) : -1
+              const oldFpRemove = pOldCurse !== 0 ? (m.u32((pOldCurse + 0x38) >>> 0) >>> 0) : 0
+              SKILLS_ApplyCurseStateAndStatsCallback_6FC70250_113c(m, pCand, ctx)
+              if (pOldCurse !== 0) {
+                const pNowCurse = STATLIST_GetStatListFromUnitAndFlag113c(m, pCand, 0x20) >>> 0
+                if (pNowCurse !== pOldCurse) {
+                  dispatchUnlinkedCurseRemoveProc113c(m, pCand, oldState, oldFpRemove, pOldCurse)
+                  if (pNowCurse !== 0) {
+                    const newState = STATLIST_GetState113c(m, pNowCurse) | 0
+                    if (newState === oldState && newState >= 0) {
+                      STATES_ToggleGfxStateFlag113c(m, pCand, newState, 1)
+                    }
+                    if (
+                      oldFpRemove === 0x6fc70130 &&
+                      ctx !== 0 &&
+                      (m.u32((ctx + 0x08) >>> 0) | 0) !== 0
+                    ) {
+                      SKILLS_ApplyCurseSpecialMonsterAiState_6FC700A0_113c(
+                        m,
+                        m.u32((ctx + 0x10) >>> 0) | 0,
+                        pCand,
+                        m.u32(ctx) >>> 0,
+                      )
+                    }
+                  }
+                }
+              }
             }
           }
         }
@@ -1013,6 +1050,21 @@ function allocW5B3Stack(m: D2KernMemory113c, bytes: number): number {
   return sp
 }
 
+let scopedRadialCombatHooks113c: SUnitDmgHooks113c | undefined
+
+export function withScopedRadialCombatHooks113c<T>(
+  combatHooks: SUnitDmgHooks113c | undefined,
+  fn: () => T,
+): T {
+  const prev = scopedRadialCombatHooks113c
+  scopedRadialCombatHooks113c = combatHooks !== undefined ? combatHooks : prev
+  try {
+    return fn()
+  } finally {
+    scopedRadialCombatHooks113c = prev
+  }
+}
+
 /**
  * Radial aura callback (`ecx = pAuraCtx`, `edx = pTargetUnit`) that copies the `0x70`-byte `D2DamageStrc`
  * at `pAuraCtx+0x0C` onto the stack and applies it via `SKILLS_RollAvoidAndApplySkillDamage_6FCC10B0_113c`.
@@ -1026,6 +1078,8 @@ export function AURAS_ApplyRadialSkillDamageCallback_6FCC1210_113c(
   combatHooks?: SUnitDmgHooks113c,
 ): number {
   hitD2GameVa113c(0x6FCC1210)
+  const effCombatHooks =
+    combatHooks !== undefined ? combatHooks : scopedRadialCombatHooks113c
   const pDmgSrc = m.u32((pAuraCtx + 0x0c) >>> 0) >>> 0
   const sp = k2W5B3StackPtr
   k2W5B3StackPtr = (sp + 0x74) >>> 0
@@ -1042,7 +1096,7 @@ export function AURAS_ApplyRadialSkillDamageCallback_6FCC1210_113c(
       pDmgCopy,
       pGame,
       pTargetUnit >>> 0,
-      combatHooks,
+      effCombatHooks,
     )
     return 1
   } finally {

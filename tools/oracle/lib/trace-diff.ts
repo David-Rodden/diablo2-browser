@@ -177,6 +177,37 @@ function normalizeS2cUninitPadBytes(hex: string | null): string | null {
       return `${hex.slice(0, nulCharEnd)}${'0'.repeat(42 - nulCharEnd)}${hex.slice(42)}`
     }
   }
+  // D2Game.dll@0x6FC68CCC..0x6FC68D02, 0x6FC54BA0..0x6FC54BE4, and 0x6FC5594D..0x6FC5598F
+  // (D2GSPacketSrv27, 40 bytes) write byte[0]=0x27, byte[1]=unitType, dword[2..5]=unitGuid,
+  // byte[6]=nCount (0..8), leaving byte[7] (_pad7) uninitialized; for each 4-byte entry i=0..7
+  // at offset 8+4*i, i < nCount writes byte[+0]=nType and word[+2..3]=wStringId leaving byte[+1]
+  // (_pad1) uninitialized, and i >= nCount leaves all 4 bytes (+0..+3) uninitialized.
+  if (hex.length === 80 && hex.startsWith('27')) {
+    const nCount = Math.min(8, parseInt(hex.slice(12, 14), 16))
+    let out = `${hex.slice(0, 14)}00`
+    for (let i = 0; i < 8; i++) {
+      const off = 16 + i * 8
+      if (i < nCount) {
+        out += `${hex.slice(off, off + 2)}00${hex.slice(off + 4, off + 8)}`
+      } else {
+        out += '00000000'
+      }
+    }
+    return out
+  }
+  // D2Game.dll@0x6FC78A40..0x6FC78AD8 (ACT5Q3_SendPacket50_24) allocates 0x20 stack bytes,
+  // writes byte[0]=0x50, word[1..2]=0x0024, word[3..4]=wQuestVal, and queues 0x0F bytes via
+  // 0x6FCAA3E0, leaving bytes[5..14] (chars 10..29) as uninitialized MSVC stack bytes.
+  if (hex.length === 30 && hex.startsWith('502400')) {
+    return `${hex.slice(0, 10)}00000000000000000000`
+  }
+  // D2Game.dll@0x6FC9ACB0..0x6FC9AD85 -> 0x6FCAB470..0x6FCAB526 (SUNIT_SendHoverMsgOrClearPacketToClient,
+  // S2C 0x26 nType=0x05 overhead message): writes byte[0]=0x26, byte[1]=0x05, byte[2]=bUsed,
+  // byte[3]=bUnitType, dword[4..7]=dwUnitId, byte[10]=0x00 (empty szNick), and szMessage at byte[11..],
+  // never initializing bytes[8..9] (wNameId, chars 16..19) on its 0x12c MSVC stack frame.
+  if (hex.length >= 24 && hex.startsWith('2605')) {
+    return `${hex.slice(0, 16)}0000${hex.slice(20)}`
+  }
   return hex
 }
 

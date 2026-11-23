@@ -76,12 +76,14 @@ function withDrlgLogicStackScratch113c(m: Memory113c): Memory113c {
 }
 
 /**
- * Wall style group lookup table at `0x6FDDA758` (`int32[15]`, 60 bytes: `0x6FDDA758 .. 0x6FDDA793`).
- * Maps wall tile style (`0..14`) to flood-fill group (`-1..4`).
+ * Wall style group lookup table at `0x6FDDA758` (`int32[20]`, 80 bytes: `0x6FDDA758 .. 0x6FDDA7A7`,
+ * covering all 20 tile orientations `0..19` including `TILE_ROOF = 15` and `TILE_LOWER_*_WALL = 16..19`
+ * where `0x6FDD184B mov eax, [edx*4 + 0x6FDDA758]` reads the 5 zero dwords at `0x6FDDA794 .. 0x6FDDA7A7`).
+ * Maps wall tile orientation (`0..19`) to flood-fill group (`-1..4`).
  * Copied verbatim from `D2Common.dll` v1.13c.
  */
 export const WALL_STYLE_GROUP_TABLE_6FDDA758 = Int32Array.from([
-  -1, 0, 1, 2, 2, 0, 1, 3, 0, 1, 0, 1, 4, -1, 4,
+  -1, 0, 1, 2, 2, 0, 1, 3, 0, 1, 0, 1, 4, -1, 4, 0, 0, 0, 0, 0,
 ]);
 
 /**

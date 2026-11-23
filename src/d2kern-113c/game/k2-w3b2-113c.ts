@@ -103,7 +103,7 @@ import {
   UNITS_GetUnitSizeX113c,
 } from '../common/unit.js'
 import { UNITS_SetTargetUnitForDynamicUnit113c } from '../common/waypoint.js'
-import type { Memory113c } from '../mem/sparse-memory.js'
+import type { Memory113c, SparseMemory113c } from '../mem/sparse-memory.js'
 import {
   DATATBLS_GetLevelMonsterLevel113c,
   DATATBLS_GetMonLvlTxtRecord113c,
@@ -112,7 +112,10 @@ import {
 } from '../tables/datatbls-113c.js'
 import { DATATBLS_CalcMissileSubLoopFrames113c } from '../tables/missile-tbls-113c.js'
 import { DATATBLS_GetHirelingTxtRecordFromIdAndLevel113c } from '../tables/monster-tbls-113c.js'
-import { SUNIT_AreUnitsHostileOrUnaligned113c } from './a1c-post150-f786-f1040-113c.js'
+import {
+  SKILLS_StartUsedSkill113c,
+  SUNIT_AreUnitsHostileOrUnaligned113c,
+} from './a1c-post150-f786-f1040-113c.js'
 import {
   AIGENERAL_LinkMinionToLeader113c,
   AI_CastSkillWithMode113c,
@@ -173,6 +176,20 @@ import { SKILLS_ApplySkillAuraStatCalcs_6FC648E0_113c } from './k2-laneL-0x6fc6-
 import { MONMODE_DropTreasureOnDeathWrapper_6FC958D0_113c } from './k2-w2b3-113c.js'
 import { SKILLS_TargetRingScanCallback_6FCBED70_113c } from './k2-w2b5-113c.js'
 import { MONSTER_SpawnAtCoords_6FD0F450_113c } from './k2-w2b8-113c.js'
+import {
+  MONUMOD_ApplyChampionBerserkerStats_6FC437C0_113c,
+  MONUMOD_ApplyChampionFanaticStats_6FC43810_113c,
+  MONUMOD_ApplyChampionGhostlyStats_6FC43850_113c,
+  MONUMOD_ApplyColdDamageAndLengthStats_6FC42490_113c,
+  MONUMOD_ApplyColdEnchantedStats_6FC42320_113c,
+  MONUMOD_ApplyFireEnchantedStats_6FC42740_113c,
+  MONUMOD_ApplyLightningEnchantedStats_6FC42600_113c,
+  MONUMOD_ApplyPoisonEnchantedStats_6FC421D0_113c,
+} from './k2-w4b1-113c.js'
+import {
+  MONSTER_AssignAuraEnchantedSkill_6FC44CD0_113c,
+  MONSTER_AssignTeleportSkill_6FC441B0_113c,
+} from './k2-w10b1-113c.js'
 import { UNITS_ChangeAnimMode113c } from './monster-events.js'
 import { OBJECTS_InitObjectUnit113c } from './objects-populate-113c.js'
 import { seedRoll } from '../prng.js'
@@ -743,8 +760,145 @@ export function AI_SelectAndCastHirelingSkill_6FC3C4E0_113c(
   arg3: number,
   arg4: number,
   arg5?: number | K2W3B2Hooks113c,
+  arg6?: number,
 ): number {
   hitD2GameVa113c(0x6FC3C4E0)
+  if (!isFallenSliceWorldW3B2_113c(arg0) && typeof arg6 === 'number') {
+    const m = arg0
+    const pMerc = arg1 >>> 0
+    const pGame = arg2 >>> 0
+    const nClassId = arg3 | 0
+    const wMercType = (arg4 << 16) >> 16
+    const pTarget = (typeof arg5 === 'number' ? arg5 : 0) >>> 0
+    const pSeed = arg6 >>> 0
+
+    const pMonStatsTxt = MONSTATS_GetRecordPtr113c(m, nClassId) >>> 0
+    if (pMonStatsTxt === 0) return pMerc
+
+    const mercLvl = STATLIST_GetUnitStat113c(m, pMerc, 0x0c, 0) | 0
+    const bExpansion = m.u32((pGame + 0x70) >>> 0) | 0
+    const pHirelingTxt =
+      DATATBLS_GetHirelingTxtRecordFromIdAndLevel113c(m, bExpansion, wMercType, mercLvl) >>> 0
+    if (pHirelingTxt === 0) return 0
+
+    let totalWeight = m.u32((pHirelingTxt + 0x64) >>> 0) | 0
+    let lvlDiff = (mercLvl - (m.u32((pHirelingTxt + 0x1c) >>> 0) | 0)) | 0
+    if (lvlDiff < 0) lvlDiff = 0
+
+    const pTablesPtr = m.u32(D2GAME_IAT_SGPT_DATATABLES_VA_113C) >>> 0
+    const pTables = pTablesPtr !== 0 ? (m.u32(pTablesPtr) >>> 0) : 0
+    const nMonCount = pTables !== 0 ? (m.u32((pTables + 0xa80) >>> 0) | 0) : 0
+    const nSkillsCount = pTables !== 0 ? (m.u32((pTables + 0xba0) >>> 0) | 0) : 0
+    const nStatesCount = pTables !== 0 ? (m.u32((pTables + 0xc4) >>> 0) | 0) : 0
+
+    const cumWeights = [0, 0, 0, 0, 0, 0]
+    for (let slot = 0; slot < 6; slot += 1) {
+      const skillId = m.u32((pHirelingTxt + 0x78 + slot * 4) >>> 0) | 0
+      if (skillId <= 0 || skillId >= nSkillsCount) break
+      const pSkillsTxt = SKILLS_GetRecordPtrFast113c(m, skillId) >>> 0
+      if (pSkillsTxt === 0) continue
+
+      cumWeights[slot] = 0
+      const pSkill = SKILLS_GetSkillById113c(m, pMerc, skillId, -1) >>> 0
+      if (pSkill === 0) continue
+      const effSlvl = SKILLS_EvaluateSkillLevel113c(m, pMerc, pSkill, 1) | 0
+      if (effSlvl <= 0) continue
+
+      if (m.u8((pSkillsTxt + 0x230) >>> 0) === 1) {
+        const auraState = sx16(m.u16((pSkillsTxt + 0x80) >>> 0))
+        if (auraState >= 0 && auraState < nStatesCount) {
+          if (STATES_CheckState113c(m, pMerc, auraState) !== 0) continue
+        }
+      }
+
+      if (skillId === 0x29) {
+        const pSk29 = SKILLS_GetSkillById113c(m, pMerc, 0x29, -1) >>> 0
+        if (pTarget !== 0 && pSk29 !== 0) {
+          const slvl29 = SKILLS_EvaluateSkillLevel113c(m, pMerc, pSk29, 1) | 0
+          const maxRange = (sdiv32(slvl29, 2) + 4) | 0
+          if ((UNITS_GetApproximateDistance113c(m, pMerc, pTarget) | 0) > maxRange) continue
+        }
+      }
+
+      const chancePerLvl = m.u32((pHirelingTxt + 0xa8 + slot * 4) >>> 0) | 0
+      const baseChance = m.u32((pHirelingTxt + 0x90 + slot * 4) >>> 0) | 0
+      const prod = imul32(chancePerLvl, lvlDiff)
+      const scaled = ((prod + ((prod >> 31) & 3)) >> 2) | 0
+      totalWeight = (totalWeight + baseChance + scaled) | 0
+      cumWeights[slot] = totalWeight
+    }
+
+    const rollBound = (totalWeight + 1) | 0
+    const roll = rollBound > 0 ? rollLimitedSeed64InMem113c(m, pSeed, rollBound) : 0
+    const baseAttackWeight = m.u32((pHirelingTxt + 0x64) >>> 0) | 0
+
+    if (roll >= baseAttackWeight) {
+      let chosenSlot = 0
+      if (roll > cumWeights[0]!) {
+        while (chosenSlot < 6) {
+          const nextW = chosenSlot + 1 < 6 ? cumWeights[chosenSlot + 1]! : 0
+          chosenSlot += 1
+          if (roll <= nextW) break
+        }
+      }
+      if (chosenSlot < 6) {
+        const chosenSkillId = m.u32((pHirelingTxt + 0x78 + chosenSlot * 4) >>> 0) | 0
+        if (chosenSkillId > 0) {
+          const pSkillsTxt = chosenSkillId < nSkillsCount ? (SKILLS_GetRecordPtrFast113c(m, chosenSkillId) >>> 0) : 0
+          const pMasks = m.u32(D2GAME_IAT_GDW_BITMASKS_VA_113C) >>> 0
+          const auraMask = pMasks !== 0 ? m.u8((pMasks + 0x14) >>> 0) : 0x20
+          if (pSkillsTxt !== 0 && (m.u8((pSkillsTxt + 0x04) >>> 0) & auraMask) !== 0) {
+            SKILLS_AssignHandSkillAndSyncAura113c(m, pMerc, 0, chosenSkillId, -1)
+            AI_Stall113c(m, pGame, pMerc, 10)
+            return 1
+          }
+          const bMode = m.u8((pHirelingTxt + 0xc0 + chosenSlot) >>> 0)
+          const castOk = AI_CastSkillWithMode113c(m, bMode, pMerc, pGame, chosenSkillId, pTarget, 0, 0)
+          if (castOk !== 0 && SKILLS_GetUsedSkillMemPort113c(m, pMerc) !== 0) {
+            SKILLS_StartUsedSkill113c(m, pMerc, pGame)
+          }
+          return castOk
+        }
+      }
+    }
+
+    const clsChecked = nClassId < nMonCount ? nClassId : -1
+    if (clsChecked === 0x10f) {
+      const wSkill0 = sx16(m.u16((pMonStatsTxt + 0x170) >>> 0))
+      const bMode0 = m.u8((pMonStatsTxt + 0x180) >>> 0)
+      const castOk = AI_CastSkillWithMode113c(m, bMode0, pMerc, pGame, wSkill0, pTarget, 0, 0)
+      if (castOk !== 0 && SKILLS_GetUsedSkillMemPort113c(m, pMerc) !== 0) {
+        SKILLS_StartUsedSkill113c(m, pMerc, pGame)
+      }
+      return castOk
+    }
+
+    if (
+      clsChecked === 0x152 ||
+      clsChecked === 0x167 ||
+      clsChecked === 0x230 ||
+      clsChecked === 0x231
+    ) {
+      if (UNITS_CanUnitMeleeAttackTarget113c(m, pMerc, pTarget, 0) === 0) {
+        AI_Stall113c(m, pGame, pMerc, 10)
+        return 1
+      }
+      SKILLS_SetUsedSkillMemPort113c(m, pMerc, 0)
+      let nCombatMode = 0x64
+      if (pMerc !== 0) {
+        const pMercStats = MONSTATS_GetRecordPtr113c(m, m.u32((pMerc + 0x04) >>> 0) | 0) >>> 0
+        const pMasks = m.u32(D2GAME_IAT_GDW_BITMASKS_VA_113C) >>> 0
+        const flagMask = pMasks !== 0 ? m.u32((pMasks + 0x10) >>> 0) : 0x10
+        if (pMercStats !== 0 && (m.u8((pMercStats + 0x104) >>> 0) & flagMask) !== 0) {
+          nCombatMode = 0x65
+        }
+      }
+      return MONSTER_StartMode113c(m, pGame, pMerc, 4, pTarget, 0, 0, nCombatMode, 1)
+    }
+
+    AI_Stall113c(m, pGame, pMerc, 10)
+    return 1
+  }
   if (isFallenSliceWorldW3B2_113c(arg0)) {
     const world = arg0
     const { m, pGame } = world
@@ -2306,26 +2460,69 @@ function invokeMonUModCallback113c(
   hooks?: K2W3B2Hooks113c,
 ): void {
   if (pfn === 0) return
-  if (pfn === 0x6fc43020) {
-    MONUMOD_RollBossOrMinionNameSeed113c(m, pMonster, nUModId, bBoss)
-  } else if (pfn === 0x6fc42fa0) {
-    MONUMOD_ApplyExtraHealthBonus_6FC42FA0_113c(m, pMonster, nUModId, bBoss)
-  } else if (pfn === 0x6fc41e80) {
-    MONUMOD_ApplyBossLevelAndExpBonus_6FC41E80_113c(m, pMonster, nUModId, bBoss)
-  } else if (pfn === 0x6fc42bc0) {
-    MONUMOD_ApplyStrongToHitAndDamageBonus_6FC42BC0_113c(m, pMonster, nUModId, bBoss)
-  } else if (pfn === 0x6fc42880) {
-    MONUMOD_ApplyExtraFastVelocity_6FC42880_113c(m, pMonster, nUModId, bBoss)
-  } else if (pfn === 0x6fc41be0) {
-    MONUMOD_ApplyResistanceBonus_6FC41BE0_113c(m, pMonster, nUModId, bBoss)
-  } else if (pfn === 0x6fc42da0) {
-    MONUMOD_ApplyFanaticOrPossessedStats_6FC42DA0_113c(m, pMonster, nUModId, bBoss)
-  } else if (pfn === 0x6fc42d00) {
-    MONUMOD_ApplyGhostlyStats_6FC42D00_113c(m, pMonster, nUModId, bBoss)
-  } else if (pfn === 0x6fc469f0) {
-    MONUMOD_InitUMod41ScheduleEvent7_6FC469F0_113c(m, pMonster, bBoss)
-  } else if (hooks !== undefined && hooks.onMonUMod !== undefined) {
+  if (hooks !== undefined && hooks.onMonUMod !== undefined) {
     hooks.onMonUMod(m, pfn, pMonster, nUModId, bBoss)
+  }
+  switch (pfn >>> 0) {
+    case 0x6fc43020:
+      MONUMOD_RollBossOrMinionNameSeed113c(m, pMonster, nUModId, bBoss)
+      return
+    case 0x6fc42fa0:
+      MONUMOD_ApplyExtraHealthBonus_6FC42FA0_113c(m, pMonster, nUModId, bBoss)
+      return
+    case 0x6fc41e80:
+      MONUMOD_ApplyBossLevelAndExpBonus_6FC41E80_113c(m, pMonster, nUModId, bBoss)
+      return
+    case 0x6fc42bc0:
+      MONUMOD_ApplyStrongToHitAndDamageBonus_6FC42BC0_113c(m, pMonster, nUModId, bBoss)
+      return
+    case 0x6fc42880:
+      MONUMOD_ApplyExtraFastVelocity_6FC42880_113c(m, pMonster, nUModId, bBoss)
+      return
+    case 0x6fc41be0:
+      MONUMOD_ApplyResistanceBonus_6FC41BE0_113c(m, pMonster, nUModId, bBoss)
+      return
+    case 0x6fc42740:
+      MONUMOD_ApplyFireEnchantedStats_6FC42740_113c(m, pMonster, nUModId, bBoss)
+      return
+    case 0x6fc42da0:
+      MONUMOD_ApplyFanaticOrPossessedStats_6FC42DA0_113c(m, pMonster, nUModId, bBoss)
+      return
+    case 0x6fc42600:
+      MONUMOD_ApplyLightningEnchantedStats_6FC42600_113c(m, pMonster, nUModId, bBoss)
+      return
+    case 0x6fc42490:
+      MONUMOD_ApplyColdDamageAndLengthStats_6FC42490_113c(m, pMonster, nUModId, bBoss)
+      return
+    case 0x6fc42320:
+      MONUMOD_ApplyColdEnchantedStats_6FC42320_113c(m, pMonster, nUModId, bBoss)
+      return
+    case 0x6fc421d0:
+      MONUMOD_ApplyPoisonEnchantedStats_6FC421D0_113c(m, pMonster, nUModId, bBoss)
+      return
+    case 0x6fc441b0:
+      MONSTER_AssignTeleportSkill_6FC441B0_113c(m as unknown as SparseMemory113c, pMonster, bBoss)
+      return
+    case 0x6fc44cd0:
+      MONSTER_AssignAuraEnchantedSkill_6FC44CD0_113c(m as unknown as SparseMemory113c, pMonster, bBoss)
+      return
+    case 0x6fc43850:
+      MONUMOD_ApplyChampionGhostlyStats_6FC43850_113c(m, pMonster, nUModId, bBoss)
+      return
+    case 0x6fc43810:
+      MONUMOD_ApplyChampionFanaticStats_6FC43810_113c(m, pMonster, nUModId, bBoss)
+      return
+    case 0x6fc437c0:
+      MONUMOD_ApplyChampionBerserkerStats_6FC437C0_113c(m, pMonster, nUModId, bBoss)
+      return
+    case 0x6fc42d00:
+      MONUMOD_ApplyGhostlyStats_6FC42D00_113c(m, pMonster, nUModId, bBoss)
+      return
+    case 0x6fc469f0:
+      MONUMOD_InitUMod41ScheduleEvent7_6FC469F0_113c(m, pMonster, bBoss)
+      return
+    default:
+      return
   }
 }
 

@@ -1610,7 +1610,7 @@ export function SKILLS_SrvDo_SummonShadowWarriorOrMaster_6FC6D8C0_113c(
         nSkillId,
         nSkillLevel,
       ) | 0
-    const nShadowLife = mulDiv113c(nOwnerMaxLife, nCalc140, 100) | 0
+    const nShadowLife = mulDiv113c(nCalc140, nOwnerMaxLife, 100) | 0
     STATLIST_SetUnitStat113c(m, pSpawned, 6, nShadowLife, 0)
     STATLIST_SetUnitStat113c(m, pSpawned, 7, nShadowLife, 0)
     const nBaseLvl = STATLIST_GetUnitStat113c(m, pUnit, 0x0c, 0) | 0
@@ -1984,7 +1984,7 @@ export function SKILLS_SrvDo_IronGolem_6FC71540_113c(
       UNITS_ChangeAnimMode113c(m, pTargetItem, 4)
       const dwItemGuid = m.u32((pTargetItem + 0x0c) >>> 0)
       const bBodyLoc = m.u8(pOutBodyLoc1)
-      ITEMS_EquipCursorItemToBodyLoc_6FCF60D0_113c(m, pGolem, dwItemGuid, pGame, bBodyLoc, 1, 0)
+      ITEMS_EquipCursorItemToBodyLoc_6FCF60D0_113c(m, dwItemGuid, pGolem, pGame, bBodyLoc, 1, 0)
     }
     if (onInitGolemStats !== undefined) {
       onInitGolemStats(m, pGame, pUnit, pGolem, nSkillId, nSkillLevel)
@@ -3908,15 +3908,19 @@ export function SKILLS_SummonMonsterFromSkillOrMissile_6FCB5D50_113c(
     SUNIT_SetMonsterAlignmentState113c(m, pPet, 2, 1)
     const nSummonMode = m.u32(spSummonMode) | 0
     MONSTER_InitModeChangeStrc113c(m, pPet, spModeChange, nSummonMode)
-    MONSTER_StartMode113c(
-      m,
-      pGame,
-      pPet,
-      nSummonMode,
-      m.u32((spModeChange + 0x08) >>> 0),
-      m.u32((spModeChange + 0x0c) >>> 0) | 0,
-      m.u32((spModeChange + 0x10) >>> 0) | 0,
-    )
+    if (onSummonMonster !== undefined) {
+      MONSTER_StartMode113c(
+        m,
+        pGame,
+        pPet,
+        nSummonMode,
+        m.u32((spModeChange + 0x08) >>> 0),
+        m.u32((spModeChange + 0x0c) >>> 0) | 0,
+        m.u32((spModeChange + 0x10) >>> 0) | 0,
+      )
+    } else {
+      MONSTER_StartMode113c(m, pGame, spModeChange, 1, 0, 0, 0, 0, 1, true)
+    }
     return pPet >>> 0
   } finally {
     freeW14B1Stack(sp)

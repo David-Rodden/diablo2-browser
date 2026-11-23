@@ -4734,6 +4734,26 @@ export class CommandMapper {
       }
     }
 
+    // 1b. Left-joystick on-canvas lock medallion button (world context only; ignored while dragging stick).
+    if (
+      context === 'world' &&
+      !tc.joystick.active &&
+      !this.isExternalUiIntercepted?.(screenX, screenY) &&
+      tc.hitTestLockButton(
+        screenX,
+        screenY,
+        profile.width,
+        profile.height,
+        hud.leftPanel !== 'none',
+        hud.belt.isExpanded,
+      )
+    ) {
+      tc.toggleJoystickLock(profile.width, profile.height, nowMs)
+      triggerMobileHaptic('tap', tc.hapticsEnabled)
+      hud.syncPublishedState()
+      return track('hud')
+    }
+
     // 2. Left-thumb floating joystick (world context, or free world space while an NPC dialog is open).
     const canUseFloatingJoystick =
       context === 'world' ||

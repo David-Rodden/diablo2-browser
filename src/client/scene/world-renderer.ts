@@ -27,6 +27,7 @@ import {
   resolveNecromageElementGlowTint,
   resolvePlayerClassTokenForUnit,
   resolveRgbaPaletteRowTint,
+  resolveMeshWeaponClipKey,
   resolveSkinClipKey,
   shouldMinionSkinApply,
   shouldSkinOverrideMorph,
@@ -39,7 +40,13 @@ import {
   type MeshSkinRuntime,
 } from '../render/character-skin-cache.ts'
 import type { MeshSkinPlayMode } from '../render/mesh-skin-animator.ts'
-import { resolveMeshSkinOneShotTimeMs } from '../../common/units/mesh-skin-model.ts'
+import {
+  resolveMeshSkinLook,
+  resolveMeshSkinOneShotTimeMs,
+  type MeshSkinLook,
+  type MeshSkinModel,
+} from '../../common/units/mesh-skin-model.ts'
+import { decodeMeshPaperdollSelection, meshPaperdollGlowBySlot } from '../../common/units/mesh-skin-paperdoll.ts'
 import { getSharedClassLayerCompositor } from '../frontend/avatar-compositor.ts'
 import { dir64ToClipDirection } from '../../common/units/direction.ts'
 import { PLR_MODES } from '../../common/units/plr-mode.ts'
@@ -1061,6 +1068,25 @@ export function drawLoadingMonsterPlaceholder113c(
   }
 }
 
+const meshSkinLooksByModel = new WeakMap<MeshSkinModel, Map<string, MeshSkinLook | null>>()
+
+/** The look a paper-doll model wears for a drawable's selection key (`null`: the model's default). */
+function resolveMeshSkinUnitLook(model: MeshSkinModel, paperdollKey: string | undefined): MeshSkinLook | null {
+  if (model.paperdoll === null || paperdollKey === undefined) return null
+  let looks = meshSkinLooksByModel.get(model)
+  if (!looks) {
+    looks = new Map()
+    meshSkinLooksByModel.set(model, looks)
+  }
+  let look = looks.get(paperdollKey)
+  if (look === undefined) {
+    const selection = decodeMeshPaperdollSelection(paperdollKey)
+    look = resolveMeshSkinLook(model, selection, meshPaperdollGlowBySlot(selection))
+    looks.set(paperdollKey, look)
+  }
+  return look
+}
+
 /** How a mesh skin clip should be played this frame. */
 interface MeshSkinPlaySpec {
   readonly entry: LoadedMeshSkinClip
@@ -1104,7 +1130,14 @@ function drawMeshSkinUnit(
     worldX: unit.worldX,
     worldY: unit.worldY,
   })
-  const impostor = runtime.meshRenderer.drawImpostor(meshUnit.gpu, posed.pose, posed.dir64, spec.pxPerUnit, spec.box)
+  const impostor = runtime.meshRenderer.drawImpostor(
+    meshUnit.gpu,
+    posed.pose,
+    posed.dir64,
+    spec.pxPerUnit,
+    spec.box,
+    resolveMeshSkinUnitLook(meshUnit.model, unit.meshPaperdoll),
+  )
   if (impostor === null) return false
 
   const frame = impostor.frame
@@ -1215,7 +1248,11 @@ function drawPlayerMeshSkin(
     }
   }
 
-  const clipKey = resolveSkinClipKey(classToken, rawKey, meshUnit.clips)
+  const baseClipKey = resolveSkinClipKey(classToken, rawKey, meshUnit.clips)
+  const clipKey =
+    baseClipKey !== null && unit.meshPaperdoll !== undefined
+      ? resolveMeshWeaponClipKey(baseClipKey, decodeMeshPaperdollSelection(unit.meshPaperdoll).weapon, meshUnit.clips)
+      : baseClipKey
   const entry = clipKey ? meshUnit.clips[clipKey] : undefined
   if (!entry) return false
   const durationMs = entry.clip.durationMs

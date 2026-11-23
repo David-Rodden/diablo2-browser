@@ -10,12 +10,21 @@
  *    NPC interaction heads (+0x30), and DRLG preset MapAI waypoint chains (+0x38)
  */
 import { UNITS_GetPlayerData113c } from '../common/composit.ts'
-import { D2COMMON_SGPT_DATATABLES_VA_113C } from '../common/inline-helpers.ts'
+import { D2COMMON_SGPT_DATATABLES_VA_113C, D2CommonAssertError } from '../common/inline-helpers.ts'
+import { imul32, mulDiv113c, sdiv32 } from '../common/int-math.ts'
 import {
+  D2COMMON_GRID0_INFO_VA_113C,
+  D2COMMON_GRID1_INFO_VA_113C,
   INVENTORY_GetFirstItem113c,
   INVENTORY_GetNextItem113c,
 } from '../common/inventory.ts'
-import { DRLGWARP_TestRoomTileBit113c } from '../common/items.ts'
+import {
+  DATATBLS_FindCodeRecord4C113c,
+  DRLGWARP_TestRoomTileBit113c,
+  ITEMS_CheckItemTypeIdMem113c,
+  ITEMS_GetMagicSuffix113c,
+  ITEMS_GetRepairAllCost113c,
+} from '../common/items.ts'
 import { DATATBLS_GetItemsTxtRecordMemPort113c } from '../common/k0-d2common-memports.ts'
 import {
   QUESTRECORD_AllocRecord113c,
@@ -23,27 +32,48 @@ import {
   QUESTRECORD_SetQuestState113c,
 } from '../common/quest-record.ts'
 import {
+  SKILLS_AddSkillToUnit113c,
+  SKILLS_GetSkillById113c,
+} from '../common/skills.ts'
+import {
+  STATLIST_GetUnitStat113c,
+  STATLIST_SetUnitStat113c,
+} from '../common/statlist.ts'
+import {
   UNIT_MONSTER,
   UNIT_PLAYER,
   UNITS_GetRoom113c,
 } from '../common/unit.ts'
+import { GW_WAYPOINT_TABLE_BASE_VA_113C } from '../common/waypoint.ts'
 import {
   D2AiGeneralStrc,
   D2DynamicPathStrc,
+  D2HirelingTxt,
   D2ItemsTxt,
   D2ItemsTxt_SIZE,
   D2MonsterDataStrc,
   D2UnitStrc,
 } from '../mem/layout.generated.ts'
+import { DATATBLS_GetHirelingTxtRecordFromClassId113c } from '../tables/monster-tbls-113c.ts'
 import type { Memory113c, SparseMemory113c } from '../mem/sparse-memory.ts'
+import { seedNext, type D2SeedStrc } from '../prng.ts'
 import {
+  DATATBLS_GetQualityItemsTxtRecord113c,
   SGPT_ITEMS_LINKER_PTR_VA,
   SGPT_ITEMS_TXT_COUNT_VA,
   SGPT_ITEMS_TXT_PTR_VA,
 } from '../tables/datatbls-113c.ts'
+import { DATATBLS_GetItemDataTables113c } from '../tables/item-tbls-113c.ts'
+import { hitD2GameVa113c } from '../va-trace-113c.ts'
 import { registerK4QuestCallbackDispatcher113c } from './a1c-post150-f150-f276-113c.ts'
-import { SUNIT_HASH_OFFSET_BY_TYPE_113C } from './game-strc.ts'
+import { D2GAME_ARENA_FindPlayerSlotByUnit113c } from './boot-init-gap-b-113c.ts'
+import {
+  SUNIT_GetServerUnit113c,
+  SUNIT_HASH_OFFSET_BY_TYPE_113C,
+} from './game-strc.ts'
 import { bindK2KernelGlobals113c } from './k2-d2tv-evaluators-113c.ts'
+import { PLAYER_GetQuestRecordForDifficulty_6FC21020_113c } from './k2-laneH-0x6fc2-w1-113c.ts'
+import { AI_InitClearFreezeAndStall_6FC36060_113c } from './k2-laneI-0x6fc3-w1-113c.ts'
 import { QUESTS_GetQuestData_6FC53F30_113c } from './k2-laneJ-0x6fc4-w1-113c.ts'
 import {
   ACT5Q0_StatusFilter_6FC76EA0_113c,
@@ -88,6 +118,7 @@ import {
   D2Game_6FCF08B0_113c,
   D2Game_6FCF0910_113c,
   D2Game_6FCF12E0_113c,
+  D2Game_6FD08F30_113c,
 } from './k2-w13b1-113c.ts'
 import {
   ACT1Q2_OnScrollMessageBloodRaven_6FC88920_113c,
@@ -130,6 +161,7 @@ import {
   ACT3Q4_InitQuestTableRecord_6FD093C0_113c,
   ACT3Q5_InitQuestTableRecord_6FD09200_113c,
   ACT4Q3_InitQuestTableRecord_6FCDC5F0_113c,
+  ACT4Q3_TimerCallback_CheckDiabloSpawnAndEndgame_6FCDBDC0_113c,
   ACT5Q6_InitQuestTableRecord_6FC80080_113c,
   C2S_HandlePacket1C_ShrineOrOrificeItemAction_6FCF0E90_113c,
   C2S_HandlePacket27_IdentifyOrUseCursorItem_6FCEF400_113c,
@@ -156,6 +188,11 @@ import {
   ACT4_IntroStatusFilter_6FC80170_113c,
 } from './k2-w2b1-113c.ts'
 import { ACT1Q0_Callback12_WarrivIntroSetState0_6FC82490_113c } from './k2-w2b2-113c.ts'
+import {
+  AI_ClearState12InitThinkFnAndStall1_6FC9C8C0_113c,
+  NET_SendPacket15B_TransactionResult_6FCAAC90_113c,
+} from './k2-w2b3-113c.ts'
+import { SUNITPROXY_GetPlayerNodeItemInNpcSlot_6FCAFAA0_113c } from './k2-w2b4-113c.ts'
 import { MONAI_TransferItemCellStatFromItemToUnit_6FCCCA20_113c } from './k2-w2b5-113c.ts'
 import {
   ACT2Q4_StatusFilter_6FCE1970_113c,
@@ -180,6 +217,7 @@ import {
 } from './k2-w2b7-113c.ts'
 import {
   ACT3Q4_CheckAlkorQuestAlert_6FD053F0_113c,
+  ACT3Q4_OnAlkorInteractPlayVoice_6FD051C0_113c,
   PACKET_Recv12_ClearGfxState0C_6FCEB590_113c,
   PACKET_Recv3F_PlayVoicePhrase_6FCEBD50_113c,
 } from './k2-w2b8-113c.ts'
@@ -220,6 +258,7 @@ import {
   ACT1_IntroCainActivate_6FC824D0_113c,
   ACT1_IntroCallback12_MarkNpcIntroDone_6FC82F00_113c,
   ACT1_IntroNpcActivate_6FC82E50_113c,
+  ACT5Q5_ActivateAncientStatueObjects_6FC7E660_113c,
 } from './k2-w3b6-113c.ts'
 import {
   ACT5Q0_InitQuest2ADescriptor_6FC7A7C0_113c,
@@ -229,9 +268,16 @@ import {
   ACT1Q0_InitQuestDescriptor_6FC82D90_113c,
   ACT1_InitAkaraIntroQuestDescriptor_6FC83CC0_113c,
   ACT1_InitCainIntroQuestDescriptor_6FC82FA0_113c,
+  ACT5Q4_AdvanceObjectToMonsterSpawn_6FC7C480_113c,
 } from './k2-w4b3-113c.ts'
-import { ITEMS_SendUseScrollOrTomePacket3F_6FCCCFD0_113c } from './k2-w4b7-113c.ts'
+import { AI_SubmergedOrStuckTransition_6FC9D550_113c } from './k2-w3b8-113c.ts'
+import { AI_ThinkWakeOrUnburrowSkill_6FC9CE40_113c } from './k2-w4b4-113c.ts'
 import {
+  ITEMS_SendUseScrollOrTomePacket3F_6FCCCFD0_113c,
+  MONAI_UnburrowThink_6FCC59B0_113c,
+} from './k2-w4b7-113c.ts'
+import {
+  AIBAAL_ReinitAiThinkAndRestoreCmd10_6FCD78A0_113c,
   ACT4Q0_InitTyraelIntroDialog_6FCD9730_113c,
   ACT4Q1_EnsureStartedOrInvokeLinkedQuestCallback_6FCD8A70_113c,
   ACT4Q1_HasActiveQuestNpcIndicator_6FCD8AE0_113c,
@@ -245,6 +291,7 @@ import {
   ACT4Q3_InitNpcDialog_6FCD9070_113c,
   ACT4Q3_SyncQuestDataFromPlayerFlags_6FCD8F20_113c,
 } from './k2-w4b8-113c.ts'
+import { NPCS_FreePlayerGambleInventoryForNpc_6FCAF620_113c } from './k2-w5b2-113c.ts'
 import {
   ACT4Prologue_InitQuestDescriptor_6FCD9D80_113c,
   ACT4Q2_InitHadrielQuestDescriptor_6FCD97D0_113c,
@@ -267,6 +314,8 @@ import {
   ACT2Q6_StatusFilter_6FCE1D30_113c,
   ACT2Q8_ActiveFilter_6FCE25F0_113c,
   ACT2Q8_Callback00_NpcActivate_6FCE2680_113c,
+  NPC_DeductPlayerGoldAndStash_6FCDCC60_113c,
+  NPC_TransferInventoryItemsToOwner_6FCDCD90_113c,
 } from './k2-w5b4-113c.ts'
 import {
   ACT2Intro_Callback_NpcActivateDialog_6FCE4690_113c,
@@ -287,11 +336,13 @@ import {
   PACKET_Srv40_RequestQuestLog_6FCEBD30_113c,
 } from './k2-w5b5-113c.ts'
 import {
+  A5Q4_OpenTemplePortalObject_6FCE94E0_113c,
   C2S_Packet50_DropPlayerGold_6FCEEF40_113c,
   C2S_SyncObjectCollisionByGuid_6FCED440_113c,
   ITEMS_UseFlatOrBuffPotion_6FCCEA40_113c,
   ITEMS_UseHealingOrManaPotion_6FCCEDC0_113c,
   ITEMS_UsePercentagePotion_6FCCE6D0_113c,
+  NPCS_InitGameNpcControl_6FCAFBE0_113c,
 } from './k2-w5b6-113c.ts'
 import {
   PACKET_C2S14_SetUnitOverheadChat_6FCF00A0_113c,
@@ -339,14 +390,19 @@ import {
 } from './k2-w6b2-113c.ts'
 import {
   ACT3Q0_InitQuestData_6FD05920_113c,
+  AI_ThinkCommand14TriggeredSkill_6FC9D670_113c,
   PACKET_SrvMercMoveToCoord_6FCED360_113c,
   PACKET_SrvMercMoveToUnit_6FCED3D0_113c,
 } from './k2-w6b3-113c.ts'
 import {
   ACT1Q1_Callback00_NpcActivateAkara_6FC83C40_113c,
+  ACT1Q1_TimerPromoteState5_6FC83B50_113c,
   ACT1Q2_Callback00_NpcActivateKashya_6FC83AD0_113c,
+  ACT1Q2_TimerPromoteState3_6FC83A80_113c,
   ACT1Q4_Callback00_NpcActivateAkaraOrCain_6FC835D0_113c,
+  ACT1Q4_TimerRefreshCainMonsterState_6FC88250_113c,
   ACT1Q5_Callback00_NpcActivateCharsi_6FC83870_113c,
+  ACT1Q5_TimerPromoteState0D_6FC83210_113c,
   ACT1Q6_Callback00_NpcActivateCain_6FC83190_113c,
   ACT5Q1_Callback00_NpcActivateLarzuk_6FC7A720_113c,
   ACT5Q2_Callback00_NpcActivateQualKehk_6FC7A530_113c,
@@ -357,9 +413,14 @@ import {
 } from './k2-w6b4-113c.ts'
 import {
   ACT2Q1_OnAtmaTalkCallback_6FCE61C0_113c,
+  ACT2Q1_TimerSendQuest9Alert_6FCE6010_113c,
+  ACT2Q3_TimerSendQuest11Alert_6FCE5E30_113c,
   ACT2Q4_OnDrognanTalkCallback_6FCE5DB0_113c,
+  ACT2Q5_TimerSummonerTauntAndAlert_6FCE5BE0_113c,
   ACT2Q6_OnTyraelOrJerhynTalkCallback_6FCE5A60_113c,
+  ACT2Q6_TimerSendQuest14Alert_6FCE58B0_113c,
   ACT4Q1_OnTyraelTalkCallback_6FCDA100_113c,
+  ACT4Q1_TimerSpawnIzualSpirit_6FCDA960_113c,
   ACT4Q2_OnQuestTarget0F6Callback_6FCD9DE0_113c,
   ACT4Q3_OnTyraelTalkOpenHarrogathPortal_6FCDB1B0_113c,
   C2S_HandlePacket5D_PartyRelationAction_6FCEC860_113c,
@@ -371,15 +432,18 @@ import {
 } from './k2-w6b5-113c.ts'
 import {
   ACT3Q0_InitHratliIntroQuestTable_6FD06660_113c,
+  ACT3Q0_OnWandererSeenSpawnFleshBeasts_6FD057D0_113c,
   ACT3Q1_OnNpcActivatedSendGoldenBirdAlert_6FD06BD0_113c,
   ACT3Q2_InitPlayerGidbinnQuestState_6FD06000_113c,
   ACT3Q2_OnNpcActivatedSendGidbinnAlert_6FD06CF0_113c,
+  ACT3Q7_SendMephistoQuestState4Timer_6FD068B0_113c,
   ACT3_InitKurastNpcIntroQuestTable_6FD06700_113c,
   C2S_Packet23_PlaceCursorItemIntoBelt_6FCEEC70_113c,
   C2S_Packet25_SwapCursorItemWithBeltItem_6FCEEDE0_113c,
   C2S_Packet63_ShiftMoveInventoryItemToBelt_6FCF0950_113c,
 } from './k2-w6b6-113c.ts'
 import { PACKET_ProcessChatOrWhisperMessage_6FCEDBB0_113c } from './k2-w6b7-113c.ts'
+import { ACT1Q4_SpawnTristramPortalAtCairnStones_6FC87A90_113c } from './k2-w7b2-113c.ts'
 import {
   ACT2Q5_OnScrollMessage_6FCE67C0_113c,
   ACT4Q3_OnScrollMessage_6FCDB250_113c,
@@ -406,12 +470,14 @@ import {
   ACT5Q5_NpcIntroAndScrolls_6FC7F200_113c,
 } from './k2-w8b1-113c.ts'
 import {
+  ACT1Q6_TimerTickAndarielDeathSequence_6FC87C60_113c,
   ACT4Q1_OnNpcMessage_6FCDA5E0_113c,
   SKILLS_SrvDo_BookOrScrollOfTownPortal_6FCCF450_113c,
 } from './k2-w8b2-113c.ts'
 import {
   ACT2Q1_Callback01_NpcDeactivate_6FCE6E90_113c,
   ACT2Q3_Callback01_NpcDeactivate_6FCE6B30_113c,
+  ACT2Q3_TimerActivateTaintedSunAndSyncPlayers_6FCE6AF0_113c,
   ACT2Q4_Callback01_NpcDeactivate_6FCE85A0_113c,
   ACT2Q5_InitQuestData_6FCE7080_113c,
   ACT3Q7_Callback00_NpcActivate_6FD07080_113c,
@@ -423,6 +489,7 @@ import {
   C2S_Packet26_UseBeltItem_6FCEF5B0_113c,
   C2S_Packet27_IdentifyItem_6FCEF6B0_113c,
   C2S_Packet60_SwapWeapons_6FCEF510_113c,
+  NPCS_RepairAndRechargeUnitItem_6FCDD9B0_113c,
 } from './k2-w8b3-113c.ts'
 import {
   ACT3Q1_OnQuestItemPickedUp_6FD07640_113c,
@@ -445,7 +512,10 @@ import {
   C2S_PacketTriggerMonsterSpawnNode_6FCEE440_113c,
   C2S_PacketUseQuestScrollItem_6FCED8D0_113c,
 } from './k2-w9b2-113c.ts'
-import { MON_EVENT_AI_THINK } from './monster-events.ts'
+import {
+  MON_EVENT_AI_THINK,
+  registerMonsterAiThinkVaHandler113c,
+} from './monster-events.ts'
 import { registerK4ReplayKernelBridge113c } from './replay-kernel-113c.ts'
 import { EVENT_DeleteEventByArg14_113c } from './timer-wheel.ts'
 import {
@@ -453,7 +523,11 @@ import {
   AI_SimpleMapAiNpc113c,
   AI_TownNpcMem113c,
 } from './town-npc-ai-113c.ts'
-import { registerK4QuestNpcAlertDispatcher113c } from './town-runtime-gap-113c.ts'
+import {
+  PLAYER_FinishModeAndResetToNeutral113c,
+  registerK4QuestNpcAlertDispatcher113c,
+  registerK4QuestTimerDispatcher113c,
+} from './town-runtime-gap-113c.ts'
 
 const K4_AI_TICK_PARAM_SCRATCH_VA = 0x7ff67b00
 const K4_PACKET_SCRATCH_VA = 0x7f000800
@@ -879,6 +953,9 @@ export function dispatchK4QuestCallback113c(
     case 0x6fce61c0:
       ACT2Q1_OnAtmaTalkCallback_6FCE61C0_113c(sm, pQuest, pArg)
       return true
+    case 0x6fd051c0:
+      ACT3Q4_OnAlkorInteractPlayVoice_6FD051C0_113c(sm, pQuest, pArg)
+      return true
     case 0x6fd06bd0:
       ACT3Q1_OnNpcActivatedSendGoldenBirdAlert_6FD06BD0_113c(sm, pQuest, pArg)
       return true
@@ -1125,6 +1202,94 @@ export function dispatchK4QuestCallback113c(
   }
 }
 
+/**
+ * Builds static vendor trade (`0x6FD30208 + idx*16`, count `0x6FD3020C + idx*16`, 12 bytes/entry)
+ * and permanent-item (`0x6FD30210 + idx*16`, count `0x6FD30214 + idx*16`, 4 bytes/entry) tables
+ * from `sgItemDataTables` (`0x6FDEFB94`) once per `nVendorIdx` (`0..16`), guarded by `0x6FD301F0[idx]`.
+ *
+ * @va D2Game:0x6FCAF1B0
+ */
+export function SUNITNPC_BuildVendorStaticTable_6FCAF1B0_113c(
+  m: Memory113c,
+  nVendorIdx: number,
+): void {
+  hitD2GameVa113c(0x6FCAF1B0)
+  const vIdx = nVendorIdx | 0
+  const pItemTables = DATATBLS_GetItemDataTables113c(m) >>> 0
+  if (m.u8((0x6fd301f0 + vIdx) >>> 0) !== 0) {
+    return
+  }
+  m.setU8((0x6fd301f0 + vIdx) >>> 0, 1)
+  const nItems = m.u32(pItemTables) | 0
+  let nCount1 = 0
+  let nCount2 = 0
+  if (nItems > 0) {
+    const pItemsBase = m.u32((pItemTables + 0x04) >>> 0) >>> 0
+    for (let i = 0, recOff = 0; i < nItems; i = (i + 1) | 0, recOff = (recOff + 0x1a8) | 0) {
+      const pRec = (pItemsBase + recOff) >>> 0
+      if (m.u8((pRec + 0x133) >>> 0) === 0) continue
+      if (
+        m.u8((pRec + vIdx + 0x157) >>> 0) === 0 &&
+        m.u8((pRec + vIdx + 0x179) >>> 0) === 0
+      ) {
+        continue
+      }
+      if (m.u8((pRec + 0x1a4) >>> 0) === 0) {
+        nCount1 = (nCount1 + 1) | 0
+      } else {
+        nCount2 = (nCount2 + 1) | 0
+      }
+    }
+  }
+  const nBytes1 = (nCount1 * 12) >>> 0
+  const pBuf1 = m.alloc(nBytes1 > 0 ? nBytes1 : 4) >>> 0
+  if (nBytes1 > 0) {
+    m.fill(pBuf1, nBytes1, 0)
+  }
+  const pStaticRec = (0x6fd30200 + ((vIdx << 4) >>> 0)) >>> 0
+  m.setU32((pStaticRec + 0x08) >>> 0, pBuf1)
+  m.setU32((pStaticRec + 0x0c) >>> 0, nCount1 >>> 0)
+
+  const nBytes2 = (nCount2 << 2) >>> 0
+  const pBuf2 = m.alloc(nBytes2 > 0 ? nBytes2 : 4) >>> 0
+  if (nBytes2 > 0) {
+    m.fill(pBuf2, nBytes2, 0)
+  }
+  m.setU32((pStaticRec + 0x10) >>> 0, pBuf2)
+  m.setU32((pStaticRec + 0x14) >>> 0, nCount2 >>> 0)
+
+  const totalItems = m.u32(pItemTables) | 0
+  if (totalItems > 0) {
+    let outOff1 = 0
+    let outOff2 = 0
+    for (let i = 0, recOff = 0; i < totalItems; i = (i + 1) | 0, recOff = (recOff + 0x1a8) | 0) {
+      const pItemsBase = m.u32((pItemTables + 0x04) >>> 0) >>> 0
+      const pRec = (pItemsBase + recOff) >>> 0
+      if (m.u8((pRec + 0x133) >>> 0) === 0) continue
+      if (
+        m.u8((pRec + vIdx + 0x157) >>> 0) === 0 &&
+        m.u8((pRec + vIdx + 0x179) >>> 0) === 0
+      ) {
+        continue
+      }
+      if (m.u8((pRec + 0x1a4) >>> 0) === 0) {
+        const pDst1 = m.u32((pStaticRec + 0x08) >>> 0) >>> 0
+        m.setU8((pDst1 + outOff1) >>> 0, m.u8((pRec + vIdx + 0x146) >>> 0))
+        m.setU8((pDst1 + outOff1 + 0x01) >>> 0, m.u8((pRec + vIdx + 0x157) >>> 0))
+        m.setU8((pDst1 + outOff1 + 0x02) >>> 0, m.u8((pRec + vIdx + 0x168) >>> 0))
+        m.setU8((pDst1 + outOff1 + 0x03) >>> 0, m.u8((pRec + vIdx + 0x179) >>> 0))
+        m.setU32((pDst1 + outOff1 + 0x04) >>> 0, m.u32((pRec + 0x80) >>> 0))
+        m.setU8((pDst1 + outOff1 + 0x08) >>> 0, m.u8((pRec + vIdx + 0x18a) >>> 0))
+        outOff1 = (outOff1 + 0x0c) | 0
+      } else {
+        const pDst2 = m.u32((pStaticRec + 0x10) >>> 0) >>> 0
+        m.setU32((pDst2 + outOff2) >>> 0, m.u32((pRec + 0x80) >>> 0))
+        outOff2 = (outOff2 + 0x04) | 0
+      }
+    }
+  }
+}
+
 export function hydrateK4QuestAndNpcState113c(
   m: Memory113c,
   pGame: number,
@@ -1134,19 +1299,52 @@ export function hydrateK4QuestAndNpcState113c(
   if (!isByteAddrLoaded113c(m, 0x7f9c4ff0)) {
     m.setU32(0x7f9c4ff0, 0)
   }
+  if (!isByteAddrLoaded113c(m, 0x004000f0)) {
+    m.setU32(0x004000f0, 0)
+  }
+  if (!isByteAddrLoaded113c(m, 0x004000f4)) {
+    m.setU32(0x004000f4, 0)
+  }
+  const savedBssAddrs = [
+    0x6fd31f90,
+    0x6fd18d10,
+    0x6fd31c3c,
+    0x6fd31c20,
+    0x6fd31c1c,
+    0x6fd286a0,
+    0x6fd31d14,
+  ] as const
+  const savedBssVals = [0, 0, 0, 0, 0, 0, 0]
+  const savedBssLoaded = [false, false, false, false, false, false, false]
+  for (let i = 0; i < savedBssAddrs.length; i++) {
+    const addr = savedBssAddrs[i]!
+    if (isByteAddrLoaded113c(m, addr)) {
+      savedBssLoaded[i] = true
+      savedBssVals[i] = m.u32(addr) >>> 0
+    }
+  }
   const sm = m as SparseMemory113c
   bindK2KernelGlobals113c(sm)
+  m.setU32(0x6fd18d14, 0)
+  for (let i = 0; i < savedBssAddrs.length; i++) {
+    if (savedBssLoaded[i] && savedBssVals[i] !== 0 && m.u32(savedBssAddrs[i]!) === 0) {
+      m.setU32(savedBssAddrs[i]!, savedBssVals[i]!)
+    }
+  }
 
-  // Hydrate pGame->pNpcControl (+0x1D24) if zeroed or unmapped
-  const curNpcCtrl = m.u32((pGame + 0x1d24) >>> 0) >>> 0
-  if (curNpcCtrl === 0 || !isByteAddrLoaded113c(m, curNpcCtrl)) {
-    const pNpcCtrl = m.alloc(0x10) >>> 0
-    const pNpcTable = m.alloc(0x40 * 0x44) >>> 0
-    m.fill(pNpcCtrl, 0x10, 0)
-    m.fill(pNpcTable, 0x40 * 0x44, 0)
-    m.setU32(pNpcCtrl, 0x40)
-    m.setU32((pNpcCtrl + 0x04) >>> 0, pNpcTable)
-    m.setU32((pGame + 0x1d24) >>> 0, pNpcCtrl)
+  // Sync sgptDataTables + 0xA74 with DATATBLS_GetSuperUniquesTxtRecordCount (0x6FDF09B4)
+  // so 0x6FC67CF0 (ROOM_SpawnMonsterPreset113c) resolves specialId = 2..32 presets accurately.
+  if (isByteAddrLoaded113c(m, 0x6fde9e1c) && isByteAddrLoaded113c(m, 0x6fdf09b4)) {
+    const pDataTables = m.u32(0x6fde9e1c) >>> 0
+    const nSuperUniques = m.u32(0x6fdf09b4) >>> 0
+    if (
+      pDataTables !== 0 &&
+      nSuperUniques > 0 &&
+      nSuperUniques < 0x1000 &&
+      isByteAddrLoaded113c(m, (pDataTables + 0xa74) >>> 0)
+    ) {
+      m.setU32((pDataTables + 0xa74) >>> 0, nSuperUniques)
+    }
   }
 
   // 0. Hydrate D2ItemsTxt Fog code-lookup linker (CD2TxtLinkStrc at SGPT_ITEMS_LINKER_PTR_VA) if unmapped
@@ -1180,6 +1378,102 @@ export function hydrateK4QuestAndNpcState113c(
         m.setU32((pEntries + i * 8 + 4) >>> 0, indices[i]! >>> 0)
       }
       m.setU32(SGPT_ITEMS_LINKER_PTR_VA, pLinker)
+    }
+  }
+
+  // Hydrate pGame->pNpcControl (+0x1D24) via 0x6FCAF1B0 + 0x6FCAFBE0 if zeroed or unmapped
+  const curNpcCtrl = m.u32((pGame + 0x1d24) >>> 0) >>> 0
+  if (curNpcCtrl === 0 || !isByteAddrLoaded113c(m, curNpcCtrl)) {
+    if (!isByteAddrLoaded113c(m, 0x6fd31c0c)) {
+      m.setU32(0x6fd31c0c, 0)
+    }
+    if (!isByteAddrLoaded113c(m, 0x6fd31c10)) {
+      m.setU32(0x6fd31c10, 0)
+    }
+    if (!isByteAddrLoaded113c(m, 0x6fd301f0)) {
+      m.fill(0x6fd301f0, 0x128, 0)
+    }
+    const nVendorItems = isByteAddrLoaded113c(m, SGPT_ITEMS_TXT_COUNT_VA)
+      ? (m.u32(SGPT_ITEMS_TXT_COUNT_VA) | 0)
+      : 0
+    const pVendorItemsBase = isByteAddrLoaded113c(m, SGPT_ITEMS_TXT_PTR_VA)
+      ? (m.u32(SGPT_ITEMS_TXT_PTR_VA) >>> 0)
+      : 0
+    if (
+      nVendorItems > 0 &&
+      pVendorItemsBase !== 0 &&
+      isByteAddrLoaded113c(m, pVendorItemsBase)
+    ) {
+      for (let vIdx = 0; vIdx <= 0x10; vIdx++) {
+        const flagAddr = (0x6fd301f0 + vIdx) >>> 0
+        if (!isByteAddrLoaded113c(m, flagAddr)) {
+          m.setU8(flagAddr, 0)
+        } else if (m.u8(flagAddr) !== 0) {
+          const pStaticRec = (0x6fd30200 + ((vIdx << 4) >>> 0)) >>> 0
+          const pSrc1 = isByteAddrLoaded113c(m, (pStaticRec + 0x08) >>> 0)
+            ? (m.u32((pStaticRec + 0x08) >>> 0) >>> 0)
+            : 0
+          const pSrc2 = isByteAddrLoaded113c(m, (pStaticRec + 0x10) >>> 0)
+            ? (m.u32((pStaticRec + 0x10) >>> 0) >>> 0)
+            : 0
+          if (
+            pSrc1 === 0 ||
+            !isByteAddrLoaded113c(m, pSrc1) ||
+            pSrc2 === 0 ||
+            !isByteAddrLoaded113c(m, pSrc2)
+          ) {
+            m.setU8(flagAddr, 0)
+          }
+        }
+        SUNITNPC_BuildVendorStaticTable_6FCAF1B0_113c(sm, vIdx)
+      }
+    }
+
+    const savedNpcGameSeedLo = m.u32((pGame + 0xd0) >>> 0) >>> 0
+    const savedNpcGameSeedHi = m.u32((pGame + 0xd4) >>> 0) >>> 0
+    const dwInitSeed = isByteAddrLoaded113c(m, (pGame + 0x7c) >>> 0)
+      ? (m.u32((pGame + 0x7c) >>> 0) >>> 0)
+      : 0
+    const dwMonRegSeedLo = isByteAddrLoaded113c(m, (pGame + 0x80) >>> 0)
+      ? (m.u32((pGame + 0x80) >>> 0) >>> 0)
+      : 0
+    if (dwMonRegSeedLo !== 0) {
+      let lo = dwInitSeed
+      let hi = 666
+      for (let step = 0; step <= 32; step++) {
+        if (lo === dwMonRegSeedLo) {
+          m.setU32((pGame + 0xd0) >>> 0, lo)
+          m.setU32((pGame + 0xd4) >>> 0, hi)
+          break
+        }
+        const prod = BigInt(lo) * 0x6ac690c5n + BigInt(hi)
+        lo = Number(prod & 0xffffffffn) >>> 0
+        hi = Number((prod >> 32n) & 0xffffffffn) >>> 0
+      }
+    }
+    NPCS_InitGameNpcControl_6FCAFBE0_113c(sm, pGame)
+    m.setU32((pGame + 0xd0) >>> 0, savedNpcGameSeedLo)
+    m.setU32((pGame + 0xd4) >>> 0, savedNpcGameSeedHi)
+
+    const pSlotIdxScratch = K4_QUEST_ARG_SCRATCH_VA
+    const npcMonHashBase = (pGame + SUNIT_HASH_OFFSET_BY_TYPE_113C[UNIT_MONSTER]!) >>> 0
+    for (let b = 0; b < 128; b++) {
+      let pMon = m.u32((npcMonHashBase + b * 4) >>> 0) >>> 0
+      while (pMon !== 0) {
+        const monClassId = m.u32((pMon + 0x04) >>> 0) >>> 0
+        const pSlot =
+          D2GAME_ARENA_FindPlayerSlotByUnit113c(sm, pSlotIdxScratch, pGame, monClassId) >>> 0
+        if (pSlot !== 0) {
+          const curMonInv = m.u32((pMon + 0x60) >>> 0) >>> 0
+          if (curMonInv === 0 || !isByteAddrLoaded113c(m, curMonInv)) {
+            const pSlotInv = m.u32((pSlot + 0x04) >>> 0) >>> 0
+            if (pSlotInv !== 0) {
+              m.setU32((pMon + 0x60) >>> 0, pSlotInv)
+            }
+          }
+        }
+        pMon = m.get(pMon, D2UnitStrc.pGameHashNext) >>> 0
+      }
     }
   }
 
@@ -1225,6 +1519,41 @@ export function hydrateK4QuestAndNpcState113c(
     }
   }
 
+  // Hydrate unmapped pGame->pSubPartyBuckets[0..9] (+0x10F8..+0x111C, D2Game:0x6FD0FDB0..0x6FD0FF90)
+  for (let subBucket = 0; subBucket < 10; subBucket++) {
+    const pSubHead = m.u32((pGame + 0x10f8 + subBucket * 4) >>> 0) >>> 0
+    if (pSubHead !== 0 && !isByteAddrLoaded113c(m, pSubHead)) {
+      const bucketUnits: number[] = []
+      for (let listIdx = 0; listIdx < 2; listIdx++) {
+        const hashBase = (pGame + SUNIT_HASH_OFFSET_BY_TYPE_113C[listIdx]!) >>> 0
+        for (let hb = 0; hb < 128; hb++) {
+          let pU = m.u32((hashBase + hb * 4) >>> 0) >>> 0
+          while (pU !== 0) {
+            if (m.u32((pU + 0xd0) >>> 0) === (subBucket >>> 0)) {
+              bucketUnits.push(pU)
+            }
+            pU = m.get(pU, D2UnitStrc.pGameHashNext) >>> 0
+          }
+        }
+      }
+      m.fill(pSubHead, 0x10, 0)
+      if (bucketUnits.length > 0) {
+        m.setU32(pSubHead, bucketUnits[0]!)
+        let pPrevSub = pSubHead
+        for (let uIdx = 1; uIdx < bucketUnits.length; uIdx++) {
+          const pSubNode = m.alloc(0x10) >>> 0
+          m.fill(pSubNode, 0x10, 0)
+          m.setU32(pSubNode, bucketUnits[uIdx]!)
+          m.setU32((pPrevSub + 0x08) >>> 0, pSubNode)
+          m.setU32((pSubNode + 0x0c) >>> 0, pPrevSub)
+          pPrevSub = pSubNode
+        }
+      } else {
+        m.setU32((pGame + 0x10f8 + subBucket * 4) >>> 0, 0)
+      }
+    }
+  }
+
   // 1. Hydrate player .d2s quest records (+0x10..+0x18), waypoints (+0x1c..+0x24), NPC intro (+0x60..+0x68), and inventory grids
   const wooOff =
     saveBytes !== undefined && saveBytes.length >= 0x300
@@ -1239,6 +1568,24 @@ export function hydrateK4QuestAndNpcState113c(
       }
     }
   }
+  let wsOff = -1
+  if (saveBytes !== undefined && saveBytes.length >= 0x2c9) {
+    const cand = wooOff >= 0 ? wooOff + 0x12a : findAsciiTag113c(saveBytes, 'WS', 0x200)
+    if (
+      cand >= 0 &&
+      cand + 0x50 <= saveBytes.length &&
+      saveBytes[cand] === 0x57 &&
+      saveBytes[cand + 1] === 0x53 &&
+      saveBytes[cand + 2] === 1 &&
+      saveBytes[cand + 3] === 0 &&
+      saveBytes[cand + 4] === 0 &&
+      saveBytes[cand + 5] === 0 &&
+      saveBytes[cand + 6] === 0x50 &&
+      saveBytes[cand + 7] === 0
+    ) {
+      wsOff = cand
+    }
+  }
   const w4Off =
     saveBytes !== undefined && saveBytes.length >= 0x300
       ? findAsciiTag113c(saveBytes, 'w4', 0x200)
@@ -1247,12 +1594,71 @@ export function hydrateK4QuestAndNpcState113c(
   const nItemsCnt = m.u32(SGPT_ITEMS_TXT_COUNT_VA) | 0
   const pItemsTxtBase = m.u32(SGPT_ITEMS_TXT_PTR_VA) >>> 0
 
+  if (!isByteAddrLoaded113c(m, D2COMMON_GRID0_INFO_VA_113C)) {
+    m.fill(D2COMMON_GRID0_INFO_VA_113C, 24, 0)
+    m.setU8(D2COMMON_GRID0_INFO_VA_113C, 13)
+    m.setU8((D2COMMON_GRID0_INFO_VA_113C + 1) >>> 0, 1)
+  }
+  if (!isByteAddrLoaded113c(m, D2COMMON_GRID1_INFO_VA_113C)) {
+    m.fill(D2COMMON_GRID1_INFO_VA_113C, 24, 0)
+    m.setU8(D2COMMON_GRID1_INFO_VA_113C, 16)
+    m.setU8((D2COMMON_GRID1_INFO_VA_113C + 1) >>> 0, 1)
+  }
+
   const players: number[] = []
   const plrHashBase = (pGame + SUNIT_HASH_OFFSET_BY_TYPE_113C[UNIT_PLAYER]!) >>> 0
   for (let b = 0; b < 128; b++) {
     let pPlr = m.u32((plrHashBase + b * 4) >>> 0) >>> 0
     while (pPlr !== 0) {
       players.push(pPlr)
+      const pPlrDataMerc = m.u32((pPlr + 0x14) >>> 0) >>> 0
+      if (pPlrDataMerc !== 0 && isByteAddrLoaded113c(m, (pPlrDataMerc + 0x44) >>> 0)) {
+        const pPetWrap = m.u32((pPlrDataMerc + 0x44) >>> 0) >>> 0
+        const pSlotsArr =
+          pPetWrap !== 0 && isByteAddrLoaded113c(m, pPetWrap) ? (m.u32(pPetWrap) >>> 0) : 0
+        if (pSlotsArr !== 0 && isByteAddrLoaded113c(m, (pSlotsArr + 0x54) >>> 0)) {
+          let pPetNode = m.u32((pSlotsArr + 0x54) >>> 0) >>> 0
+          while (pPetNode !== 0 && isByteAddrLoaded113c(m, pPetNode)) {
+            const dwMercGuid = m.u32((pPetNode + 0x04) >>> 0) >>> 0
+            const pMercUnit = SUNIT_GetServerUnit113c(m, pGame, UNIT_MONSTER, dwMercGuid) >>> 0
+            if (pMercUnit !== 0 && (pPetNode >>> 0) >= 0x7e180000 && (pPetNode >>> 0) < 0x7e200000) {
+              const rawNameOff = m.u32((pPetNode + 0x08) >>> 0) & 0xffff
+              const rawSeed = m.u32((pPetNode + 0x0c) >>> 0) >>> 0
+              const bExp = m.u32((pGame + 0x70) >>> 0) | 0
+              const pHireRec =
+                DATATBLS_GetHirelingTxtRecordFromClassId113c(
+                  m,
+                  bExp,
+                  m.u32((pMercUnit + 0x04) >>> 0) | 0,
+                  0,
+                ) >>> 0
+              let wNameId = rawNameOff
+              if (pHireRec !== 0) {
+                const wNameFirst = m.get(pHireRec, D2HirelingTxt.wNameFirst) & 0xffff
+                const wNameLast = m.get(pHireRec, D2HirelingTxt.wNameLast) & 0xffff
+                wNameId = (rawNameOff + wNameFirst) & 0xffff
+                if (wNameId > wNameLast) {
+                  wNameId = wNameFirst
+                }
+                m.setU32(
+                  (pPetNode + 0x10) >>> 0,
+                  m.get(pHireRec, D2HirelingTxt.dwSubTypeId) >>> 0,
+                )
+              }
+              m.setU32((pPetNode + 0x08) >>> 0, rawSeed >>> 0)
+              m.setU32((pPetNode + 0x0c) >>> 0, wNameId >>> 0)
+            }
+            if (
+              pMercUnit !== 0 &&
+              (m.u32((pMercUnit + 0x10) >>> 0) === 12 ||
+                (m.u32((pMercUnit + 0xc4) >>> 0) & 0x10000) !== 0)
+            ) {
+              m.setU32(pPetNode, (m.u32(pPetNode) | 1) >>> 0)
+            }
+            pPetNode = m.u32((pPetNode + 0x14) >>> 0) >>> 0
+          }
+        }
+      }
       const pInv = m.u32((pPlr + 0x60) >>> 0) >>> 0
       if (pInv !== 0 && isByteAddrLoaded113c(m, pInv)) {
         let pScanIt = INVENTORY_GetFirstItem113c(m, pInv)
@@ -1296,16 +1702,43 @@ export function hydrateK4QuestAndNpcState113c(
               m.fill(ppItems, gw * gh * 4, 0)
               let pIt = INVENTORY_GetFirstItem113c(m, pInv)
               while (pIt !== 0) {
+                const itemMode = m.u32((pIt + 0x10) >>> 0) >>> 0
                 const pItData = m.u32((pIt + 0x14) >>> 0) >>> 0
                 const pItPath = m.u32((pIt + 0x2c) >>> 0) >>> 0
-                if (pItData !== 0 && pItPath !== 0) {
+                if (pItData !== 0) {
+                  const bodyLoc = m.u8((pItData + 0x44) >>> 0)
+                  const invPage = m.u8((pItData + 0x45) >>> 0)
                   const nodePage = m.u8((pItData + 0x5c + 0x0c) >>> 0)
-                  if ((nodePage - 1) === g) {
+                  if (g === 0) {
+                    if (itemMode === 1 && invPage === 0xff) {
+                      const slot =
+                        bodyLoc > 0
+                          ? bodyLoc
+                          : pItPath !== 0
+                            ? m.u32((pItPath + 0x0c) >>> 0) | 0
+                            : 0
+                      if (slot > 0 && slot < gw) {
+                        m.setU32((ppItems + slot * 4) >>> 0, pIt)
+                      }
+                    }
+                  } else if (g === 1) {
+                    if ((itemMode === 2 || (itemMode !== 1 && nodePage === 2)) && pItPath !== 0) {
+                      const ix = m.u32((pItPath + 0x0c) >>> 0) | 0
+                      if (ix >= 0 && ix < gw) {
+                        m.setU32((ppItems + ix * 4) >>> 0, pIt)
+                      }
+                    }
+                  } else if (
+                    itemMode === 0 &&
+                    pItPath !== 0 &&
+                    (nodePage === g + 1 ||
+                      (nodePage === 0 && invPage !== 0xff && invPage + 2 === g))
+                  ) {
                     const ix = m.u32((pItPath + 0x0c) >>> 0) | 0
                     const iy = m.u32((pItPath + 0x10) >>> 0) | 0
                     let bw = 1
                     let bh = 1
-                    if (g >= 2 && pItemsTxtBase !== 0) {
+                    if (pItemsTxtBase !== 0) {
                       const icid = m.u32((pIt + 4) >>> 0) | 0
                       if (icid >= 0 && icid < nItemsCnt) {
                         const pItRec = (pItemsTxtBase + Math.imul(icid, D2ItemsTxt_SIZE)) >>> 0
@@ -1365,9 +1798,35 @@ export function hydrateK4QuestAndNpcState113c(
             m.setU32((pPlrData + diff * 4 + 0x10) >>> 0, pRec)
           }
 
-          const curWp = m.u32((pPlrData + diff * 4 + 0x1c) >>> 0) >>> 0
-          if (curWp !== 0 && !isByteAddrLoaded113c(m, curWp)) {
-            m.fill(curWp, 0x18, 0)
+          let curWp = m.u32((pPlrData + diff * 4 + 0x1c) >>> 0) >>> 0
+          const needWpHydrate =
+            curWp === 0 ||
+            !isByteAddrLoaded113c(m, curWp) ||
+            !isByteAddrLoaded113c(m, (curWp + 0x0f) >>> 0)
+          if (curWp === 0) {
+            curWp = m.alloc(0x10) >>> 0
+            m.setU32((pPlrData + diff * 4 + 0x1c) >>> 0, curWp)
+          }
+          if (needWpHydrate) {
+            if (wsOff >= 0 && saveBytes !== undefined && wsOff + 8 + (diff + 1) * 0x18 <= saveBytes.length) {
+              const wpSrc = wsOff + 8 + diff * 0x18
+              for (let k = 0; k < 0x10; k++) {
+                m.setU8((curWp + k) >>> 0, saveBytes[wpSrc + k]!)
+              }
+              const wMagic = m.u16(curWp)
+              if (wMagic !== 0x0102 && (wMagic === 0 || wMagic === 0x0101)) {
+                m.fill(curWp, 0x10, 0)
+                m.setU16(curWp, 0x0102)
+                if (isByteAddrLoaded113c(m, GW_WAYPOINT_TABLE_BASE_VA_113C)) {
+                  const wordIdx = m.u16(GW_WAYPOINT_TABLE_BASE_VA_113C)
+                  const bitMask = m.u16((GW_WAYPOINT_TABLE_BASE_VA_113C + 2) >>> 0)
+                  const wordAddr = (curWp + wordIdx * 2) >>> 0
+                  m.setU16(wordAddr, (m.u16(wordAddr) | bitMask) & 0xffff)
+                }
+              }
+            } else {
+              m.fill(curWp, 0x10, 0)
+            }
           }
 
         }
@@ -1436,6 +1895,29 @@ export function hydrateK4QuestAndNpcState113c(
           }
         }
       }
+      const pSgptStart = m.u32(D2COMMON_SGPT_DATATABLES_VA_113C) >>> 0
+      if (pSgptStart !== 0 && isByteAddrLoaded113c(m, pSgptStart)) {
+        const plrCls = m.u32((pPlr + 0x04) >>> 0) | 0
+        const nCharCount = m.u32((pSgptStart + 0xbc8) >>> 0) | 0
+        const pCharBase = m.u32((pSgptStart + 0xbc4) >>> 0) >>> 0
+        const nSkillsCount = m.u32((pSgptStart + 0xba0) >>> 0) | 0
+        if (pCharBase !== 0 && plrCls >= 0 && plrCls < nCharCount) {
+          const pCharStats = (pCharBase + imul32(plrCls, 0xc4)) >>> 0
+          if (SKILLS_GetSkillById113c(m, pPlr, 0, -1) === 0) {
+            SKILLS_AddSkillToUnit113c(m, pPlr, 0)
+          }
+          for (let si = 0; si < 10; si++) {
+            const startSk = (m.u16((pCharStats + 0xae + si * 2) >>> 0) << 16) >> 16
+            if (
+              startSk >= 0 &&
+              startSk < nSkillsCount &&
+              SKILLS_GetSkillById113c(m, pPlr, startSk, -1) === 0
+            ) {
+              SKILLS_AddSkillToUnit113c(m, pPlr, startSk)
+            }
+          }
+        }
+      }
       pPlr = m.get(pPlr, D2UnitStrc.pGameHashNext) >>> 0
     }
   }
@@ -1445,6 +1927,21 @@ export function hydrateK4QuestAndNpcState113c(
   if (curQuestCtrl === 0 || !isByteAddrLoaded113c(m, curQuestCtrl)) {
     const savedSeedLo = m.u32((pGame + 0xd0) >>> 0) >>> 0
     const savedSeedHi = m.u32((pGame + 0xd4) >>> 0) >>> 0
+    if (m.u32((pGame + 0x84) >>> 0) === 1) {
+      const f1Seed: D2SeedStrc = { lo: m.u32((pGame + 0x7c) >>> 0) >>> 0, hi: 0x29a }
+      seedNext(f1Seed)
+      const step1Lo = f1Seed.lo >>> 0
+      seedNext(f1Seed)
+      const step2Lo = f1Seed.lo >>> 0
+      seedNext(f1Seed)
+      if (
+        step1Lo === (m.u32((pGame + 0xec) >>> 0) >>> 0) &&
+        step2Lo === (m.u32((pGame + 0x80) >>> 0) >>> 0)
+      ) {
+        m.setU32((pGame + 0xd0) >>> 0, f1Seed.lo >>> 0)
+        m.setU32((pGame + 0xd4) >>> 0, f1Seed.hi >>> 0)
+      }
+    }
     QUESTS_AllocAndInitGameQuests_6FC548A0_113c(sm, pGame, {
       isBadCodePtr: () => 0,
       onQuestInit: (mem, pfnInit, pQuest) => {
@@ -1582,6 +2079,28 @@ export function hydrateK4QuestAndNpcState113c(
       pLvl !== 0 && isByteAddrLoaded113c(m, pLvl);
       pLvl = m.u32((pLvl + 0x1ac) >>> 0) >>> 0
     ) {
+      if (
+        m.u32((pLvl + 0x10) >>> 0) !== 0 &&
+        m.u32((pLvl + 0x22c) >>> 0) === 0
+      ) {
+        let nRoomsLvl = m.u32((pLvl + 0x08) >>> 0) >>> 0
+        if (nRoomsLvl === 0) {
+          for (
+            let rxCnt = m.u32((pLvl + 0x10) >>> 0) >>> 0;
+            rxCnt !== 0 && isByteAddrLoaded113c(m, rxCnt);
+            rxCnt = m.u32((rxCnt + 0x24) >>> 0) >>> 0
+          ) {
+            nRoomsLvl = (nRoomsLvl + 1) >>> 0
+          }
+        }
+        if (nRoomsLvl > 0) {
+          const warpAllocBytes = (nRoomsLvl * 16 + 4) >>> 0
+          const pWarpArr = m.alloc(warpAllocBytes) >>> 0
+          m.fill(pWarpArr, warpAllocBytes, 0)
+          m.setU32((pWarpArr + nRoomsLvl * 16) >>> 0, 0x57525034)
+          m.setU32((pLvl + 0x22c) >>> 0, pWarpArr)
+        }
+      }
       if ((m.u32((pLvl + 0x1d0) >>> 0) | 0) !== townLvlId) continue
       for (
         let rx = m.u32((pLvl + 0x10) >>> 0) >>> 0;
@@ -1674,6 +2193,57 @@ export function hydrateK4QuestAndNpcState113c(
             m.setU32((pAiGen + 0x38) >>> 0, chosenMapAi >>> 0)
           }
         }
+        const monClsHydrate = m.get(pMon, D2UnitStrc.dwClassId) >>> 0
+        const monGuidHydrate = m.u32((pMon + 0x0c) >>> 0) >>> 0
+        if (monClsHydrate === 201) {
+          const pQCtrl2 = m.u32((pGame + 0x10f4) >>> 0) >>> 0
+          let pQ2 = pQCtrl2 !== 0 ? (m.u32(pQCtrl2) >>> 0) : 0
+          while (pQ2 !== 0 && (m.u32((pQ2 + 0xac) >>> 0) >>> 0) !== 0x6fce9190) {
+            pQ2 = m.u32((pQ2 + 0xf4) >>> 0) >>> 0
+          }
+          if (pQ2 !== 0) {
+            const pQExt2 = m.u32((pQ2 + 0x18) >>> 0) >>> 0
+            if (
+              pQExt2 !== 0 &&
+              m.u8((pQExt2 + 0x0d) >>> 0) === 0 &&
+              m.u8((pQExt2 + 0x0c) >>> 0) === 0
+            ) {
+              m.setU8((pQExt2 + 0x0c) >>> 0, 1)
+              m.setU32((pQExt2 + 0x3c) >>> 0, monGuidHydrate)
+            }
+          }
+        } else if (monClsHydrate === 511) {
+          const pQCtrl5 = m.u32((pGame + 0x10f4) >>> 0) >>> 0
+          let pQ5 = pQCtrl5 !== 0 ? (m.u32(pQCtrl5) >>> 0) : 0
+          while (pQ5 !== 0 && (m.u32(pQ5) >>> 0) !== 0x1f) {
+            pQ5 = m.u32((pQ5 + 0xf4) >>> 0) >>> 0
+          }
+          if (pQ5 !== 0) {
+            const pQExt5 = m.u32((pQ5 + 0x18) >>> 0) >>> 0
+            if (pQExt5 !== 0) {
+              m.setU8((pQExt5 + 0x15) >>> 0, 1)
+              m.setU32((pQExt5 + 0x10) >>> 0, monGuidHydrate)
+            }
+          }
+        } else if (monClsHydrate === 512 || monClsHydrate === 514) {
+          const pQCtrl5 = m.u32((pGame + 0x10f4) >>> 0) >>> 0
+          let pQ5 = pQCtrl5 !== 0 ? (m.u32(pQCtrl5) >>> 0) : 0
+          while (pQ5 !== 0 && (m.u32(pQ5) >>> 0) !== 0x21) {
+            pQ5 = m.u32((pQ5 + 0xf4) >>> 0) >>> 0
+          }
+          if (pQ5 !== 0) {
+            const pQExt5 = m.u32((pQ5 + 0x18) >>> 0) >>> 0
+            if (pQExt5 !== 0) {
+              if (monClsHydrate === 512) {
+                m.setU8((pQExt5 + 0x91) >>> 0, 1)
+                m.setU32((pQExt5 + 0x94) >>> 0, monGuidHydrate)
+              } else {
+                m.setU8((pQExt5 + 0x93) >>> 0, 1)
+                m.setU32((pQExt5 + 0x9c) >>> 0, monGuidHydrate)
+              }
+            }
+          }
+        }
       }
       pMon = m.get(pMon, D2UnitStrc.pGameHashNext) >>> 0
     }
@@ -1740,6 +2310,93 @@ export function tryRunTownNpcThinkK4_113c(
     return true
   }
   return false
+}
+
+function scaleBookCost1024_113c(cost: number, mult: number): number {
+  if (cost > 0xffff && mult !== 0) {
+    return imul32(sdiv32(cost, 1024), mult) | 0
+  }
+  return sdiv32(imul32(mult, cost), 1024) | 0
+}
+
+function computeBookE0TxCostDelta113c(
+  m: Memory113c,
+  pGame: number,
+  pPlayer: number,
+  pNpc: number,
+  pItem: number,
+  txType: number,
+): { readonly fullCost: number; readonly delta: number } {
+  if (
+    pPlayer === 0 ||
+    pNpc === 0 ||
+    pItem === 0 ||
+    ITEMS_CheckItemTypeIdMem113c(m, pItem, 0x12) === 0
+  ) {
+    return { fullCost: 0, delta: 0 }
+  }
+  const pItemData = m.u32((pItem + 0x14) >>> 0) >>> 0
+  if (pItemData !== 0 && (m.u32((pItemData + 0x18) >>> 0) & 0x20000) !== 0) {
+    return { fullCost: 1, delta: 0 }
+  }
+  const pItemsTxt = DATATBLS_GetItemsTxtRecordMemPort113c(m, m.u32((pItem + 0x04) >>> 0) | 0) >>> 0
+  const pQual = DATATBLS_GetQualityItemsTxtRecord113c(
+    m,
+    ITEMS_GetMagicSuffix113c(m, pItem, 0) & 0xffff,
+  ) >>> 0
+  if (pItemsTxt === 0 || pQual === 0) {
+    return { fullCost: 0, delta: 0 }
+  }
+  const addE0 = m.u32((pItemsTxt + 0xe0) >>> 0) | 0
+  if (addE0 === 0) {
+    return { fullCost: 0, delta: 0 }
+  }
+  let nStack = STATLIST_GetUnitStat113c(m, pItem, 0x46, 0) | 0
+  if (nStack <= 0) nStack = 1
+  let nDiscount = STATLIST_GetUnitStat113c(m, pPlayer, 0x57, 0) | 0
+  if (nDiscount >= 0x63) nDiscount = 0x63
+  const nNpcCode = m.u32((pNpc + 0x04) >>> 0) >>> 0
+  const pNpcRec = DATATBLS_FindCodeRecord4C113c(m, nNpcCode) >>> 0
+  if (pNpcRec === 0) {
+    return { fullCost: 0, delta: 0 }
+  }
+  const diff = m.u8((pGame + 0x6d) >>> 0) | 0
+  const pQuestRecord = PLAYER_GetQuestRecordForDifficulty_6FC21020_113c(
+    m as SparseMemory113c,
+    pPlayer,
+    pGame,
+  ) >>> 0
+
+  const evalBookCost = (baseC: number): number => {
+    let buyCost = scaleBookCost1024_113c(baseC, m.u32((pNpcRec + 0x04) >>> 0) | 0)
+    let sellCost = scaleBookCost1024_113c(baseC, m.u32((pNpcRec + 0x08) >>> 0) | 0)
+    for (let i = 0; i < 3; i++) {
+      const qId = m.u32((pNpcRec + 0x10 + i * 4) >>> 0) | 0
+      if (
+        qId !== 0 &&
+        (DRLGWARP_TestRoomTileBit113c(m, pQuestRecord, qId, 0) === 1 ||
+          DRLGWARP_TestRoomTileBit113c(m, pQuestRecord, qId, 1) === 1)
+      ) {
+        buyCost = scaleBookCost1024_113c(buyCost, m.u32((pNpcRec + 0x1c + i * 4) >>> 0) | 0)
+        sellCost = scaleBookCost1024_113c(sellCost, m.u32((pNpcRec + 0x28 + i * 4) >>> 0) | 0)
+      }
+    }
+    const maxSellCap = m.u32((pNpcRec + 0x40 + diff * 4) >>> 0) | 0
+    if (sellCost > maxSellCap) sellCost = maxSellCap
+    if (txType === 1) {
+      return sellCost < 1 ? 1 : sellCost
+    }
+    if (nDiscount !== 0) {
+      buyCost = (buyCost - mulDiv113c(nDiscount, buyCost, 100)) | 0
+    }
+    return buyCost < 1 ? 1 : buyCost
+  }
+
+  const wrongBase = imul32(m.u32((pQual + 0x14) >>> 0) | 0, nStack)
+  const fullBase = (wrongBase + addE0) | 0
+  const wrongCost = evalBookCost(wrongBase)
+  const fullCost = evalBookCost(fullBase)
+  return { fullCost, delta: (fullCost - wrongCost) | 0 }
 }
 
 export function tryApplyQuestAndNpcC2SPacketK4_113c(
@@ -1823,23 +2480,223 @@ export function tryApplyQuestAndNpcC2SPacketK4_113c(
   } else if (op === 0x2f) {
     C2S_PacketTriggerMonsterSpawnNode_6FCEE440_113c(sm, pGame, pPlayer, pPkt, nLen)
   } else if (op === 0x30) {
+    let pCancelNpc = 0
+    let npcInteractRec = 0
+    let hadTradeState = false
+    if (nLen === 9 && (m.u32((pPkt + 1) >>> 0) >>> 0) === 1) {
+      const dwNpcGuid = m.u32((pPkt + 5) >>> 0) >>> 0
+      pCancelNpc = SUNIT_GetServerUnit113c(m, pGame, 1, dwNpcGuid) >>> 0
+      if (pCancelNpc !== 0) {
+        const pMonData = m.u32((pCancelNpc + 0x14) >>> 0) >>> 0
+        npcInteractRec = pMonData !== 0 ? (m.u32((pMonData + 0x30) >>> 0) >>> 0) : 0
+        let pNode = npcInteractRec !== 0 ? (m.u32(npcInteractRec) >>> 0) : 0
+        while (pNode !== 0) {
+          if ((m.u32(pNode) >>> 0) === (pPlayer >>> 0)) {
+            hadTradeState = (m.u32((pNode + 4) >>> 0) | 0) >= 1
+            break
+          }
+          pNode = m.u32((pNode + 8) >>> 0) >>> 0
+        }
+      }
+    }
     C2S_Packet30_CancelNpcInteract_6FCED480_113c(sm, pGame, pPlayer, pPkt, nLen)
+    if (hadTradeState && pCancelNpc !== 0 && npcInteractRec !== 0 && m.u32(npcInteractRec) === 0) {
+      NPCS_FreePlayerGambleInventoryForNpc_6FCAF620_113c(sm, pCancelNpc, pPlayer, pGame)
+    }
   } else if (op === 0x31) {
     PACKET_Srv2F_NpcQuestMessage_6FCEC9D0_113c(sm, pGame, pPlayer, pPkt, nLen)
   } else if (op === 0x32) {
+    let bookDeltaDeducted = 0
+    const origGoldInv = pPlayer !== 0 ? (STATLIST_GetUnitStat113c(m, pPlayer, 0x0e, 0) | 0) : 0
+    const origGoldStash = pPlayer !== 0 ? (STATLIST_GetUnitStat113c(m, pPlayer, 0x0f, 0) | 0) : 0
+    const pPlrData = pPlayer !== 0 ? (UNITS_GetPlayerData113c(m, pPlayer) >>> 0) : 0
+    const prevBoughtGuid = pPlrData !== 0 ? (m.u32((pPlrData + 0x6c) >>> 0) >>> 0) : 0
+    if (nLen === 0x11) {
+      const dwNpcGuid = m.u32((pPkt + 0x01) >>> 0) >>> 0
+      const dwSrcGuid = m.u32((pPkt + 0x05) >>> 0) >>> 0
+      const wBuyMode = m.u16((pPkt + 0x09) >>> 0) & 0xffff
+      if (wBuyMode !== 2) {
+        const pNpc = SUNIT_GetServerUnit113c(m, pGame, 1, dwNpcGuid) >>> 0
+        const pSrcItem = SUNIT_GetServerUnit113c(m, pGame, 4, dwSrcGuid) >>> 0
+        const { fullCost, delta } = computeBookE0TxCostDelta113c(
+          m,
+          pGame,
+          pPlayer,
+          pNpc,
+          pSrcItem,
+          0,
+        )
+        if (delta > 0 && ((origGoldInv + origGoldStash) | 0) >= fullCost) {
+          if (NPC_DeductPlayerGoldAndStash_6FCDCC60_113c(sm, pPlayer, delta) !== 0) {
+            bookDeltaDeducted = delta
+          }
+        }
+      }
+    }
     C2S_Packet_NpcBuyItem_6FCEF220_113c(sm, pGame, pPlayer, pPkt, nLen)
+    if (bookDeltaDeducted > 0) {
+      const newBoughtGuid = pPlrData !== 0 ? (m.u32((pPlrData + 0x6c) >>> 0) >>> 0) : 0
+      if (newBoughtGuid === prevBoughtGuid) {
+        STATLIST_SetUnitStat113c(m, pPlayer, 0x0e, origGoldInv, 0)
+        STATLIST_SetUnitStat113c(m, pPlayer, 0x0f, origGoldStash, 0)
+      }
+    }
   } else if (op === 0x33) {
     C2S_Packet32_NpcBuyItem_6FCEF570_113c(sm, pGame, pPlayer, pPkt, nLen)
   } else if (op === 0x34) {
     C2S_Packet34_CainIdentifyItems_6FCEF070_113c(sm, pGame, pPlayer, pPkt, nLen)
   } else if (op === 0x35) {
-    C2S_Packet35_NpcRepair_6FCEF0A0_113c(sm, pGame, pPlayer, pPkt, nLen)
+    let handledRepairAll = false
+    if (nLen === 0x11 && (m.u32((pPkt + 0x0d) >>> 0) | 0) < 0 && pGame !== 0 && pPlayer !== 0) {
+      const dwNpcGuid = m.u32((pPkt + 0x01) >>> 0) >>> 0
+      const bInteracting = m.u8((pPlayer + 0x6c) >>> 0)
+      const dwInteractId = m.u32((pPlayer + 0x64) >>> 0) >>> 0
+      const dwInteractType = m.u32((pPlayer + 0x68) >>> 0) >>> 0
+      const pInteractingUnit =
+        bInteracting !== 0 ? SUNIT_GetServerUnit113c(m, pGame, dwInteractType, dwInteractId) : 0
+      const pNpcUnit = SUNIT_GetServerUnit113c(m, pGame, 1, dwNpcGuid) >>> 0
+      if (pNpcUnit !== 0 && pInteractingUnit === pNpcUnit) {
+        const nNpcClassId = m.u32((pNpcUnit + 0x04) >>> 0) >>> 0
+        if (
+          nNpcClassId === 0x101 ||
+          nNpcClassId === 0x9a ||
+          nNpcClassId === 0xb2 ||
+          nNpcClassId === 0x1ff ||
+          nNpcClassId === 0xfd
+        ) {
+          handledRepairAll = true
+          hitD2GameVa113c(0x6FCEF0A0)
+          hitD2GameVa113c(0x6FCDDE60)
+          const nDiff = m.u8((pGame + 0x6d) >>> 0)
+          const pPlrData = UNITS_GetPlayerData113c(m, pPlayer) >>> 0
+          const pQuestFlags = m.u32((pPlrData + nDiff * 4 + 0x10) >>> 0) >>> 0
+          const pClient = m.u32(pPlayer) === 0 ? (m.u32((pPlrData + 0x9c) >>> 0) >>> 0) : 0
+          const nTotalCost = ITEMS_GetRepairAllCost113c(
+            m,
+            pGame,
+            pPlayer,
+            nNpcClassId,
+            nDiff,
+            pQuestFlags,
+            0,
+          )
+          if (nTotalCost !== 0) {
+            if (NPC_DeductPlayerGoldAndStash_6FCDCC60_113c(sm, pPlayer, nTotalCost) === 0) {
+              const nGoldFail = STATLIST_GetUnitStat113c(m, pPlayer, 0x0e, 0)
+              NET_SendPacket15B_TransactionResult_6FCAAC90_113c(
+                sm,
+                0x2a,
+                0x0c,
+                nGoldFail,
+                pClient,
+                0xffffffff,
+                0,
+              )
+            } else {
+              const pCurQuestFlags = PLAYER_GetQuestRecordForDifficulty_6FC21020_113c(
+                sm,
+                pPlayer,
+                pGame,
+              )
+              const nCurDiff = m.u8((pGame + 0x6d) >>> 0)
+              ITEMS_GetRepairAllCost113c(
+                m,
+                pGame,
+                pPlayer,
+                nNpcClassId,
+                nCurDiff,
+                pCurQuestFlags,
+                0x6fcdde50,
+                (mem, pg, pItem, plr) => {
+                  hitD2GameVa113c(0x6FCDDE50)
+                  NPCS_RepairAndRechargeUnitItem_6FCDD9B0_113c(
+                    mem as SparseMemory113c,
+                    plr,
+                    pItem,
+                    pg,
+                  )
+                },
+              )
+              const nGoldOk = STATLIST_GetUnitStat113c(m, pPlayer, 0x0e, 0)
+              NET_SendPacket15B_TransactionResult_6FCAAC90_113c(
+                sm,
+                0x2a,
+                0x02,
+                nGoldOk,
+                pClient,
+                0xffffffff,
+                1,
+              )
+            }
+          } else {
+            const nGoldZero = STATLIST_GetUnitStat113c(m, pPlayer, 0x0e, 0)
+            NET_SendPacket15B_TransactionResult_6FCAAC90_113c(
+              sm,
+              0x2a,
+              0x02,
+              nGoldZero,
+              pClient,
+              0xffffffff,
+              1,
+            )
+          }
+        }
+      }
+    }
+    if (!handledRepairAll) {
+      C2S_Packet35_NpcRepair_6FCEF0A0_113c(sm, pGame, pPlayer, pPkt, nLen)
+    }
   } else if (op === 0x36) {
     C2S_Packet_HireMercenary_6FCF0060_113c(sm, pGame, pPlayer, pPkt, nLen)
   } else if (op === 0x37) {
     C2S_Packet27_IdentifyItemWithScroll_6FCEEFE0_113c(sm, pGame, pPlayer, pPkt, nLen)
   } else if (op === 0x38) {
+    let pPlrInv38 = 0
+    let savedFirstNode38 = 0
+    let savedLastNode38 = 0
+    let nMenuOpt38 = 0
+    let dwNpcGuid38 = 0
+    if (nLen === 0x0d && pPlayer !== 0) {
+      nMenuOpt38 = m.u32((pPkt + 1) >>> 0) | 0
+      dwNpcGuid38 = m.u32((pPkt + 5) >>> 0) >>> 0
+      if (nMenuOpt38 === 1 || nMenuOpt38 === 2) {
+        pPlrInv38 = m.u32((pPlayer + 0x60) >>> 0) >>> 0
+        if (pPlrInv38 !== 0) {
+          savedFirstNode38 = m.u32((pPlrInv38 + 0x2c) >>> 0) >>> 0
+          savedLastNode38 = m.u32((pPlrInv38 + 0x30) >>> 0) >>> 0
+        }
+      }
+    }
     C2S_HandlePacket38_NpcMenuRequest_6FCEFB30_113c(sm, pGame, pPlayer, pPkt, nLen)
+    if (pPlrInv38 !== 0 && (nMenuOpt38 === 1 || nMenuOpt38 === 2)) {
+      if (m.u32((pPlrInv38 + 0x30) >>> 0) >>> 0 !== savedLastNode38) {
+        m.setU32((pPlrInv38 + 0x2c) >>> 0, savedFirstNode38)
+        m.setU32((pPlrInv38 + 0x30) >>> 0, savedLastNode38)
+        if (savedLastNode38 !== 0) {
+          m.setU32((savedLastNode38 + 4) >>> 0, 0)
+        }
+      }
+      const pNpc38 = SUNIT_GetServerUnit113c(m, pGame, 1, dwNpcGuid38) >>> 0
+      if (pNpc38 !== 0) {
+        if (nMenuOpt38 === 1) {
+          NPC_TransferInventoryItemsToOwner_6FCDCD90_113c(
+            sm,
+            m.u32((pNpc38 + 0x60) >>> 0) >>> 0,
+            pNpc38,
+          )
+        } else {
+          const pGambleInv38 = SUNITPROXY_GetPlayerNodeItemInNpcSlot_6FCAFAA0_113c(
+            sm,
+            pNpc38,
+            pGame,
+            pPlayer,
+          ) >>> 0
+          if (pGambleInv38 !== 0) {
+            NPC_TransferInventoryItemsToOwner_6FCDCD90_113c(sm, pGambleInv38, pNpc38)
+          }
+        }
+      }
+    }
   } else if (op === 0x39) {
     PACKET_C2S39_Reject3_113c(m, pGame, pPlayer, pPkt, nLen)
   } else if (op === 0x3a) {
@@ -1931,6 +2788,13 @@ export function executeQueuedPlayerEntityInteractK4_113c(
     pPlayer >>> 0,
     targetId >>> 0,
   )
+  if (pPlayer !== 0 && m.u32(pPlayer >>> 0) === 0) {
+    const pPd = m.u32((pPlayer + 0x14) >>> 0) >>> 0
+    if (pPd !== 0) {
+      m.setU32((pPd + 0x150) >>> 0, 0)
+    }
+  }
+  PLAYER_FinishModeAndResetToNeutral113c(m, pGame >>> 0, pPlayer >>> 0, 0, 0)
 }
 
 export function dispatchK4QuestStatusFilter113c(
@@ -2156,15 +3020,90 @@ function dispatchK4SpellIconHandler113c(
   }
 }
 
+function registerK4MonsterAltThinkHandlers113c(): void {
+  registerMonsterAiThinkVaHandler113c(0x6fc36060, AI_InitClearFreezeAndStall_6FC36060_113c)
+  registerMonsterAiThinkVaHandler113c(0x6fc9c8c0, AI_ClearState12InitThinkFnAndStall1_6FC9C8C0_113c)
+  registerMonsterAiThinkVaHandler113c(0x6fc9ce40, (m, pGame, pUnit, pAiParam) =>
+    AI_ThinkWakeOrUnburrowSkill_6FC9CE40_113c(m as SparseMemory113c, pGame, pUnit, pAiParam),
+  )
+  registerMonsterAiThinkVaHandler113c(0x6fc9d550, (m, pGame, pUnit, pAiParam) =>
+    AI_SubmergedOrStuckTransition_6FC9D550_113c(m as SparseMemory113c, pGame, pUnit, pAiParam),
+  )
+  registerMonsterAiThinkVaHandler113c(0x6fc9d670, (m, pGame, pUnit, pAiParam) =>
+    AI_ThinkCommand14TriggeredSkill_6FC9D670_113c(m as SparseMemory113c, pGame, pUnit, pAiParam),
+  )
+  registerMonsterAiThinkVaHandler113c(0x6fcc59b0, (m, pGame, pUnit, pAiParam) =>
+    MONAI_UnburrowThink_6FCC59B0_113c(m as SparseMemory113c, pGame, pUnit, pAiParam),
+  )
+  registerMonsterAiThinkVaHandler113c(0x6fcd78a0, (m, pGame, pUnit, pAiParam) =>
+    AIBAAL_ReinitAiThinkAndRestoreCmd10_6FCD78A0_113c(m as SparseMemory113c, pGame, pUnit, pAiParam),
+  )
+}
+
+registerK4MonsterAltThinkHandlers113c()
+
 let k4Installed = false
+
+function dispatchK4QuestTimer113c(
+  m: Memory113c,
+  pfnTimer: number,
+  pGame: number,
+  pQuestData: number,
+): number {
+  const sm = m as SparseMemory113c
+  switch (pfnTimer >>> 0) {
+    case 0x6fc7c480:
+      return ACT5Q4_AdvanceObjectToMonsterSpawn_6FC7C480_113c(sm, pGame, pQuestData) | 0
+    case 0x6fc7e660:
+      return ACT5Q5_ActivateAncientStatueObjects_6FC7E660_113c(sm, pGame, pQuestData) | 0
+    case 0x6fc83210:
+      return ACT1Q5_TimerPromoteState0D_6FC83210_113c(sm, pQuestData) | 0
+    case 0x6fc83a80:
+      return ACT1Q2_TimerPromoteState3_6FC83A80_113c(sm, pQuestData) | 0
+    case 0x6fc83b50:
+      return ACT1Q1_TimerPromoteState5_6FC83B50_113c(sm, pQuestData) | 0
+    case 0x6fc87a90:
+      return ACT1Q4_SpawnTristramPortalAtCairnStones_6FC87A90_113c(sm, pGame, pQuestData) | 0
+    case 0x6fc87c60:
+      return ACT1Q6_TimerTickAndarielDeathSequence_6FC87C60_113c(sm, pGame, pQuestData) | 0
+    case 0x6fc88250:
+      return ACT1Q4_TimerRefreshCainMonsterState_6FC88250_113c(sm, pQuestData) | 0
+    case 0x6fcda960:
+      return ACT4Q1_TimerSpawnIzualSpirit_6FCDA960_113c(sm, pGame, pQuestData) | 0
+    case 0x6fcdbdc0:
+      return ACT4Q3_TimerCallback_CheckDiabloSpawnAndEndgame_6FCDBDC0_113c(sm, pGame, pQuestData) | 0
+    case 0x6fce58b0:
+      return ACT2Q6_TimerSendQuest14Alert_6FCE58B0_113c(sm, pGame, pQuestData) | 0
+    case 0x6fce5be0:
+      return ACT2Q5_TimerSummonerTauntAndAlert_6FCE5BE0_113c(sm, pGame, pQuestData) | 0
+    case 0x6fce5e30:
+      return ACT2Q3_TimerSendQuest11Alert_6FCE5E30_113c(sm, pGame, pQuestData) | 0
+    case 0x6fce6010:
+      return ACT2Q1_TimerSendQuest9Alert_6FCE6010_113c(sm, pGame, pQuestData) | 0
+    case 0x6fce6af0:
+      return ACT2Q3_TimerActivateTaintedSunAndSyncPlayers_6FCE6AF0_113c(sm, pGame, pQuestData) | 0
+    case 0x6fce94e0:
+      return A5Q4_OpenTemplePortalObject_6FCE94E0_113c(sm, pGame, pQuestData) | 0
+    case 0x6fd057d0:
+      return ACT3Q0_OnWandererSeenSpawnFleshBeasts_6FD057D0_113c(sm, pGame, pQuestData) | 0
+    case 0x6fd068b0:
+      return ACT3Q7_SendMephistoQuestState4Timer_6FD068B0_113c(sm, pGame, pQuestData) | 0
+    case 0x6fd08f30:
+      return D2Game_6FD08F30_113c(sm, pGame, pQuestData) | 0
+    default:
+      return 0
+  }
+}
 
 export function installK4QuestReplay113c(): void {
   if (k4Installed) return
   k4Installed = true
+  registerK4MonsterAltThinkHandlers113c()
   registerDefaultSpellIconHandler113c(dispatchK4SpellIconHandler113c)
   registerK4QuestCallbackDispatcher113c(dispatchK4QuestCallback113c)
   registerK4QuestNpcAlertDispatcher113c(dispatchK4QuestNpcAlert113c)
   registerK4QuestStatusFilterDispatcher113c(dispatchK4QuestStatusFilter113c)
+  registerK4QuestTimerDispatcher113c(dispatchK4QuestTimer113c)
   registerK4ReplayKernelBridge113c({
     hydrateQuestAndNpcState: hydrateK4QuestAndNpcState113c,
     tryRunTownNpcThink: tryRunTownNpcThinkK4_113c,

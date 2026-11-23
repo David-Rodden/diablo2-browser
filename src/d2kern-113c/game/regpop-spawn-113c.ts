@@ -10,6 +10,7 @@
 
 import {
   COLLISION_CheckMaskWithPattern1_113c,
+  COLLISION_CheckMaskWithSizeXY113c,
   COLLISION_CheckSubtileMask113c,
   COLLISION_FindFreePosition113c,
   COLLISION_SetMaskWithPattern113c,
@@ -162,6 +163,7 @@ import {
 import { QUESTS_AttachQuestToUnit_6FC53F80_113c } from './k2-laneJ-0x6fc4-w1-113c.ts'
 import { ITEMS_InitItemUnit_6FC30160_113c } from './k2-real-itemdrop-113c.ts'
 import { MONUMOD_AssignSpecificUModAndInit_6FC432B0_113c } from './k2-w2b1-113c.ts'
+import { QUESTS_AttachUnitToQuest_6FC55890_113c } from './k2-w3b3-113c.ts'
 import {
   MONAI_ClearAiControlParam0_6FCC3980_113c,
   MONAI_InitAiControlAip3AndRandomParity_6FCC3C30_113c,
@@ -172,12 +174,16 @@ import {
   MONAI_NoOpRet4_6FCC3930_113c,
   MONAI_RecordPathTargetInteractByUnitType_6FCC5AC0_113c,
 } from './k2-w2b5-113c.ts'
-import { AI_InitBaalThroneTentaclePositionDelta_6FC359B0_113c } from './k2-w3b1-113c.ts'
+import {
+  AI_InitBaalThroneTentaclePositionDelta_6FC359B0_113c,
+  ITEMS_CreateGoldPileInRoomAtCoords_6FC320E0_113c,
+} from './k2-w3b1-113c.ts'
 import {
   AI_InitSummonSkillLevelAndBasicAttack_6FCC4260_113c,
   AI_SyncSummonSkillLevelFromOwner_6FCC4450_113c,
 } from './k2-w4b6-113c.ts'
 import { MONAI_InitShadowMasterClassSkills_6FCC4320_113c } from './k2-w6b2-113c.ts'
+import { NET_BroadcastSystemChatMessage_6FCEBE70_113c } from './k2-w6b3-113c.ts'
 import { MONSTER_SpawnAndEquipMonEquipRecordItem_6FCCFCE0_113c } from './k2-w8b2-113c.ts'
 import { PETS_RecalcAndClampAllPlayerPetCountsFromSkills_6FCB6FA0_113c } from './k2-w9b1-113c.ts'
 import { SKILLS_EquipSummonedPetItems_6FD0E6F0_113c } from './k2-w9b2-113c.ts'
@@ -3140,7 +3146,10 @@ export function SUNIT_PlaceServerUnitInRoom113c(
 }
 
 /**
- * Returns `max(pGame->dwPlayers, pGame->nDifficultyPlayerCountOverride)` clamped to `>= 1`.
+ * Resolves the effective player count (`D2Game:0x6FC579A0`, 45B): iterates living player units in
+ * `pGame + 0x1120` via `0x6FCFFC10`/`0x6FC57810`, takes `max(count, [0x6fd31c1c])` when
+ * `1 <= pGame[+0x6a] <= 3`, and falls back to standalone D2TV evaluator `pGame + 0x1d20` staging
+ * only when `count === 0`.
  *
  * @va D2Game:0x6FC579A0 (45B)
  */
@@ -3169,6 +3178,14 @@ export function GAME_GetEffectivePlayerCount113c(m: Memory113c, pGame: number): 
       if (maxCount > count) count = maxCount
     } catch {
       // 0x6fd31c1c unmapped in standalone tests without global players override
+    }
+  }
+  if (count === 0) {
+    try {
+      const stagedPlayers = m.u32((pGame + 0x1d20) >>> 0) | 0
+      if (stagedPlayers > 0) count = stagedPlayers
+    } catch {
+      // pGame + 0x1d20 unmapped in compact synthetic fixtures
     }
   }
   return count
@@ -3479,7 +3496,7 @@ export function MONSTER_EquipMonEquipItems113c(
   pUnit: number,
   pGame: number,
   pDonorUnit = 0,
-  nItemLevel = 0,
+  nItemLevel?: number,
   bOnInit = 0,
   nRowFilterLevel?: number,
 ): void {
@@ -3498,8 +3515,8 @@ export function MONSTER_EquipMonEquipItems113c(
   const pInventory = m.u32((pUnit + 0x60) >>> 0) >>> 0
   if (pInventory === 0) return
 
-  let equipLvl = nItemLevel | 0
-  if (equipLvl <= 0) {
+  let equipLvl = nItemLevel !== undefined ? (nItemLevel | 0) : 0
+  if (nItemLevel === undefined) {
     const pBaseStats = STATLIST_GetStatListFromUnitAndStateMemPort113c(m, pUnit, 0) >>> 0
     equipLvl = pBaseStats !== 0 ? STATLIST_GetStatValue113c(m, pBaseStats, 0x0c, 0) | 0 : 1
     if (equipLvl <= 0) equipLvl = 1
@@ -3883,8 +3900,97 @@ export function MONSTER_InitMonsterUnit113c(
   pRoom: number,
   pGame: number,
   nMode: number,
+  dllAbi = false,
 ): number {
   hitD2GameVa113c(0x6FCD0320)
+  if (dllAbi) {
+    const unit = pUnit >>> 0
+    const game = pGame >>> 0
+    const room = pRoom >>> 0
+    const dwUnitId = nMode >>> 0
+    let pMonData = 0
+    if (unit !== 0) {
+      m.setU32((unit + 0x0c) >>> 0, dwUnitId)
+      m.setU32((unit + 0xc4) >>> 0, (m.u32((unit + 0xc4) >>> 0) | 0x0a) >>> 0)
+      if (m.u32((unit + 0xdc) >>> 0) !== 0) {
+        EVENT_RemoveUnitEvents113c(m, game, unit)
+      }
+      m.setU32((unit + 0xdc) >>> 0, 0)
+      if (m.u32(unit) === 1) {
+        pMonData = m.u32((unit + 0x14) >>> 0) >>> 0
+      }
+    }
+
+    const pAiGen = m.alloc(0x40) >>> 0
+    m.fill(pAiGen, 0x40, 0)
+    m.setU32((pAiGen + 0x0c) >>> 0, 0xffffffff)
+    m.setU32((pAiGen + 0x10) >>> 0, 1)
+    m.setU32((pAiGen + 0x2c) >>> 0, 0xffffffff)
+    m.setU32((pAiGen + 0x30) >>> 0, 1)
+    m.setU32((pMonData + 0x28) >>> 0, pAiGen)
+
+    const pAiCtrl = m.alloc(0x24) >>> 0
+    m.fill(pAiCtrl, 0x24, 0)
+    m.setU32((pMonData + 0x2c) >>> 0, pAiCtrl)
+
+    const pMonInteract = m.alloc(4) >>> 0
+    m.setU32(pMonInteract, 0)
+    m.setU32((pMonData + 0x30) >>> 0, pMonInteract)
+
+    let pMonStats = 0
+    if (unit !== 0) {
+      const nClassId = m.u32((unit + 0x04) >>> 0) | 0
+      if (nClassId >= 0) {
+        const sgptPtr = m.u32(D2GAME_IAT_SGPT_DATATABLES_VA_113C) >>> 0
+        const sgpt = sgptPtr !== 0 ? (m.u32(sgptPtr) >>> 0) : 0
+        if (sgpt !== 0 && nClassId < (m.u32((sgpt + 0xa80) >>> 0) | 0)) {
+          pMonStats = (m.u32((sgpt + 0xa78) >>> 0) + Math.imul(nClassId, 0x1a8)) >>> 0
+        }
+      }
+    }
+    m.setU32(pMonData >>> 0, pMonStats)
+
+    const pOutfit = MONREG_GetOrCreateActOutfit113c(m, (game + 0xf0) >>> 0, room, unit)
+    MONSTER_InitStats113c(m, game, unit, room, pOutfit)
+
+    const pAiGenArg =
+      unit !== 0 && m.u32(unit) === 1 && pMonData !== 0
+        ? (m.u32((pMonData + 0x28) >>> 0) >>> 0)
+        : 0
+    AI_InitMonsterAiThinkFn113c(m, unit, game, pAiGenArg, 0)
+
+    const nLevelId = DUNGEON_GetLevelIdFromRoom113c(m, room) >>> 0
+    let dwAnimMode = 0
+    let enterDeadBranch = unit === 0
+    if (unit !== 0) {
+      if (m.u32(unit) === 1 && pMonData !== 0) {
+        m.setU32((pMonData + 0x58) >>> 0, nLevelId)
+      }
+      dwAnimMode = m.u32((unit + 0x10) >>> 0) >>> 0
+      if (dwAnimMode === 0 || dwAnimMode === 0x0c) {
+        enterDeadBranch = true
+      } else {
+        const nQuestLevelId = DUNGEON_GetLevelIdFromRoom113c(m, room) | 0
+        if (nQuestLevelId !== 0) {
+          const pLvlTxt = DATATBLS_GetLevelsTxtRecord113c(m, nQuestLevelId) >>> 0
+          const questByte = pLvlTxt !== 0 ? m.u8((pLvlTxt + 0x30) >>> 0) : 0
+          if (questByte !== 0) {
+            const attached = QUESTS_AttachUnitToQuest_6FC55890_113c(m, unit, questByte, game) | 0
+            if (attached === 0 && m.u32(0x6fd31c20) !== 0) {
+              NET_BroadcastSystemChatMessage_6FCEBE70_113c(m as never, 0x6fd1cc5c, game, 4)
+            }
+          }
+        }
+      }
+    }
+    if (enterDeadBranch) {
+      SUNITDMG_FreeAttackerCombatList113c(m, unit, game)
+      UNITS_ChangeAnimMode113c(m, unit, dwAnimMode | 0)
+    }
+    SUNIT_InitUnitAnimData113c(m, unit)
+    return 1
+  }
+
   if (pUnit === 0) return 0
   const nClassId = m.u32((pUnit + 0x04) >>> 0) | 0
   const pMonStats = MONSTATS_GetRecordPtr113c(m, nClassId)
@@ -3941,6 +4047,105 @@ export function MONSTER_InitMonsterUnit113c(
  *
  * @va D2Game:0x6FD01D90 (754B)
  */
+function operateGoldChestOrPileExact_6FC4F580_113c(
+  m: Memory113c,
+  pGame: number,
+  pObject: number,
+  savedMode: number,
+  pRoom: number,
+  pObjControl: number,
+  x: number,
+  y: number,
+): void {
+  hitD2GameVa113c(0x6FC4F580)
+  if (pObject !== 0 && savedMode !== 0) {
+    return
+  }
+  UNITS_ChangeAnimMode113c(m, pObject, 2)
+  let checkBaseX = x | 0
+  let checkBaseY = y | 0
+  const roll0 = stepSeed64Inline(m, pObjControl >>> 0) >>> 0
+  const nPiles = ((roll0 % 9) + 1) | 0
+  const sp = regpopStackPtr
+  regpopStackPtr = (sp + 0x10) >>> 0
+  try {
+    for (let rem = nPiles; rem > 0; rem = (rem - 1) | 0) {
+      const dx = stepSeed64Inline(m, pObjControl >>> 0) & 3
+      const dy = stepSeed64Inline(m, pObjControl >>> 0) & 3
+      const checkX = (checkBaseX + dx) | 0
+      const checkY = (checkBaseY + dy) | 0
+      const pFoundRoom = ROOM_FindRoomContainingSubtile113c(m, pRoom, checkX, checkY) >>> 0
+      if (pFoundRoom === (pRoom >>> 0)) {
+        checkBaseX = ((x | 0) + dx) | 0
+        checkBaseY = ((y | 0) + dy) | 0
+        if (
+          (COLLISION_CheckMaskWithSizeXY113c(m, pFoundRoom, checkBaseX, checkBaseY, 1, 1, 0x3f11) &
+            0xffff) ===
+          0
+        ) {
+          m.setU32(sp, checkBaseX >>> 0)
+          m.setU32((sp + 4) >>> 0, checkBaseY >>> 0)
+          ITEMS_CreateGoldPileInRoomAtCoords_6FC320E0_113c(
+            m as SparseMemory113c,
+            sp,
+            pGame >>> 0,
+            pRoom >>> 0,
+          )
+        }
+      }
+    }
+  } finally {
+    regpopStackPtr = sp
+  }
+}
+
+export function OBJECTS_InitObjectUnitWithGoldPileFix113c(
+  m: Memory113c,
+  pUnit: number,
+  pGame: number,
+  dwUnitId: number,
+  pRoom: number,
+  x: number,
+  y: number,
+): void {
+  if (pUnit === 0) return
+  const nClassId = m.u32((pUnit + 0x04) >>> 0) | 0
+  const pInitObjData = m.u32((pUnit + 0x14) >>> 0) >>> 0
+  const pObjectsTxt =
+    m.u32(pUnit) === 2 && pInitObjData !== 0 && m.u32(pInitObjData) !== 0
+      ? (m.u32(pInitObjData) >>> 0)
+      : (DATATBLS_GetObjectsTxtRecord113c(m, nClassId) >>> 0)
+  if (pObjectsTxt !== 0 && m.u8((pObjectsTxt + 0x1b1) >>> 0) === 28) {
+    const savedMode = m.u32((pUnit + 0x10) >>> 0) | 0
+    const saved13d = m.u8((pObjectsTxt + 0x13d) >>> 0)
+    m.setU8((pObjectsTxt + 0x1b1) >>> 0, 0)
+    if (savedMode === 0 && saved13d !== 0) {
+      m.setU8((pObjectsTxt + 0x13d) >>> 0, 0)
+    }
+    try {
+      OBJECTS_InitObjectUnit113c(m, pUnit, pGame, dwUnitId, pRoom, x, y)
+    } finally {
+      m.setU8((pObjectsTxt + 0x1b1) >>> 0, 28)
+      if (savedMode === 0 && saved13d !== 0) {
+        m.setU8((pObjectsTxt + 0x13d) >>> 0, saved13d)
+      }
+    }
+    const pObjControl = m.u32((pGame + 0x10f0) >>> 0) >>> 0
+    operateGoldChestOrPileExact_6FC4F580_113c(
+      m,
+      pGame,
+      pUnit,
+      savedMode,
+      pRoom,
+      pObjControl,
+      x,
+      y,
+    )
+    return
+  }
+  OBJECTS_InitObjectUnit113c(m, pUnit, pGame, dwUnitId, pRoom, x, y)
+}
+
 export function SUNIT_AllocUnitData113c(
   m: Memory113c,
   nUnitType: number,
@@ -4027,7 +4232,7 @@ export function SUNIT_AllocUnitData113c(
       m.setU32(pObjData, DATATBLS_GetObjectsTxtRecord113c(m, nClassId) >>> 0)
       m.setU32((pUnit + 0x10) >>> 0, nMode >>> 0)
       UNITS_AllocStaticPath113c(m, pUnit)
-      OBJECTS_InitObjectUnit113c(m, pUnit, pGame, dwUnitId, pRoom, x, y)
+      OBJECTS_InitObjectUnitWithGoldPileFix113c(m, pUnit, pGame, dwUnitId, pRoom, x, y)
       break
     }
     case 3:
@@ -4050,10 +4255,7 @@ export function SUNIT_AllocUnitData113c(
   }
 
   if (nUnitType !== 2) {
-    let dwUnitFlags = m.u32((pUnit + 0xc4) >>> 0) | 2
-    if ((wFlags & 2) !== 0) {
-      dwUnitFlags |= 0x2000
-    }
+    const dwUnitFlags = m.u32((pUnit + 0xc4) >>> 0) | 2
     m.setU32((pUnit + 0xc4) >>> 0, dwUnitFlags >>> 0)
   }
 
@@ -4580,9 +4782,13 @@ export function MONSTER_Create113c(
     )
     if (pUnit === 0) return 0
 
-    MONREG_IncrementSpawnCount113c(m, pUnit, wFlags & 0x1a, (pGame + 0xf0) >>> 0, pRoom)
-
     const pMasks = m.u32(D2GAME_IAT_GDW_BITMASKS_VA_113C)
+    const bSkipCount =
+      (wFlags & 0x08) !== 0 ||
+      (m.u8((pMonStats + 0x0e) >>> 0) & m.u8((pMasks + 0x08) >>> 0)) !== 0
+        ? 1
+        : 0
+    MONREG_IncrementSpawnCount113c(m, pUnit, bSkipCount, (pGame + 0xf0) >>> 0, pRoom)
     if (pCoordNode !== 0) {
       MONSTER_SetSpawnRoomCoordNode113c(m, pUnit, pCoordNode)
     } else if ((m.u8((pMonStats + 0x0f) >>> 0) & m.u32((pMasks + 0x08) >>> 0)) === 0) {
@@ -4602,13 +4808,6 @@ export function MONSTER_Create113c(
       const uy = UNIT_GetPosY113c(m, pUnit)
       const pList = DUNGEON_GetRoomCoordListFromSubtile113c(m, pCurRoom, ux, uy)
       MONSTER_SetSpawnRoomCoordNode113c(m, pUnit, pList)
-    }
-
-    const nRegAct = m.u8((pUnit + 0x18) >>> 0)
-    const pMonReg = m.u32((pGame + 0x10dc + nRegAct * 4) >>> 0)
-    if (pMonReg !== 0) {
-      m.setU32((pMonReg + 0x10) >>> 0, ((m.u32((pMonReg + 0x10) >>> 0) | 0) + 1) >>> 0)
-      m.setU32((pMonReg + 0x14) >>> 0, ((m.u32((pMonReg + 0x14) >>> 0) | 0) + 1) >>> 0)
     }
 
     const bAlign = m.u8((pMonStats + 0x4c) >>> 0)

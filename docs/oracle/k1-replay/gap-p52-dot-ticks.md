@@ -8,7 +8,7 @@ execution across `runReplay113c('p52-dot-ticks')`.
 
 | Module | DLL executed | TS executed (`dll ∩ ts`) | TS total hit | manifest unported | manifest gap bytes | runtime exec gap (`dll - ts`) | runtime gap bytes |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| D2Common | 620 | 620 / 620 | 739 | 0 | 0 | 0 | 0 |
+| D2Common | 620 | 620 / 620 | 743 | 0 | 0 | 0 | 0 |
 | D2Game | 499 | 499 / 499 | 576 | 0 | 0 | 0 | 0 |
 
 ## D2Common Manifest Unported (0)

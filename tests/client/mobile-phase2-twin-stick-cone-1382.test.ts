@@ -1,7 +1,14 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
+  clampJoystickAnchor,
+  computeCompactD2rHudMetrics,
+  computeDefaultJoystickAnchor,
+  computeJoystickLockButtonMetrics,
   computeJoystickVector,
   computeJoystickWorldSubTileTarget,
+  JOYSTICK_FIXED_HIT_PADDING,
+  JOYSTICK_LOCK_FEEDBACK_MS,
+  JOYSTICK_OUTER_RADIUS,
   scoreConeMonsterCandidate,
   selectBestConeTargets,
   TouchControlsHud,
@@ -9,6 +16,13 @@ import {
   type ConeMonsterCandidate,
 } from '../../src/client/ui/touch-controls.ts'
 import { HudManager } from '../../src/client/ui/hud-manager.ts'
+import {
+  createDefaultClientSettings,
+  parseClientSettingsJson,
+  sanitizeClientSettings,
+  VALID_VIEWPORT_RESOLUTIONS,
+} from '../../src/client/settings/client-settings.ts'
+import { getViewportProfile } from '../../src/client/view/viewport-profile.ts'
 
 describe('Mobile Phase 2 (#1382): D2R Dynamic Twin-Stick Joystick & Cone Targeting', () => {
   it('computes joystick deadzone, walk zone, and outer auto-run zone accurately', () => {
@@ -193,5 +207,143 @@ describe('Mobile Phase 2 (#1382): D2R Dynamic Twin-Stick Joystick & Cone Targeti
 
     expect(hud.touchControls.handlePointerUp(7)).toBe(true)
     expect(hud.touchControls.joystick.active).toBe(false)
+  })
+
+  it('supports fixed left-joystick mode with persistent current-position anchor, bounded 92px hit zone, and visual lock indicators', () => {
+    const tc = new TouchControlsHud()
+    tc.enabled = true
+    tc.hudLayoutMode = 'compact-d2r'
+    tc.syncViewport(1068, 600)
+
+    // Default mode is floating
+    expect(tc.joystickMode).toBe('floating')
+    expect(createDefaultClientSettings().mobileJoystickMode).toBe('floating')
+
+    // Move floating joystick to custom spot (180, 420), then release
+    expect(tc.handlePointerDown(10, 180, 420, 1068, 600, false)).toBe(true)
+    expect(tc.joystick.originX).toBe(180)
+    expect(tc.joystick.originY).toBe(420)
+    expect(tc.handlePointerUp(10)).toBe(true)
+
+    // Tap on-canvas padlock medallion to lock at the current custom position
+    const lockBtn = computeJoystickLockButtonMetrics(180, 420, 1068, 600)
+    expect(tc.hitTestLockButton(lockBtn.cx, lockBtn.cy, 1068, 600, false)).toBe(true)
+    const lockEvents: Array<{ mode: string; anchorRx?: number | undefined; anchorRy?: number | undefined }> = []
+    tc.onJoystickLockChange = (ev) => lockEvents.push(ev)
+
+    const lockedEv = tc.toggleJoystickLock(1068, 600, 5000)
+    expect(lockedEv.mode).toBe('fixed')
+    expect(tc.joystickMode).toBe('fixed')
+    expect(tc.joystick.originX).toBe(180)
+    expect(tc.joystick.originY).toBe(420)
+    expect(tc.isLockFeedbackActive(5500)).toBe(true)
+    expect(tc.isLockFeedbackActive(5000 + JOYSTICK_LOCK_FEEDBACK_MS + 1)).toBe(false)
+    expect(lockEvents).toHaveLength(1)
+    expect(lockEvents[0]?.anchorRx).toBeCloseTo(180 / 1068, 3)
+    expect(lockEvents[0]?.anchorRy).toBeCloseTo(420 / 600, 3)
+
+    // Inside bounded 92px hit radius: triggers joystick WITHOUT moving origin
+    const offCenterX = 180 + 55
+    const offCenterY = 420 - 15
+    expect(tc.isInLeftJoystickZone(offCenterX, offCenterY, 1068, 600, false)).toBe(true)
+    expect(tc.handlePointerDown(11, offCenterX, offCenterY, 1068, 600, false)).toBe(true)
+    expect(tc.joystick.originX).toBe(180)
+    expect(tc.joystick.originY).toBe(420)
+    expect(tc.joystick.locomotionMode).toBe('run')
+
+    // While actively dragging, lock medallion hit-test is suppressed so upper-left drags never unlock
+    expect(tc.hitTestLockButton(lockBtn.cx, lockBtn.cy, 1068, 600, false)).toBe(false)
+    expect(tc.handlePointerUp(11)).toBe(true)
+    expect(tc.joystick.originX).toBe(180)
+    expect(tc.joystick.originY).toBe(420)
+
+    // Outside bounded 92px hit radius inside old bottom-left 35% zone: returns false so world taps work!
+    const outsideX = 180 + JOYSTICK_OUTER_RADIUS + JOYSTICK_FIXED_HIT_PADDING + 24 // 296 (< 0.35 * 1068 = 373)
+    const outsideY = 260 // (>= 0.35 * 600 = 210, outside compact bar)
+    expect(tc.isInLeftJoystickZone(outsideX, outsideY, 1068, 600, false)).toBe(false)
+    expect(tc.handlePointerDown(12, outsideX, outsideY, 1068, 600, false)).toBe(false)
+
+    // Draw visual indicators: locked badge caption + transient toast pill, yielding to RUN when sprinting
+    const drawnTexts: string[] = []
+    const mockCtx = {
+      save: vi.fn(),
+      restore: vi.fn(),
+      beginPath: vi.fn(),
+      moveTo: vi.fn(),
+      lineTo: vi.fn(),
+      arc: vi.fn(),
+      fill: vi.fn(),
+      stroke: vi.fn(),
+      fillRect: vi.fn(),
+      strokeRect: vi.fn(),
+      setLineDash: vi.fn(),
+    } as unknown as CanvasRenderingContext2D
+    const mockFont = {
+      drawText: (_ctx: unknown, text: string) => drawnTexts.push(text),
+    } as never
+
+    tc.drawJoystick(mockCtx, mockFont, 'CHI', 1068, 600, 5200)
+    expect(drawnTexts).toContain('已固定')
+    expect(drawnTexts).toContain('摇杆已固定')
+
+    drawnTexts.length = 0
+    tc.drawJoystick(mockCtx, mockFont, 'ENG', 1068, 600, 5200)
+    expect(drawnTexts).toContain('LOCKED')
+    expect(drawnTexts).toContain('JOYSTICK LOCKED')
+
+    // Viewport switch re-resolves & clamps anchor cleanly without overlapping compact HUD
+    tc.syncViewport(800, 600)
+    const m800 = computeCompactD2rHudMetrics(800, 600)
+    expect(tc.joystick.originY + JOYSTICK_OUTER_RADIUS).toBeLessThanOrEqual(m800.barY)
+
+    // Resetting transient state in fixed mode preserves fixed anchor
+    tc.handlePointerDown(13, tc.joystick.originX + 20, tc.joystick.originY, 800, 600, false)
+    const pinnedX = tc.joystick.originX
+    const pinnedY = tc.joystick.originY
+    tc.resetTransientState()
+    expect(tc.joystick.active).toBe(false)
+    expect(tc.joystick.originX).toBe(pinnedX)
+    expect(tc.joystick.originY).toBe(pinnedY)
+  })
+
+  it('computes non-overlapping default fixed anchors across all 7 resolutions and sanitizes settings', () => {
+    for (const resId of VALID_VIEWPORT_RESOLUTIONS) {
+      const vp = getViewportProfile(resId)
+      const anchor = computeDefaultJoystickAnchor(vp.width, vp.height, true, {
+        top: 0,
+        right: 0,
+        bottom: 0,
+        left: 0,
+      })
+      const m = computeCompactD2rHudMetrics(vp.width, vp.height)
+      // Must stay inside screen bounds
+      expect(anchor.x - JOYSTICK_OUTER_RADIUS).toBeGreaterThanOrEqual(0)
+      expect(anchor.y - JOYSTICK_OUTER_RADIUS).toBeGreaterThanOrEqual(0)
+      expect(anchor.y + JOYSTICK_OUTER_RADIUS).toBeLessThanOrEqual(vp.height)
+      // Must not overlap the compact bottom bar
+      const overlapsBar =
+        anchor.x + JOYSTICK_OUTER_RADIUS > m.barX && anchor.y + JOYSTICK_OUTER_RADIUS > m.barY
+      expect(overlapsBar).toBe(false)
+      // Clamped anchor is idempotent
+      expect(clampJoystickAnchor(anchor.x, anchor.y, vp.width, vp.height, true, {
+        top: 0,
+        right: 0,
+        bottom: 0,
+        left: 0,
+      })).toEqual(anchor)
+    }
+
+    const sanitized = sanitizeClientSettings({
+      mobileJoystickMode: 'fixed',
+      mobileJoystickAnchorRx: 0.16854,
+      mobileJoystickAnchorRy: 0.71234,
+    })
+    expect(sanitized.mobileJoystickMode).toBe('fixed')
+    expect(sanitized.mobileJoystickAnchorRx).toBe(0.1685)
+    expect(sanitized.mobileJoystickAnchorRy).toBe(0.7123)
+
+    const parsed = parseClientSettingsJson(JSON.stringify({ mobileJoystickMode: 'bogus', mobileJoystickAnchorRx: NaN }))
+    expect(parsed.mobileJoystickMode).toBe('floating')
+    expect(parsed.mobileJoystickAnchorRx).toBeUndefined()
   })
 })

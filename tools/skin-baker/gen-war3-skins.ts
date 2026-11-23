@@ -1,5 +1,5 @@
 /**
- * Built-in Warcraft III mesh skin packer (`tools/skin-baker/gen-war3-skins.ts`).
+ * Built-in mesh skin packer (`tools/skin-baker/gen-war3-skins.ts`).
  *
  * Builds the built-in real-time mesh skins (one Warcraft III hero per class, see `WAR3_SKINS`;
  * `ne-kelthuzad` also replaces the Necromancer's summons): converts the Warcraft III models to `.glb`
@@ -9,6 +9,10 @@
  * The Warcraft III source assets are not part of this repository. They are read from
  * `WAR3_MPQ_DIR`, or `<home>/d2-data/war3-mpq` when that variable is unset; without them the
  * script fails rather than emitting a placeholder.
+ *
+ * Skins with `source: 'wow'` are converted from World of Warcraft 3.3.5 archives instead
+ * (`convert_wow_m2_to_glb.py`, read from `WOW_335_DIR` or `<home>/d2-data/wow-335`); their model
+ * carries a paper-doll, so the look follows the equipment worn in game.
  */
 
 import { execFileSync } from 'node:child_process'
@@ -37,6 +41,8 @@ interface ConvertedUnit {
   readonly pxPerUnit: number
   readonly box: { readonly width: number; readonly height: number; readonly footX: number; readonly footY: number }
   readonly clips: Readonly<Record<string, ConvertedClip>>
+  /** Extra clip keys that play another converted clip (weapon options sharing a stance). */
+  readonly aliases?: Readonly<Record<string, string>>
 }
 
 interface ConvertedUnits {
@@ -57,6 +63,8 @@ interface War3SkinDef {
   readonly floating: boolean
   readonly shadowOffsetY: number
   readonly shadowScale: number
+  /** Art source and converter; Warcraft III when omitted. */
+  readonly source?: 'war3' | 'wow'
   /** Diablo II modes that reuse another converted clip of the hero. */
   readonly heroClipAliases: Readonly<Record<string, string>>
   readonly minions: Readonly<Record<string, { readonly name: LocalizedText; readonly shadowScale: number }>>
@@ -168,6 +176,21 @@ export const WAR3_SKINS: readonly War3SkinDef[] = [
     heroClipAliases: { rn: 'wl' },
     minions: {},
   },
+  {
+    id: 'so-wow-human-mage',
+    targetClass: 'so',
+    source: 'wow',
+    name: { zh: '人类女法师（随装备换装）', en: 'Human Mage (follows equipment)' },
+    description: {
+      zh: '《魔兽世界》人类女性实时 3D 骨骼模型，带简化纸娃娃：各类武器与盾牌、11 类头盔和 8 类衣服（普通 / 扩展 / 精英三阶各有外观）都会随身上装备实时更换，魔法及以上品质的武器和盾牌带品质色泛光。',
+      en: 'Real-time World of Warcraft human female model with a simplified paper-doll: every weapon family and shield shape, eleven helmet families and eight body armour families (one look per normal / exceptional / elite tier) follow the equipment worn; weapons and shields of magic quality or better glow in their quality colour.',
+    },
+    floating: false,
+    shadowOffsetY: 0,
+    shadowScale: 0.9,
+    heroClipAliases: {},
+    minions: {},
+  },
 ]
 
 function resolveWar3MpqDir(): string {
@@ -176,6 +199,17 @@ function resolveWar3MpqDir(): string {
     throw new Error(
       'Warcraft III source assets not found. Set WAR3_MPQ_DIR to an extracted War3.mpq tree ' +
         '(expected units/undead/herolich/herolich.mdx inside it).',
+    )
+  }
+  return dir
+}
+
+function resolveWow335Dir(): string {
+  const dir = process.env.WOW_335_DIR ?? join(homedir(), 'd2-data', 'wow-335')
+  if (!existsSync(join(dir, 'Data', 'common.MPQ')) && !existsSync(join(dir, 'common.MPQ'))) {
+    throw new Error(
+      'World of Warcraft 3.3.5 archives not found. Set WOW_335_DIR to a directory containing ' +
+        'Data/common.MPQ and the other base archives.',
     )
   }
   return dir
@@ -205,15 +239,16 @@ function meshSpec(unit: ConvertedUnit, file: string, aliases: Readonly<Record<st
 }
 
 export function generateWar3SkinBundle(def: War3SkinDef): PackedCharacterSkinBundle {
-  const war3Dir = resolveWar3MpqDir()
-  const converter = join(dirname(fileURLToPath(import.meta.url)), 'convert_war3_mdx_to_glb.py')
-  const tmpDir = mkdtempSync(join(tmpdir(), 'd2w-war3-glb-'))
+  const here = dirname(fileURLToPath(import.meta.url))
+  const converterArgs =
+    def.source === 'wow'
+      ? [join(here, 'convert_wow_m2_to_glb.py'), '--wow-dir', resolveWow335Dir()]
+      : [join(here, 'convert_war3_mdx_to_glb.py'), '--war3-dir', resolveWar3MpqDir()]
+  const tmpDir = mkdtempSync(join(tmpdir(), 'd2w-skin-glb-'))
   try {
-    execFileSync(
-      'python3',
-      [converter, '--war3-dir', war3Dir, '--out-dir', tmpDir, '--skin', def.id, '--verify'],
-      { stdio: 'inherit' },
-    )
+    execFileSync('python3', [...converterArgs, '--out-dir', tmpDir, '--skin', def.id, '--verify'], {
+      stdio: 'inherit',
+    })
     const converted = JSON.parse(readFileSync(join(tmpDir, 'units.json'), 'utf8')) as ConvertedUnits
     const files: Record<string, Uint8Array> = {}
     const read = (name: string): Uint8Array => new Uint8Array(readFileSync(join(tmpDir, name)))
@@ -265,7 +300,7 @@ export function generateWar3SkinBundle(def: War3SkinDef): PackedCharacterSkinBun
       shadowScale: def.shadowScale,
       respectMorph: false,
       previewFile,
-      mesh: meshSpec(hero.unit, hero.file, def.heroClipAliases),
+      mesh: meshSpec(hero.unit, hero.file, { ...(hero.unit.aliases ?? {}), ...def.heroClipAliases }),
       ...(Object.keys(minions).length > 0 ? { minions } : {}),
     })
     files['skin.json'] = new TextEncoder().encode(`${JSON.stringify(manifest, null, 2)}\n`)
@@ -283,7 +318,13 @@ export function generateWar3SkinBundle(def: War3SkinDef): PackedCharacterSkinBun
 
 if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   const outRoot = process.argv[2] ? resolve(process.argv[2]) : resolve(process.cwd(), 'public', 'skins')
+  // Optional second argument: pack only the skin with this id.
+  const only = process.argv[3]
+  if (only !== undefined && !WAR3_SKINS.some((def) => def.id === only)) {
+    throw new Error(`Unknown skin id "${only}" (known: ${WAR3_SKINS.map((def) => def.id).join(', ')})`)
+  }
   for (const def of WAR3_SKINS) {
+    if (only !== undefined && def.id !== only) continue
     const bundle = generateWar3SkinBundle(def)
     writeSkinBundleToPublicSkinsDir(bundle, outRoot, true)
     const totalBytes = Object.values(bundle.files).reduce((sum, b) => sum + b.byteLength, 0)

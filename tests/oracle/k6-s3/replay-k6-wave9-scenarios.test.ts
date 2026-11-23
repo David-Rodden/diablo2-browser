@@ -58,8 +58,8 @@ const K6_S3_SCENARIO_SPECS_113C: readonly K6S3ScenarioSpec113c[] = [
     totalHits: 1609,
     d2CommonExecuted: 859,
     d2GameExecuted: 750,
-    minStrictHorizon: 374,
-    minPosHorizon: 387,
+    minStrictHorizon: 1475,
+    minPosHorizon: 1475,
   },
   {
     name: 'k6s3-assassin-full-30-skills',
@@ -68,8 +68,8 @@ const K6_S3_SCENARIO_SPECS_113C: readonly K6S3ScenarioSpec113c[] = [
     totalHits: 1605,
     d2CommonExecuted: 835,
     d2GameExecuted: 770,
-    minStrictHorizon: 304,
-    minPosHorizon: 395,
+    minStrictHorizon: 1026,
+    minPosHorizon: 1234,
   },
   {
     name: 'k6s3-act1-bosses-cowlevel-imbue',
@@ -78,8 +78,8 @@ const K6_S3_SCENARIO_SPECS_113C: readonly K6S3ScenarioSpec113c[] = [
     totalHits: 1801,
     d2CommonExecuted: 924,
     d2GameExecuted: 877,
-    minStrictHorizon: 5,
-    minPosHorizon: 159,
+    minStrictHorizon: 524,
+    minPosHorizon: 524,
   },
   {
     name: 'k6s3-act2-bosses-staff-duriel',
@@ -88,8 +88,8 @@ const K6_S3_SCENARIO_SPECS_113C: readonly K6S3ScenarioSpec113c[] = [
     totalHits: 1856,
     d2CommonExecuted: 932,
     d2GameExecuted: 924,
-    minStrictHorizon: 38,
-    minPosHorizon: 385,
+    minStrictHorizon: 461,
+    minPosHorizon: 461,
   },
   {
     name: 'k6s3-act3-council-mephisto-quests',
@@ -98,8 +98,8 @@ const K6_S3_SCENARIO_SPECS_113C: readonly K6S3ScenarioSpec113c[] = [
     totalHits: 1816,
     d2CommonExecuted: 914,
     d2GameExecuted: 902,
-    minStrictHorizon: 55,
-    minPosHorizon: 257,
+    minStrictHorizon: 1053,
+    minPosHorizon: 1053,
   },
   {
     name: 'k6s3-act4-izual-hellforge-diablo',
@@ -108,8 +108,8 @@ const K6_S3_SCENARIO_SPECS_113C: readonly K6S3ScenarioSpec113c[] = [
     totalHits: 1810,
     d2CommonExecuted: 931,
     d2GameExecuted: 879,
-    minStrictHorizon: 110,
-    minPosHorizon: 119,
+    minStrictHorizon: 853,
+    minPosHorizon: 853,
   },
   {
     name: 'k6s3-act5-shenk-anya-ancients-baal',
@@ -118,8 +118,8 @@ const K6_S3_SCENARIO_SPECS_113C: readonly K6S3ScenarioSpec113c[] = [
     totalHits: 1934,
     d2CommonExecuted: 940,
     d2GameExecuted: 994,
-    minStrictHorizon: 183,
-    minPosHorizon: 499,
+    minStrictHorizon: 1160,
+    minPosHorizon: 1160,
   },
   {
     name: 'k6s3-crafting-runewords-c2s-monai',
@@ -128,8 +128,8 @@ const K6_S3_SCENARIO_SPECS_113C: readonly K6S3ScenarioSpec113c[] = [
     totalHits: 1687,
     d2CommonExecuted: 956,
     d2GameExecuted: 731,
-    minStrictHorizon: 22,
-    minPosHorizon: 211,
+    minStrictHorizon: 1089,
+    minPosHorizon: 1487,
   },
 ]
 
@@ -216,8 +216,14 @@ describe('[K6] Wave 9 8-scenario F2 boot hydration, ratchet horizons, and real-D
       const r = getReplay(spec.name)
       expect(r.bootCheck).toBeNull()
       expect(r.lastGoldenFrame).toBe(spec.frames)
-      expect(r.strictHorizon).toBeGreaterThanOrEqual(h!.strict)
-      expect(r.posHorizon).toBeGreaterThanOrEqual(h!.pos)
+      expect(
+        r.strictHorizon,
+        `${spec.name}: firstStrict=${JSON.stringify(r.firstStrictDivergence)}`,
+      ).toBeGreaterThanOrEqual(h!.strict)
+      expect(
+        r.posHorizon,
+        `${spec.name}: firstPos=${JSON.stringify(r.firstPosDivergence)}`,
+      ).toBeGreaterThanOrEqual(h!.pos)
       expect(r.strictHorizon).toBeGreaterThanOrEqual(spec.minStrictHorizon)
       expect(r.posHorizon).toBeGreaterThanOrEqual(spec.minPosHorizon)
 

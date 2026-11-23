@@ -1,42 +1,42 @@
 {
   "k6s3-druid-full-30-skills": {
     "bootFrame": 2,
-    "strict": 374,
-    "pos": 387
+    "strict": 1475,
+    "pos": 1475
   },
   "k6s3-assassin-full-30-skills": {
     "bootFrame": 2,
-    "strict": 304,
-    "pos": 395
+    "strict": 1026,
+    "pos": 1234
   },
   "k6s3-act1-bosses-cowlevel-imbue": {
     "bootFrame": 2,
-    "strict": 5,
-    "pos": 159
+    "strict": 524,
+    "pos": 524
   },
   "k6s3-act2-bosses-staff-duriel": {
     "bootFrame": 2,
-    "strict": 38,
-    "pos": 385
+    "strict": 461,
+    "pos": 461
   },
   "k6s3-act3-council-mephisto-quests": {
     "bootFrame": 2,
-    "strict": 55,
-    "pos": 257
+    "strict": 1053,
+    "pos": 1053
   },
   "k6s3-act4-izual-hellforge-diablo": {
     "bootFrame": 2,
-    "strict": 110,
-    "pos": 119
+    "strict": 853,
+    "pos": 853
   },
   "k6s3-act5-shenk-anya-ancients-baal": {
     "bootFrame": 2,
-    "strict": 183,
-    "pos": 499
+    "strict": 1160,
+    "pos": 1160
   },
   "k6s3-crafting-runewords-c2s-monai": {
     "bootFrame": 2,
-    "strict": 22,
-    "pos": 211
+    "strict": 1089,
+    "pos": 1487
   }
 }

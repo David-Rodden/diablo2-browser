@@ -1061,7 +1061,7 @@ export function SKILLS_SrvDo141_SpawnPartyMinionsAndDistributeExp_6FCD65E0_113c(
         }
       }
     }
-    SUNITDMG_DistributeExperience113c(m, pGame, pUnit, pUnit)
+    SUNITDMG_DistributeExperience113c(m, pGame, pUnit, pUnit, true, hooks === undefined)
     return 1
   } finally {
     k2W4B8StackPtr = savedSp

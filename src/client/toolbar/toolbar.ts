@@ -15,14 +15,18 @@ import {
 import type { ToolbarContributionSpec } from '../plugin-host/plugin-host.ts'
 import {
   DEFAULT_HUD_LAYOUT_MODE,
+  DEFAULT_MOBILE_JOYSTICK_MODE,
   normalizeHudLayoutMode,
+  normalizeMobileJoystickMode,
   VALID_HUD_LAYOUT_MODES,
+  VALID_MOBILE_JOYSTICK_MODES,
   VALID_VIEWPORT_RESOLUTIONS,
   validateServerHost,
   type AutomapRevealMode,
   type ClientLightingPreset,
   type ClientSettings,
   type HudLayoutMode,
+  type MobileJoystickMode,
   type ServerHostValidationResult,
   type ViewportResolution,
 } from '../settings/client-settings.ts'
@@ -308,6 +312,8 @@ export class Toolbar {
   private graphicsSelectEl: HTMLSelectElement | null = null
   private hudLayoutLabelEl: HTMLElement | null = null
   private hudLayoutSelectEl: HTMLSelectElement | null = null
+  private joystickModeLabelEl: HTMLElement | null = null
+  private joystickModeSelectEl: HTMLSelectElement | null = null
   private volumeLabelEl: HTMLElement | null = null
   private muteBtnEl: HTMLButtonElement | null = null
   private muteBtnIconEl: HTMLElement | null = null
@@ -623,6 +629,13 @@ export class Toolbar {
   setHudLayoutMode(mode: HudLayoutMode): HudLayoutMode {
     const normalized = normalizeHudLayoutMode(mode)
     this.store.set({ hudLayoutMode: normalized })
+    this.syncDom()
+    return normalized
+  }
+
+  setMobileJoystickMode(mode: MobileJoystickMode): MobileJoystickMode {
+    const normalized = normalizeMobileJoystickMode(mode)
+    this.store.set({ mobileJoystickMode: normalized })
     this.syncDom()
     return normalized
   }
@@ -2151,6 +2164,30 @@ a.d2-toolbar__btn:active {
     hudLayoutRow.appendChild(hudLayoutLabel)
     hudLayoutRow.appendChild(hudLayoutSelect)
 
+    // Config Row 3c: Left Joystick Mode (#d2-config-joystick-mode-row, #d2-toolbar-joystick-mode-select)
+    const joystickModeRow = doc.createElement('div')
+    joystickModeRow.id = 'd2-config-joystick-mode-row'
+    joystickModeRow.className = 'd2-toolbar-modal__row'
+    const joystickModeLabel = doc.createElement('label')
+    joystickModeLabel.id = 'd2-config-joystick-mode-label'
+    joystickModeLabel.className = 'd2-toolbar__label d2-toolbar-modal__row-label'
+    joystickModeLabel.htmlFor = 'd2-toolbar-joystick-mode-select'
+    const joystickModeSelect = doc.createElement('select')
+    joystickModeSelect.id = 'd2-toolbar-joystick-mode-select'
+    joystickModeSelect.className = 'd2-toolbar__select'
+    for (const mode of VALID_MOBILE_JOYSTICK_MODES) {
+      const opt = doc.createElement('option')
+      opt.value = mode
+      joystickModeSelect.appendChild(opt)
+    }
+    joystickModeSelect.value =
+      this.store.get().mobileJoystickMode ?? DEFAULT_MOBILE_JOYSTICK_MODE
+    joystickModeSelect.addEventListener('change', () => {
+      this.setMobileJoystickMode(joystickModeSelect.value as MobileJoystickMode)
+    })
+    joystickModeRow.appendChild(joystickModeLabel)
+    joystickModeRow.appendChild(joystickModeSelect)
+
     // Config Row 4: Battle.net Server (#d2-config-server-row, #d2-toolbar-server-input, #d2-toolbar-server-apply-btn)
     const serverRow = doc.createElement('div')
     serverRow.id = 'd2-config-server-row'
@@ -2316,6 +2353,7 @@ a.d2-toolbar__btn:active {
     configBody.appendChild(fpsRow)
     configBody.appendChild(graphicsRow)
     configBody.appendChild(hudLayoutRow)
+    configBody.appendChild(joystickModeRow)
     configBody.appendChild(serverRow)
     configBody.appendChild(serverStatus)
     configBody.appendChild(volumeRow)
@@ -2558,6 +2596,8 @@ a.d2-toolbar__btn:active {
     this.graphicsSelectEl = graphicsSelect
     this.hudLayoutLabelEl = hudLayoutLabel
     this.hudLayoutSelectEl = hudLayoutSelect
+    this.joystickModeLabelEl = joystickModeLabel
+    this.joystickModeSelectEl = joystickModeSelect
     this.volumeLabelEl = volumeLabel
     this.muteBtnEl = muteBtn
     this.muteBtnIconEl = muteBtnIcon
@@ -2800,6 +2840,21 @@ a.d2-toolbar__btn:active {
         }
       }
       this.hudLayoutSelectEl.value = snap.settings.hudLayoutMode ?? DEFAULT_HUD_LAYOUT_MODE
+    }
+    if (this.joystickModeLabelEl) {
+      this.joystickModeLabelEl.textContent = tToolbar('toolbar.config.joystickMode', lang)
+    }
+    if (this.joystickModeSelectEl) {
+      const opts = Array.from(this.joystickModeSelectEl.options)
+      for (let i = 0; i < VALID_MOBILE_JOYSTICK_MODES.length; i += 1) {
+        const mode = VALID_MOBILE_JOYSTICK_MODES[i]!
+        const optEl = opts[i]
+        if (optEl) {
+          optEl.textContent = tToolbar(`toolbar.config.joystickMode.${mode}` as const, lang)
+        }
+      }
+      this.joystickModeSelectEl.value =
+        snap.settings.mobileJoystickMode ?? DEFAULT_MOBILE_JOYSTICK_MODE
     }
     if (this.serverLabelEl) {
       this.serverLabelEl.textContent = tToolbar('toolbar.server.label', lang)

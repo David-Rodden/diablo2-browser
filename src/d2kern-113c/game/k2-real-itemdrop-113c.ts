@@ -1331,9 +1331,10 @@ export function ITEMS_GenerateMagicOrRareAffixes_6FC30A20_113c(
         const curItem = m.u32(ppItem) >>> 0
         const savedSeed = SEED_GetLowSeed113c(m, ITEMS_GetItemSeed113c(m, curItem) >>> 0) >>> 0
         m.setU32(pSeedSlot, savedSeed)
-        if (ITEMS_TryRollAndApplyMagicAffixes_6FC303C0_113c(m, ppItem, drop) !== 0) {
-          ITEMS_RollStaffModsOnItem_6FC33DE0_113c(m, m.u32(ppItem) >>> 0, drop)
-        } else if (tryFallbackSuperior_6FC301E0_113c(m, ppItem, pSeedSlot, drop) === 0) {
+        if (
+          ITEMS_TryRollAndApplyMagicAffixes_6FC303C0_113c(m, ppItem, drop) === 0 &&
+          tryFallbackSuperior_6FC301E0_113c(m, ppItem, pSeedSlot, drop) === 0
+        ) {
           ITEMS_FallbackToNormalQualityAndFinalize_6FC309B0_113c(
             m,
             m.u32(pSeedSlot) >>> 0,
@@ -1371,10 +1372,9 @@ export function ITEMS_GenerateMagicOrRareAffixes_6FC30A20_113c(
               pSeedSlot,
               drop,
               W4B3_ITEM_HOOKS_113C,
-            ) !== 0
+            ) === 0 &&
+            tryFallbackSuperior_6FC301E0_113c(m, ppItem, pSeedSlot, drop) === 0
           ) {
-            ITEMS_RollStaffModsOnItem_6FC33DE0_113c(m, m.u32(ppItem) >>> 0, drop)
-          } else if (tryFallbackSuperior_6FC301E0_113c(m, ppItem, pSeedSlot, drop) === 0) {
             ITEMS_FallbackToNormalQualityAndFinalize_6FC309B0_113c(
               m,
               m.u32(pSeedSlot) >>> 0,
@@ -1394,20 +1394,16 @@ export function ITEMS_GenerateMagicOrRareAffixes_6FC30A20_113c(
         const savedSeed = SEED_GetLowSeed113c(m, ITEMS_GetItemSeed113c(m, curItem) >>> 0) >>> 0
         m.setU32(pSeedSlot, savedSeed)
         if (
-          ITEMS_RollRareAffixesByFormat_6FC354F0_113c(m, curItem, drop, W4B3_ITEM_HOOKS_113C) !== 0
-        ) {
-          ITEMS_RollStaffModsOnItem_6FC33DE0_113c(m, m.u32(ppItem) >>> 0, drop)
-        } else if (
+          ITEMS_RollRareAffixesByFormat_6FC354F0_113c(m, curItem, drop, W4B3_ITEM_HOOKS_113C) === 0 &&
           ITEMS_FallbackToMagicQualityAndRollAffixes_6FC304F0_113c(
             m,
             ppItem,
             pSeedSlot,
             drop,
             W4B3_ITEM_HOOKS_113C,
-          ) !== 0
+          ) === 0 &&
+          tryFallbackSuperior_6FC301E0_113c(m, ppItem, pSeedSlot, drop) === 0
         ) {
-          ITEMS_RollStaffModsOnItem_6FC33DE0_113c(m, m.u32(ppItem) >>> 0, drop)
-        } else if (tryFallbackSuperior_6FC301E0_113c(m, ppItem, pSeedSlot, drop) === 0) {
           ITEMS_FallbackToNormalQualityAndFinalize_6FC309B0_113c(
             m,
             m.u32(pSeedSlot) >>> 0,
@@ -1445,20 +1441,16 @@ export function ITEMS_GenerateMagicOrRareAffixes_6FC30A20_113c(
               pSeedSlot,
               drop,
               W4B3_ITEM_HOOKS_113C,
-            ) !== 0
-          ) {
-            ITEMS_RollStaffModsOnItem_6FC33DE0_113c(m, m.u32(ppItem) >>> 0, drop)
-          } else if (
+            ) === 0 &&
             ITEMS_FallbackToMagicQualityAndRollAffixes_6FC304F0_113c(
               m,
               ppItem,
               pSeedSlot,
               drop,
               W4B3_ITEM_HOOKS_113C,
-            ) !== 0
+            ) === 0 &&
+            tryFallbackSuperior_6FC301E0_113c(m, ppItem, pSeedSlot, drop) === 0
           ) {
-            ITEMS_RollStaffModsOnItem_6FC33DE0_113c(m, m.u32(ppItem) >>> 0, drop)
-          } else if (tryFallbackSuperior_6FC301E0_113c(m, ppItem, pSeedSlot, drop) === 0) {
             ITEMS_FallbackToNormalQualityAndFinalize_6FC309B0_113c(
               m,
               m.u32(pSeedSlot) >>> 0,
@@ -1476,9 +1468,7 @@ export function ITEMS_GenerateMagicOrRareAffixes_6FC30A20_113c(
         ITEMS_SetRarePrefix113c(m, curItem, 0)
         ITEMS_SetRareSuffix113c(m, curItem, 0)
         const savedSeed = SEED_GetLowSeed113c(m, ITEMS_GetItemSeed113c(m, curItem) >>> 0) >>> 0
-        if (ITEMS_RollAndApplyCraftedItemAffixes_6FC34BF0_113c(m, curItem, drop) !== 0) {
-          ITEMS_RollStaffModsOnItem_6FC33DE0_113c(m, m.u32(ppItem) >>> 0, drop)
-        } else {
+        if (ITEMS_RollAndApplyCraftedItemAffixes_6FC34BF0_113c(m, curItem, drop) === 0) {
           ITEMS_FallbackToNormalQualityAndFinalize_6FC309B0_113c(
             m,
             savedSeed,

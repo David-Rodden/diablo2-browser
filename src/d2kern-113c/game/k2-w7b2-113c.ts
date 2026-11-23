@@ -28,11 +28,15 @@ import {
 } from '../common/inventory'
 import {
   DRLGWARP_TestRoomTileBit113c,
+  ITEMS_GetBodyLocation113c,
   ITEMS_GetInvPage113c,
 } from '../common/items'
 import {
   DATATBLS_GetItemsTxtRecordMemPort113c,
   DUNGEON_CheckRoomIsTownMemPort113c,
+  INVENTORY_GetCompositWeaponMemPort113c,
+  INVENTORY_GetItemFromBodyLocMemPort113c,
+  ITEMS_CheckItemTypeIdMemPort113c,
   STATLIST_GetStatListFromUnitAndStateMemPort113c,
 } from '../common/k0-d2common-memports'
 import { MONSTERS_GetHirelingTypeId113c } from '../common/missile'
@@ -52,9 +56,13 @@ import {
   QUESTRECORD_SetQuestState113c,
 } from '../common/quest-record'
 import {
+  SKILLS_CalcKickBootDamage113c,
   SKILLS_EvalCalcByOffset113c,
   SKILLS_GetHighestLevelSkillFromUnitAndIdFastcall113c,
   SKILLS_GetParam1113c,
+  SKILLS_GetSkillPhysMaxDamage113c,
+  SKILLS_GetSkillPhysMinDamage113c,
+  SKILLS_GetSkillToHitBonus113c,
   SKILLS_GetUsedSkill113c,
   SKILLS_SetParam1113c,
 } from '../common/skills'
@@ -66,6 +74,7 @@ import {
   STATLIST_AllocList113c,
   STATLIST_FreeStatListIfNonExtended113c,
   STATLIST_GetMaxLifeFromUnit113c,
+  STATLIST_GetOwnerAndDynamicFlag113c,
   STATLIST_GetStatListFromUnitAndFlag113c,
   STATLIST_GetUnitGoldBankLimit113c,
   STATLIST_GetUnitStat113c,
@@ -75,6 +84,7 @@ import {
   STATLIST_SetStatRemoveProc113c,
   STATLIST_SetState113c,
   STATLIST_SetUnitStat113c,
+  STATLIST_SetWeaponStatListActive113c,
   STATLIST_UnlinkSubList113c,
 } from '../common/statlist'
 import {
@@ -90,6 +100,8 @@ import { SEED_InitLowSeed113c, SEED_InitSeed113c, seedRoll } from '../prng'
 import { MONSTERS_CheckMonStatsFlagBit6_113c } from '../tables/datatbls-113c'
 import { DATATBLS_GetItemIdFromItemCode113c } from '../tables/item-tbls-113c'
 import {
+  SKILLS_ApplyProgressiveAttackRatingAndPhysBonuses113c,
+  SKILLS_ApplyProgressiveChargesToDamage113c,
   SKILLS_ConsumeProgressiveChargesOnHit113c,
   SKILLS_ConsumeSkillManaOrCharge113c,
 } from './a1c-post150-f786-f1040-113c'
@@ -114,7 +126,10 @@ import {
   SKILLS_ResolveChargedSrvMissileId113c,
   STATES_OnTimedStateRemoved113c,
 } from './k2-gap-melee-dot-113c'
-import { STATLIST_AddUnitStatGoldGuarded_6FC21670_113c } from './k2-laneH-0x6fc2-w1-113c'
+import {
+  SKILLS_EvalLinearParam12_6FC21B10_113c,
+  STATLIST_AddUnitStatGoldGuarded_6FC21670_113c,
+} from './k2-laneH-0x6fc2-w1-113c'
 import { MONREG_DeleteInactiveMonsterByClassId_6FC3EC40_113c } from './k2-laneI-0x6fc3-w1-113c'
 import {
   QUESTS_AppendQuestTimer_6FC53AF0_113c,
@@ -129,6 +144,7 @@ import {
 } from './k2-w2b2-113c'
 import { NET_SendPacket77_ButtonAction_6FCAB340_113c } from './k2-w2b3-113c'
 import { STATES_ClearGfxStateFlagAndSetUpdate40_6FCB0F10_113c } from './k2-w2b4-113c'
+import { SKILLS_ApplyVelocityStatListAndRefreshAnimMode_6FCBE7B0_113c } from './k2-w2b5-113c'
 import { SUNIT_SetLastKillerInfo_6FCFFAE0_113c } from './k2-w2b8-113c'
 import { QUESTS_FindFreeSubtileInRoomRings_6FC54130_113c } from './k2-w3b3-113c'
 import {
@@ -145,7 +161,16 @@ import {
 } from './k2-w4b2-113c'
 import { ITEMS_AddPlayerGoldOrDropOverflow_6FC32DF0_113c } from './k2-w4b3-113c'
 import { SKILLS_RestoreConvertedMonsterAlignmentAndStats_6FCB14F0_113c } from './k2-w4b5-113c'
-import { SKILLS_UnlinkMonsterFromMinionList_6FCBF730_113c } from './k2-w4b6-113c'
+import {
+  SKILLS_RollAndAddSkillElemDamage_6FCBF210_113c,
+  SKILLS_UnlinkMonsterFromMinionList_6FCBF730_113c,
+} from './k2-w4b6-113c'
+import {
+  SUNITDMG_AllocCombat113c,
+  SUNITDMG_FillDamageValues113c,
+  SUNITDMG_RollMeleeToHitAndBlock_6FCFE5A0_113c,
+} from './k2-real-s2c-combat-113c'
+import { ITEMS_CheckNotBrokenOrUnequipping113c } from './replay-kernel-113c'
 import {
   ACT1Q2_PropagateQuestStateToPartyCallback_6FC84FE0_113c,
   ACT1Q4_CompleteCainRescueInTristramAndParty_6FC848B0_113c,
@@ -2668,6 +2693,195 @@ export function AI_Thinker_Izual_6FC9EA10_113c(
   MONSTER_StartMode113c(m, ebx, edxUnit, 4, pTarget, 0, 0);
 }
 
+function div100MagicSignedK2(x: number): number {
+  const hi = Number((BigInt(x | 0) * 0x51eb851fn) >> 32n) | 0
+  const s5 = hi >> 5
+  return (s5 + (s5 >>> 31)) | 0
+}
+
+function calcPctBonus100KickK2(val: number, pct: number): number {
+  const v = val | 0
+  const p = pct | 0
+  if (v > 0x100000) {
+    if (((v & -16) | 0) < 0x640) {
+      return Number((BigInt(p) * BigInt(v)) / 100n) | 0
+    }
+    return imul32(div100MagicSignedK2(v), p)
+  }
+  if (p > 0x10000) {
+    if (((p & -16) | 0) < 0x640) {
+      return Number((BigInt(p) * BigInt(v)) / 100n) | 0
+    }
+    return imul32(div100MagicSignedK2(p), v)
+  }
+  return div100MagicSignedK2(imul32(p, v))
+}
+
+function stepSeed64AtKickK2(m: D2KernMemory113c, pSeed: number): number {
+  const lo = m.u32(pSeed >>> 0) >>> 0
+  const hi = m.u32((pSeed + 4) >>> 0) >>> 0
+  const prod = BigInt(lo) * 0x6ac690c5n + BigInt(hi)
+  const newLo = Number(prod & 0xffffffffn) >>> 0
+  const newHi = Number((prod >> 32n) & 0xffffffffn) >>> 0
+  m.setU32((pSeed + 4) >>> 0, newHi)
+  m.setU32(pSeed >>> 0, newLo)
+  return newLo
+}
+
+export function calcKickAndProgressiveFinishDamageFixed113c(
+  m: D2KernMemory113c,
+  pAttacker: number,
+  pGame: number,
+  pDmg: number,
+  pDefender: number,
+  nSkillId: number,
+  nSkillLevel: number,
+): void {
+  hitD2GameVa113c(0x6FCB2360)
+  SKILLS_ApplyProgressiveAttackRatingAndPhysBonuses113c(m, pAttacker >>> 0, pDmg >>> 0)
+  m.setU32(pDmg >>> 0, (m.u32(pDmg >>> 0) | 3) >>> 0)
+
+  const skillId = nSkillId | 0
+  const slvl = nSkillLevel | 0
+  let skillMin = SKILLS_GetSkillPhysMinDamage113c(m, pAttacker >>> 0, skillId, slvl, 0) | 0
+  let skillMax = SKILLS_GetSkillPhysMaxDamage113c(m, pAttacker >>> 0, skillId, slvl, 0) | 0
+  const physPct = m.u32((pDmg + 0x0c) >>> 0) | 0
+  skillMin = (skillMin + calcPctBonus100KickK2(skillMin, physPct)) | 0
+  skillMax = (skillMax + calcPctBonus100KickK2(skillMax, physPct)) | 0
+
+  const sp = allocScratch(m, 0x18)
+  let bootMin = 0
+  let bootMax = 0
+  let bootPct = 0
+  try {
+    const pBootMin = (sp + 0x04) >>> 0
+    const pBootMax = (sp + 0x08) >>> 0
+    const pBootPct = sp
+    m.setU32(pBootMin, 0)
+    m.setU32(pBootMax, 0)
+    // 0x6FCB24E1: `mov dword ptr [esp+0x20], esi` seeds `*pBootPct = physPct` before `#10323` adds boot/stat ED%
+    m.setU32(pBootPct, physPct >>> 0)
+    SKILLS_CalcKickBootDamage113c(m, pAttacker >>> 0, pBootMin, pBootMax, pBootPct)
+    bootMin = ((m.u32(pBootMin) | 0) << 8) | 0
+    bootMax = ((m.u32(pBootMax) | 0) << 8) | 0
+    bootPct = m.u32(pBootPct) | 0
+  } finally {
+    freeScratch(0x18)
+  }
+
+  bootMin = (bootMin + calcPctBonus100KickK2(bootMin, bootPct)) | 0
+  const totalMax = (bootMax + calcPctBonus100KickK2(bootMax, bootPct) + skillMax) | 0
+  const totalMin = (bootMin + skillMin) | 0
+  const range = (totalMax - totalMin) | 0
+  let roll = 0
+  if (range > 0) {
+    const lo = stepSeed64AtKickK2(m, (pAttacker + 0x20) >>> 0) >>> 0
+    if ((range & ((range - 1) | 0)) === 0) {
+      roll = (lo & ((range - 1) >>> 0)) | 0
+    } else {
+      roll = (lo % (range >>> 0)) | 0
+    }
+  }
+  m.setU32((pDmg + 0x08) >>> 0, ((m.u32((pDmg + 0x08) >>> 0) | 0) + totalMin + roll) >>> 0)
+  SKILLS_RollAndAddSkillElemDamage_6FCBF210_113c(m, skillId, pAttacker >>> 0, pDmg >>> 0, slvl)
+
+  const pInv = m.u32((pAttacker + 0x60) >>> 0) >>> 0
+  if (pInv === 0) return
+  let pWeap1 = INVENTORY_GetCompositWeaponMemPort113c(m, pInv) >>> 0
+  let pWeap2 = 0
+  if (pWeap1 !== 0) {
+    const loc = ITEMS_GetBodyLocation113c(m, pWeap1) & 0xff
+    const otherLoc = ((loc === 4 ? 1 : 0) + 4) | 0
+    pWeap2 = INVENTORY_GetItemFromBodyLocMemPort113c(m, pInv, otherLoc) >>> 0
+  }
+  if (
+    (ITEMS_CheckItemTypeIdMemPort113c(m, pWeap1, 0x2d) | 0) !== 0 &&
+    (ITEMS_CheckNotBrokenOrUnequipping113c(m, pWeap1) | 0) !== 0 &&
+    (STATLIST_GetOwnerAndDynamicFlag113c(m, pWeap1, 0) | 0) !== 0
+  ) {
+    STATLIST_SetWeaponStatListActive113c(m, pAttacker >>> 0, pWeap1, 0)
+  } else {
+    pWeap1 = 0
+  }
+  if (
+    pWeap2 !== 0 &&
+    pWeap2 !== pWeap1 &&
+    (ITEMS_CheckItemTypeIdMemPort113c(m, pWeap2, 0x2d) | 0) !== 0 &&
+    (ITEMS_CheckNotBrokenOrUnequipping113c(m, pWeap2) | 0) !== 0 &&
+    (STATLIST_GetOwnerAndDynamicFlag113c(m, pWeap2, 0) | 0) !== 0
+  ) {
+    STATLIST_SetWeaponStatListActive113c(m, pAttacker >>> 0, pWeap2, 0)
+  }
+  SUNITDMG_FillDamageValues113c(
+    m,
+    pGame >>> 0,
+    pAttacker >>> 0,
+    pDefender >>> 0,
+    pDmg >>> 0,
+    1,
+    0x80,
+  )
+  SKILLS_ApplyProgressiveChargesToDamage113c(m, pAttacker >>> 0, pDmg >>> 0)
+  if (pWeap1 !== 0) {
+    STATLIST_SetWeaponStatListActive113c(m, pAttacker >>> 0, pWeap1, 1)
+  }
+}
+
+export function rollHitAndAllocKickProgressiveCombatFixed113c(
+  m: D2KernMemory113c,
+  nSkillId: number,
+  pGame: number,
+  pAttacker: number,
+  pDefender: number,
+  pSkillsTxt: number,
+  nSkillLevel: number,
+  bForceKnockbackFlags: number,
+): number {
+  void SKILLS_RollHitAndAllocKickProgressiveCombat_6FCB2BB0_113c
+  hitD2GameVa113c(0x6FCB2BB0)
+  const att = pAttacker >>> 0
+  const def = pDefender >>> 0
+  const game = pGame >>> 0
+  const skillId = nSkillId | 0
+  const slvl = nSkillLevel | 0
+  const nToHit =
+    ((SKILLS_GetSkillToHitBonus113c(m, att, skillId, slvl) | 0) +
+      (STATLIST_GetUnitStat113c(m, att, 0x145, 0) | 0)) |
+    0
+  const pDmg = allocScratch(m, 0x70)
+  try {
+    for (let i = 0; i < 0x1c; i += 1) m.setU32((pDmg + i * 4) >>> 0, 0)
+    let wFlags = SUNITDMG_RollMeleeToHitAndBlock_6FCFE5A0_113c(m, att, def, game, nToHit, 0) & 0xffff
+    m.setU16((pDmg + 0x04) >>> 0, wFlags)
+    if ((wFlags & 1) !== 0) {
+      if ((bForceKnockbackFlags | 0) !== 0) {
+        wFlags = (wFlags | 0x0c) & 0xffff
+        m.setU16((pDmg + 0x04) >>> 0, wFlags)
+      }
+      let pRow = 0
+      if (skillId >= 0) {
+        const pTables = getSgptDataTablesPtr(m)
+        if (pTables !== 0 && skillId < (m.u32((pTables + 0xba0) >>> 0) | 0)) {
+          const pBase = m.u32((pTables + 0xb98) >>> 0) >>> 0
+          pRow = (pBase + imul32(skillId, 0x23c)) >>> 0
+        }
+      }
+      let physPct = 0
+      if (pRow !== 0 && slvl > 0) {
+        physPct = ((m.u32((pRow + 0x148) >>> 0) | 0) + imul32((slvl - 1) | 0, (m.u32((pRow + 0x14c) >>> 0) | 0))) | 0
+      }
+      m.setU32((pDmg + 0x0c) >>> 0, physPct >>> 0)
+      calcKickAndProgressiveFinishDamageFixed113c(m, att, game, pDmg, def, skillId, slvl)
+    }
+    let srcDam = m.u8(((pSkillsTxt >>> 0) + 0x1a5) >>> 0)
+    m.setU32((pDmg + 0x60) >>> 0, 1)
+    if (srcDam === 0) srcDam = 0x80
+    return SUNITDMG_AllocCombat113c(m, game, att, def, pDmg, srcDam) >>> 0
+  } finally {
+    freeScratch(0x70)
+  }
+}
+
 /**
  * @dll D2Game.dll
  * @va 0x6FCB2DF0
@@ -2715,7 +2929,7 @@ export function SKILLS_SrvDo075_DragonTalonKickHit_6FCB2DF0_113c(
   const nRemKicks = ((SKILLS_EvalCalcByOffset113c(m, ebp, m.u32((edi + 0x138) >>> 0), esi, nLvl) | 0) - 1) | 0;
   SKILLS_SetParam1113c(m, pSkill, nRemKicks);
   const bKnockback = nRemKicks === 0 ? 1 : 0;
-  SKILLS_RollHitAndAllocKickProgressiveCombat_6FCB2BB0_113c(
+  rollHitAndAllocKickProgressiveCombatFixed113c(
     m,
     esi,
     ebxGame,
@@ -3114,7 +3328,7 @@ export function SKILLS_SrvDo078_DragonTalonMultiKick_6FCB5FE0_113c(
       }
     }
   }
-  SKILLS_RollHitAndAllocKickProgressiveCombat_6FCB2BB0_113c(
+  rollHitAndAllocKickProgressiveCombatFixed113c(
     m,
     nSkill,
     ebp,
@@ -3130,4 +3344,104 @@ export function SKILLS_SrvDo078_DragonTalonMultiKick_6FCB5FE0_113c(
     SKILLS_ScaleUnitAnimEventsBySlowPct_6FCC35D0_113c(m, esi, 0x64);
   }
   return 1;
+}
+
+export function dragonTailKickHitFixed113c(
+  m: SparseMemory113c,
+  pGame: number,
+  pAttacker: number,
+  nSkillId: number,
+  nSkillLevel: number,
+): number {
+  hitD2GameVa113c(0x6FCB2940)
+  const game = pGame >>> 0
+  const att = pAttacker >>> 0
+  const skillId = nSkillId | 0
+  const slvl = nSkillLevel | 0
+  if (skillId < 0) return 0
+  const pTables = getSgptDataTablesPtr(m)
+  if (pTables === 0 || skillId >= (m.u32((pTables + 0xba0) >>> 0) | 0)) return 0
+  const pSkillsTxt = (m.u32((pTables + 0xb98) >>> 0) + imul32(skillId, 0x23c)) >>> 0
+  if (pSkillsTxt === 0) return 0
+
+  SKILLS_ApplyVelocityStatListAndRefreshAnimMode_6FCBE7B0_113c(
+    m,
+    att,
+    m.u32((pSkillsTxt + 0x154) >>> 0) | 0,
+  )
+  SUNIT_ValidatePathTargetUnit113c(m, att, game)
+  const def = PATH_GetTargetUnit113c(m, m.u32((att + 0x2c) >>> 0) >>> 0) >>> 0
+  if (def === att || def === 0) return 0
+
+  const nToHitBonus =
+    ((SKILLS_GetSkillToHitBonus113c(m, att, skillId, slvl) | 0) +
+      (STATLIST_GetUnitStat113c(m, att, 0x145, 0) | 0)) |
+    0
+  const pDmg = allocScratch(m, 0x70)
+  try {
+    const wResultFlags =
+      SUNITDMG_RollMeleeToHitAndBlock_6FCFE5A0_113c(m, att, def, game, nToHitBonus, 0, 0) & 0xffff
+    m.setU16((pDmg + 0x04) >>> 0, wResultFlags & 0xffff)
+    if ((wResultFlags & 1) === 0) return 0
+    calcKickAndProgressiveFinishDamageFixed113c(m, att, game, pDmg, def, skillId, slvl)
+    let bSrcDam = m.u8((pSkillsTxt + 0x1a5) >>> 0)
+    if (bSrcDam === 0) bSrcDam = 0x80
+    SUNITDMG_AllocCombat113c(m, game, att, def, pDmg, bSrcDam)
+    return 1
+  } finally {
+    freeScratch(0x70)
+  }
+}
+
+export function dragonFlightStrikeFixed113c(
+  m: SparseMemory113c,
+  pGame: number,
+  pUnit: number,
+  nSkillId: number,
+  nSkillLevel: number,
+): number {
+  hitD2GameVa113c(0x6FCB3680)
+  const game = pGame >>> 0
+  const att = pUnit >>> 0
+  const skillId = nSkillId | 0
+  const slvl = nSkillLevel | 0
+  if (skillId < 0) return 0
+  const pTables = getSgptDataTablesPtr(m)
+  if (pTables === 0 || skillId >= (m.u32((pTables + 0xba0) >>> 0) | 0)) return 0
+  const pSkillsTxt = (m.u32((pTables + 0xb98) >>> 0) + imul32(skillId, 0x23c)) >>> 0
+  if (pSkillsTxt === 0) return 0
+
+  SUNIT_ValidatePathTargetUnit113c(m, att, game)
+  const pPath = att !== 0 ? (m.u32((att + 0x2c) >>> 0) >>> 0) : 0
+  const def = PATH_GetTargetUnit113c(m, pPath) >>> 0
+  if (def === att || def === 0) return 0
+
+  const pDmg = allocScratch(m, 0x70)
+  try {
+    const nToHitBonus =
+      ((SKILLS_GetSkillToHitBonus113c(m, att, skillId, slvl) | 0) +
+        (STATLIST_GetUnitStat113c(m, att, 0x145, 0) | 0)) |
+      0
+    const wRoll =
+      SUNITDMG_RollMeleeToHitAndBlock_6FCFE5A0_113c(m, att, def, game, nToHitBonus, 0, 0) & 0xffff
+    m.setU16((pDmg + 0x04) >>> 0, wRoll)
+    if ((wRoll & 1) !== 0) {
+      m.setU32(
+        (pDmg + 0x0c) >>> 0,
+        SKILLS_EvalLinearParam12_6FC21B10_113c(m, skillId, slvl) >>> 0,
+      )
+      calcKickAndProgressiveFinishDamageFixed113c(m, att, game, pDmg, def, skillId, slvl)
+    }
+    const srcDamRaw = m.u8((pSkillsTxt + 0x1a5) >>> 0)
+    const srcDam = srcDamRaw !== 0 ? srcDamRaw : 0x80
+    SUNITDMG_AllocCombat113c(m, game, att, def, pDmg, srcDam)
+    const pCombatDmg = SUNITDMG_FindCombatDamageData113c(m, att, def) >>> 0
+    if (pCombatDmg !== 0 && (m.u8((pCombatDmg + 0x04) >>> 0) & 1) !== 0) {
+      SKILLS_ConsumeProgressiveChargesOnHit113c(m, 0, att, game)
+    }
+    SUNITDMG_ExecuteEvents113c(m, game, att, def, 1, 0)
+    return 1
+  } finally {
+    freeScratch(0x70)
+  }
 }

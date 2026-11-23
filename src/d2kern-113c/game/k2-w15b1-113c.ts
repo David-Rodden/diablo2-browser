@@ -120,6 +120,9 @@ import {
   QUESTS_TriggerItemDropped_6FC545A0_113c,
 } from './k2-laneJ-0x6fc4-w1-113c';
 import {
+  PLAYER_InitPlacedModesAndEvents_6FC57E20_113c,
+} from './k2-laneK-0x6fc5-w1-113c';
+import {
   CLIENTS_GetClientNamePtr_6FC69A20_113c,
 } from './k2-laneL-0x6fc6-w1-113c';
 import {
@@ -1512,6 +1515,8 @@ export function PLAYER_CreateCorpseOnDeath_6FC99210_113c(
   }
 
   SUNIT_PlaceServerUnitInRoom113c(m, pTargetRoom, nCorpseY, pCorpseUnit, nCorpseX, pGame, 1);
+  // Real D2Game:0x6FD00F40 case 0 calls 0x6FC57E20 (sets PLRMODE_NEUTRAL=1, schedules Event 3 & 0x0B).
+  PLAYER_InitPlacedModesAndEvents_6FC57E20_113c(m, pGame, pCorpseUnit, nCorpseX, nCorpseY);
 
   const nCorpseMode = m.u32(pCorpseUnit + 0x10);
   if (nCorpseMode === 0x11 || nCorpseMode === 0) {
@@ -1653,7 +1658,14 @@ export function PLAYER_CreateCorpseOnDeath_6FC99210_113c(
   m.setU8(pPkt8E + 1, 0x01);
   m.setU32(pPkt8E + 2, dwPlayerGuid);
   m.setU32(pPkt8E + 6, dwActualCorpseGuid);
-  D2GAME_SUNIT_IterateAllLivingPlayers113c(m, pGame, S2C_Send10BytePacketToPlayerUnit_6FCAC530_113c, pPkt8E);
+  D2GAME_SUNIT_IterateAllLivingPlayers113c(
+    m,
+    pGame,
+    (mem, _pg, pLivingPlayer, pCtx) => {
+      S2C_Send10BytePacketToPlayerUnit_6FCAC530_113c(mem, pLivingPlayer, pCtx);
+    },
+    pPkt8E,
+  );
 
   return pCorpseUnit;
 }
@@ -2076,16 +2088,19 @@ export function ACT2Q2_OnNpcSpeechComplete_6FCE7DC0_113c(
   if (wMsgId === 0x150) {
     QUESTRECORD_SetQuestState113c(m, pQuestFlags, 0x0a, 4);
     QUESTRECORD_SetQuestState113c(m, pQuestFlags, 0x0a, 3);
+    if (pQuest !== 0) m.setU8((pQuest + 0x14) >>> 0, 0);
     return;
   }
   if (wMsgId === 0x151) {
     QUESTRECORD_SetQuestState113c(m, pQuestFlags, 0x0a, 5);
     QUESTRECORD_SetQuestState113c(m, pQuestFlags, 0x0a, 3);
+    if (pQuest !== 0) m.setU8((pQuest + 0x14) >>> 0, 0);
     return;
   }
   if (wMsgId === 0x152) {
     QUESTRECORD_SetQuestState113c(m, pQuestFlags, 0x0a, 6);
     QUESTRECORD_SetQuestState113c(m, pQuestFlags, 0x0a, 3);
+    if (pQuest !== 0) m.setU8((pQuest + 0x14) >>> 0, 0);
     return;
   }
   if (wMsgId === 0x153) {

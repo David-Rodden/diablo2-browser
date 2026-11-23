@@ -20,16 +20,27 @@ import {
   type PluginStatus,
 } from '../../src/client/plugin-host/api.ts'
 
-/** Classes with a built-in skin: plugin setting key and the built-in skin id it toggles. */
-const BUILTIN_CLASS_SKINS = [
-  { cls: 'ne', settingKey: 'neSkin', skinId: 'ne-kelthuzad' },
-  { cls: 'so', settingKey: 'soSkin', skinId: 'so-jaina' },
-  { cls: 'am', settingKey: 'amSkin', skinId: 'am-sylvanas' },
-  { cls: 'pa', settingKey: 'paSkin', skinId: 'pa-arthas' },
-  { cls: 'ba', settingKey: 'baSkin', skinId: 'ba-grom' },
-  { cls: 'dz', settingKey: 'dzSkin', skinId: 'dz-malfurion' },
-  { cls: 'ai', settingKey: 'aiSkin', skinId: 'ai-maiev' },
-] as const
+/**
+ * Classes with built-in skins: plugin setting key, the default built-in skin id, and any other
+ * built-in skins offered for the class (every id is also a value of the setting).
+ */
+const BUILTIN_CLASS_SKINS: readonly {
+  readonly cls: 'am' | 'so' | 'ne' | 'pa' | 'ba' | 'dz' | 'ai'
+  readonly settingKey: string
+  readonly skinId: string
+  readonly otherSkinIds: readonly string[]
+}[] = [
+  { cls: 'ne', settingKey: 'neSkin', skinId: 'ne-kelthuzad', otherSkinIds: [] },
+  { cls: 'so', settingKey: 'soSkin', skinId: 'so-jaina', otherSkinIds: ['so-wow-human-mage'] },
+  { cls: 'am', settingKey: 'amSkin', skinId: 'am-sylvanas', otherSkinIds: [] },
+  { cls: 'pa', settingKey: 'paSkin', skinId: 'pa-arthas', otherSkinIds: [] },
+  { cls: 'ba', settingKey: 'baSkin', skinId: 'ba-grom', otherSkinIds: [] },
+  { cls: 'dz', settingKey: 'dzSkin', skinId: 'dz-malfurion', otherSkinIds: [] },
+  { cls: 'ai', settingKey: 'aiSkin', skinId: 'ai-maiev', otherSkinIds: [] },
+]
+
+const isBuiltinSkinOf = (entry: (typeof BUILTIN_CLASS_SKINS)[number], id: string): boolean =>
+  id === entry.skinId || entry.otherSkinIds.includes(id)
 
 export function createCharacterSkinsPlugin(): D2WebPlugin {
   return {
@@ -75,6 +86,10 @@ export function createCharacterSkinsPlugin(): D2WebPlugin {
           {
             value: 'so-jaina',
             label: { zh: '吉安娜·普罗德摩尔', en: 'Jaina Proudmoore' },
+          },
+          {
+            value: 'so-wow-human-mage',
+            label: { zh: '人类女法师（随装备换装）', en: 'Human Mage (follows equipment)' },
           },
           {
             value: 'none',
@@ -257,11 +272,13 @@ export function createCharacterSkinsPlugin(): D2WebPlugin {
       const applyFromSettings = (): void => {
         const currentSelected = ctx.characterSkins.getConfig().selectedByClass
         const selected: Record<string, string | null | undefined> = { ...currentSelected }
-        for (const { cls, settingKey, skinId } of BUILTIN_CLASS_SKINS) {
+        for (const entry of BUILTIN_CLASS_SKINS) {
+          const { cls, settingKey, skinId } = entry
           const current = currentSelected[cls]
           const wanted = readSkinSetting(settingKey, skinId)
           // Preserve a custom imported skin for the class if one is already active and the setting is not 'none'.
-          selected[cls] = wanted === null ? null : current && current !== skinId && wanted === skinId ? current : wanted
+          selected[cls] =
+            wanted === null ? null : current && !isBuiltinSkinOf(entry, current) && wanted === skinId ? current : wanted
         }
         ctx.characterSkins.setConfig({
           enabled: true,
@@ -298,10 +315,14 @@ export function createCharacterSkinsPlugin(): D2WebPlugin {
 
       const unsubService = ctx.characterSkins.subscribe(() => {
         const cfg = ctx.characterSkins.getConfig()
-        for (const { cls, settingKey, skinId } of BUILTIN_CLASS_SKINS) {
+        for (const entry of BUILTIN_CLASS_SKINS) {
+          const { cls, settingKey } = entry
           const activeId = cfg.selectedByClass[cls] ?? null
-          const targetSettingVal = activeId === null ? 'none' : skinId
-          if (ctx.settings.get(settingKey) !== targetSettingVal && (activeId === null || activeId === skinId)) {
+          const targetSettingVal = activeId === null ? 'none' : activeId
+          if (
+            ctx.settings.get(settingKey) !== targetSettingVal &&
+            (activeId === null || isBuiltinSkinOf(entry, activeId))
+          ) {
             syncingFromService = true
             try {
               ctx.settings.set(settingKey, targetSettingVal)

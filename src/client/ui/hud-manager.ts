@@ -2113,6 +2113,7 @@ export class HudManager {
     this.viewportProfile = getViewportProfile(profileOrId)
     this.worldPanels.viewportWidth = this.viewportProfile.width
     this.worldPanels.viewportHeight = this.viewportProfile.height
+    this.touchControls.syncViewport(this.viewportProfile.width, this.viewportProfile.height)
     this.invalidateCanvasRectCache()
     this.syncResolutionMode()
     this.syncPublishedState()

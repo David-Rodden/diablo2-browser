@@ -131,6 +131,23 @@ export interface CharacterSkinMeshSpec {
 
 export const REQUIRED_MESH_HERO_CLIP_KEYS = ['nu', 'wl', 'dt'] as const
 
+/**
+ * Mesh clip key: a Diablo II mode token, optionally specialised for one paper-doll weapon option
+ * (`a1:staff` replaces `a1` while the model wears the `staff` option of its `weapon` slot).
+ */
+const MESH_CLIP_KEY_PATTERN = /^[a-z0-9]{2}(:[a-z0-9_-]{1,24})?$/
+
+/** The weapon-specific variant of `clipKey` when `clips` has one, else `clipKey`. */
+export function resolveMeshWeaponClipKey(
+  clipKey: string,
+  weaponOption: string | undefined,
+  clips: Readonly<Record<string, unknown>>,
+): string {
+  if (weaponOption === undefined) return clipKey
+  const variant = `${clipKey}:${weaponOption}`
+  return clips[variant] !== undefined ? variant : clipKey
+}
+
 export interface CharacterSkinMinionSpec {
   readonly name: CharacterSkinLocalizedText
   readonly directions: number
@@ -429,8 +446,10 @@ function validateMeshSpec(
   const clips: Record<string, CharacterSkinMeshClip> = {}
   for (const [rawKey, rawClip] of Object.entries(obj.clips as Record<string, unknown>)) {
     const key = rawKey.trim().toLowerCase()
-    if (!/^[a-z0-9]{2}$/.test(key)) {
-      throw new Error(`Invalid character skin ${label}.clips key "${rawKey}" (expected a 2-character mode token)`)
+    if (!MESH_CLIP_KEY_PATTERN.test(key)) {
+      throw new Error(
+        `Invalid character skin ${label}.clips key "${rawKey}" (expected a 2-character mode token, optionally followed by ":<weapon option>")`,
+      )
     }
     if (!rawClip || typeof rawClip !== 'object' || Array.isArray(rawClip)) {
       throw new Error(`Invalid character skin ${label}.clips.${rawKey}: expected clip object`)

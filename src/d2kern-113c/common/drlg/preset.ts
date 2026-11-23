@@ -1732,6 +1732,24 @@ export function DRLGPRESET_InitLevelPresetRooms113c(
     m.setU32((pMap + 0x04) >>> 0, nFileIdx >>> 0)
   }
   DRLGPRESET_BuildPresetRoomsFromMap113c(m, lvl, m.u32(pInfo), 0, 0)
+  const pWarpFlags = m.get(lvl, D2DrlgLevelStrc.pRoomWarpFlags) >>> 0
+  const nBuiltRooms = m.get(lvl, D2DrlgLevelStrc.nRooms) >>> 0
+  if (pWarpFlags !== 0 && nBuiltRooms > 1) {
+    let hasStride16Tag = false
+    try {
+      hasStride16Tag = (m.u32((pWarpFlags + nBuiltRooms * 16) >>> 0) >>> 0) === 0x57525034
+    } catch {
+      hasStride16Tag = false
+    }
+    if (hasStride16Tag) {
+      for (let k = 1; k < nBuiltRooms; k++) {
+        m.setU32((pWarpFlags + k * 4) >>> 0, m.u32((pWarpFlags + k * 16) >>> 0) >>> 0)
+      }
+      for (let k = nBuiltRooms; k < nBuiltRooms * 4; k++) {
+        m.setU32((pWarpFlags + k * 4) >>> 0, 0)
+      }
+    }
+  }
 
   const curLevelId = m.get(lvl, D2DrlgLevelStrc.nLevelId) | 0
   if (curLevelId === 0x28 || curLevelId === 0x67 || curLevelId === 0x6d) {

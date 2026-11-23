@@ -424,23 +424,6 @@ export interface PetMoveActionOps113c {
   ): boolean
 }
 
-function ensureBreadcrumbZeroedIfUnloadedW11B1(
-  m: SparseMemory113c,
-  baseAddr: number,
-  byteLen: number,
-): void {
-  const memInternal = m as unknown as { known?: Map<number, Uint8Array> }
-  const known = memInternal.known
-  if (known === undefined) return
-  for (let i = 0; i < byteLen; i++) {
-    const addr = (baseAddr + i) >>> 0
-    const kp = known.get(addr >>> 12)
-    if (kp === undefined || kp[addr & 0xfff] === 0) {
-      m.setU8(addr, 0)
-    }
-  }
-}
-
 function freeUnitType2Events113cW11B1(m: SparseMemory113c, pGame: number, pUnit: number): void {
   if (pUnit === 0) return
   let pEvt = u32(m, pUnit + 0xdc)
@@ -489,7 +472,7 @@ export function AI_PetMoveActionDispatch_6FC3CAE0_113c(
       return ops.approachTarget(pPetUnit, 0, mode, tx, ty, stepNum, flags)
     }
     return Boolean(
-      AI_ApproachTarget113c(worldOf(m, pGame), pPetUnit, 0, mode, tx, ty, stepNum, flags),
+      AI_ApproachTarget113c(m, pGame, pPetUnit, 0, mode, tx, ty, stepNum, flags),
     )
   }
   const doFlee = (distSteps: number, clearOnFail: boolean): boolean => {
@@ -615,7 +598,6 @@ export function AI_PetMoveActionDispatch_6FC3CAE0_113c(
 
       const pPlrData = u32(m, pOwnerUnit) === 0 ? UNITS_GetPlayerData113c(m, pOwnerUnit) : 0
       if (pPlrData !== 0) {
-        ensureBreadcrumbZeroedIfUnloadedW11B1(m, (pPlrData + 0xa0) >>> 0, 0xcc)
         let bl = u8(m, pPlrData + 0xa0)
         let triedPathType1 = false
         for (let iter = 0; iter < 20; iter += 1) {
@@ -702,7 +684,7 @@ export function AI_PetMoveActionDispatch_6FC3CAE0_113c(
         ownerY,
       )
       const sgpt = readSgptDataTablesPtr(m)
-      const nClassId = sgpt !== 0 && i32(m, sgpt + 0xa80) > 0x16b ? 0x16b : 0
+      const nClassId = sgpt !== 0 && i32(m, sgpt + 0xa80) > 0x16b ? 0x16b : -1
       w32(m, pScratchX, ownerX >>> 0)
       w32(m, pScratchY, ownerY >>> 0)
       const hasWalkable = REGPOP_FindPackSpawnCoords113c(
@@ -718,11 +700,19 @@ export function AI_PetMoveActionDispatch_6FC3CAE0_113c(
       if (hasWalkable === 0) return 0
       const spawnX = i32(m, pScratchX)
       const spawnY = i32(m, pScratchY)
+      const pTargetRoom = ROOM_FindRoomContainingSubtile113c(
+        m,
+        UNITS_GetRoom113c(m, pOwnerUnit),
+        spawnX,
+        spawnY,
+      )
       if (
-        sunitWarpUnitToCoords_6FD019C0(m, spawnX, pOwnerRoom, spawnY, pPetUnit, pGame, 0, 0) === 0
+        pTargetRoom === 0 ||
+        sunitWarpUnitToCoords_6FD019C0(m, spawnX, pTargetRoom, spawnY, pPetUnit, pGame, 0, 0) === 0
       ) {
         return 0
       }
+      UNITROOM_RefreshUnit113c(m, pPetUnit)
       w32(m, pPetUnit + 0xc8, (u32(m, pPetUnit + 0xc8) | 0x10000) >>> 0)
       doStall(5)
       return 1
@@ -1062,8 +1052,7 @@ export function AI_MercMoveActionDispatch_6FC3D3C0_113c(
   const nDistOrDelay = arg6
   const nDirOrParam = arg7
   if (pOwnerUnit === 0 || pPetUnit === 0) return 0
-  const pMonData = u32(m, pPetUnit) === 1 ? u32(m, pPetUnit + 0x14) : 0
-  const pAiCtrl = pMonData !== 0 ? u32(m, pMonData + 0x28) : 0
+  const pAiCtrl = MONSTER_GetMonsterDataField2C_6FC21DD0_113c(m, pPetUnit)
   if (pAiCtrl === 0) return 0
   if (nActionCase >>> 0 > 5) return 0
 
@@ -1077,7 +1066,7 @@ export function AI_MercMoveActionDispatch_6FC3D3C0_113c(
       const prevY = PATH_GetPrevTargetY113c(m, pOwnerPath)
       const prevX = PATH_GetPrevTargetX113c(m, pOwnerPath)
       const rawDir = UNITS_GetDirectionToCoords113c(m, pOwnerUnit, prevX, prevY)
-      const normDir = DATATBLS_NormalizeDirection113c(m, rawDir) & 0xff
+      let normDir = DATATBLS_NormalizeDirection113c(m, rawDir) & 0xff
       const ownerPosY = UNIT_GetPosY113c(m, pOwnerUnit)
       const ownerPosX = UNIT_GetPosX113c(m, pOwnerUnit)
       const pOwnerRoom = UNITS_GetRoom113c(m, pOwnerUnit)
@@ -1088,11 +1077,8 @@ export function AI_MercMoveActionDispatch_6FC3D3C0_113c(
         ownerPosY,
       )
 
-      let foundIdx = 8
-      let candX = 0
-      let candY = 0
       for (let i = 0; i < 8; i += 1) {
-        const dirStep = ((normDir + AI_DIR_OFFSET_TABLE_6FD1CEE0[i]!) & 7) << 2
+        const dirStep = (AI_DIR_OFFSET_TABLE_6FD1CEE0[normDir]! & 0xff) << 2
         DATATBLS_GetDirectionOffset113c(m, dirStep, pScratchX, pScratchY)
         const testX = (prevX + (i32(m, pScratchX) << 3)) | 0
         const testY = (prevY + (i32(m, pScratchY) << 3)) | 0
@@ -1103,67 +1089,88 @@ export function AI_MercMoveActionDispatch_6FC3D3C0_113c(
           testX,
           testY,
         )
-        candX = testX
-        candY = testY
         if (testCoordIdx === ownerCoordIdx) {
-          foundIdx = i
-          break
-        }
-      }
-
-      if (foundIdx < 8) {
-        const mode = nDirOrParam !== 0 ? 0x0f : 0x02
-        if (
-          Boolean(AI_ApproachTarget113c(worldOf(m, pGame), pPetUnit, 0, mode, candX, candY, 1, 0))
-        ) {
           if (nDistOrDelay < -126 || nDistOrDelay > 126) {
             throw new D2CommonAssertError('..\\Source\\D2Game\\Ai\\AiThink.cpp', 0x1bf)
           }
-          w32(m, pAiCtrl + 0x1c, nDistOrDelay)
-          w8(m, pAiCtrl + 0x20, 0x28)
-          return 1
+          const pAi = MONSTER_GetMonsterDataField2C_6FC21DD0_113c(m, pPetUnit)
+          if (nDistOrDelay !== 0) {
+            w32(m, pAi + 0x1c, nDistOrDelay)
+          }
+          w8(m, pAi + 0x20, 0x28)
+          if (Boolean(AI_ApproachTarget113c(m, pGame, pPetUnit, 0, 2, testX, testY, 1, 4))) {
+            return 1
+          }
         }
+        normDir = (normDir + 1) & 7
       }
 
       freeUnitEventNodesByType(m, pGame, pPetUnit, 2)
-      return AI_WalkWanderAroundSelf_6FD129B0_113c(m, 4, pGame, pPetUnit) !== 0 ? 1 : 0
+      AI_WalkWanderAroundSelf_6FD129B0_113c(m, 4, pGame, pPetUnit)
+      return 1
     }
 
     case 1: {
-      const mode = nFlag !== 0 ? 0x0f : 0x02
-      if (u32(m, pOwnerUnit) === 0) {
-        const pPlrData = UNITS_GetPlayerData113c(m, pOwnerUnit)
-        if (pPlrData === 0) {
-          throw new D2CommonAssertError('..\\Source\\D2Game\\Ai\\AiThink.cpp', 0xf6)
-        }
-        const headIdx = u8(m, pPlrData + 0xa0)
-        for (let idx = headIdx - 1; idx >= 0; idx -= 1) {
-          const histX = i32(m, pPlrData + 0xa8 + idx * 8)
-          const histY = i32(m, pPlrData + 0xac + idx * 8)
-          if (
-            histX !== 0 &&
-            histY !== 0 &&
-            UNITS_GetOctileDistanceToCoordinates113c(m, pPetUnit, histX, histY) > 5
-          ) {
-            if (
-              Boolean(AI_ApproachTarget113c(worldOf(m, pGame), pPetUnit, 0, mode, histX, histY, 1, 0))
-            ) {
-              return 1
-            }
-            freeUnitEventNodesByType(m, pGame, pPetUnit, 2)
+      if (u32(m, pOwnerUnit + 0x10) === 2) {
+        const pOwnerPath = u32(m, pOwnerUnit + 0x2c)
+        const prevX = pOwnerPath !== 0 ? PATH_GetPrevTargetX113c(m, pOwnerPath) : 0
+        const prevY = pOwnerPath !== 0 ? PATH_GetPrevTargetY113c(m, pOwnerPath) : 0
+        const pAi = MONSTER_GetMonsterDataField2C_6FC21DD0_113c(m, pPetUnit)
+        w8(m, pAi + 0x20, 0x4d)
+        AI_ApproachTarget113c(m, pGame, pPetUnit, 0, 2, prevX, prevY, 1, 0)
+        return 1
+      }
+
+      let nDelay = nDistOrDelay | 0
+      if (nDelay === 0) {
+        nDelay = (seedRoll(unitSeedOf(m, pPetUnit + 0x20), 15) + 0x32) | 0
+      }
+      const pPlrData = UNITS_GetPlayerData113c(m, pOwnerUnit)
+      if (pPlrData === 0) {
+        throw new D2CommonAssertError('..\\Source\\D2Game\\Ai\\AiThink.cpp', 0xf6)
+      }
+      let curIdx = u8(m, pPlrData + 0xa0)
+      let bTriedFlag = 0
+      const pAiBase = MONSTER_GetMonsterDataField2C_6FC21DD0_113c(m, pPetUnit)
+      for (let step = 0; step < 20; step += 1) {
+        curIdx = curIdx === 0 ? 0x13 : curIdx - 1
+        const histX = i32(m, pPlrData + 0xa8 + curIdx * 8)
+        const histY = i32(m, pPlrData + 0xac + curIdx * 8)
+        if ((UNITS_GetOctileDistanceToCoordinates113c(m, pPetUnit, histX, histY) >>> 0) > 5) {
+          if (nDelay < -126 || nDelay > 126) {
+            throw new D2CommonAssertError('..\\Source\\D2Game\\Ai\\AiThink.cpp', 0x110)
           }
-        }
-        for (let idx = 19; idx >= headIdx; idx -= 1) {
-          const histX = i32(m, pPlrData + 0xa8 + idx * 8)
-          const histY = i32(m, pPlrData + 0xac + idx * 8)
-          if (
-            histX !== 0 &&
-            histY !== 0 &&
-            UNITS_GetOctileDistanceToCoordinates113c(m, pPetUnit, histX, histY) > 5
-          ) {
-            if (
-              Boolean(AI_ApproachTarget113c(worldOf(m, pGame), pPetUnit, 0, mode, histX, histY, 1, 0))
-            ) {
+          const pAi1 = MONSTER_GetMonsterDataField2C_6FC21DD0_113c(m, pPetUnit)
+          if (nDelay !== 0) {
+            w32(m, pAi1 + 0x1c, nDelay)
+          }
+          w8(m, pAi1 + 0x20, 0x4d)
+          if (Boolean(AI_ApproachTarget113c(m, pGame, pPetUnit, 0, 2, histX, histY, 1, 4))) {
+            return 1
+          }
+          freeUnitEventNodesByType(m, pGame, pPetUnit, 2)
+
+          const pAi2 = MONSTER_GetMonsterDataField2C_6FC21DD0_113c(m, pPetUnit)
+          w32(m, pAi2 + 0x18, 0x0f)
+          if (nDelay !== 0) {
+            w32(m, pAi2 + 0x1c, nDelay)
+          }
+          w8(m, pAi2 + 0x20, 0x4d)
+          const mode2 = nFlag !== 0 ? 0x0f : 0x02
+          const flags2 = nFlag !== 0 ? 0 : 4
+          if (Boolean(AI_ApproachTarget113c(m, pGame, pPetUnit, 0, mode2, histX, histY, 1, flags2))) {
+            return 1
+          }
+          freeUnitEventNodesByType(m, pGame, pPetUnit, 2)
+
+          if (bTriedFlag === 0) {
+            bTriedFlag = 1
+            w32(m, pAiBase + 0x18, 1)
+            if (nDelay !== 0) {
+              w32(m, pAiBase + 0x1c, nDelay)
+            }
+            w8(m, pAiBase + 0x20, 0x4d)
+            if (Boolean(AI_ApproachTarget113c(m, pGame, pPetUnit, 0, mode2, histX, histY, 1, flags2))) {
               return 1
             }
             freeUnitEventNodesByType(m, pGame, pPetUnit, 2)
@@ -1171,20 +1178,12 @@ export function AI_MercMoveActionDispatch_6FC3D3C0_113c(
         }
       }
 
-      const ownerX = UNIT_GetPosX113c(m, pOwnerUnit)
-      const ownerY = UNIT_GetPosY113c(m, pOwnerUnit)
-      if (Boolean(AI_ApproachTarget113c(worldOf(m, pGame), pPetUnit, 0, mode, ownerX, ownerY, 1, 0))) {
-        return 1
-      }
-      freeUnitEventNodesByType(m, pGame, pPetUnit, 2)
       let approxDist = (AI_CalcApproxUnitDistSubtiles113c(m, pPetUnit, pOwnerUnit) >>> 2) | 0
       if (approxDist < 4) approxDist = 4
-      if (approxDist > 127) {
-        throw new D2CommonAssertError('..\\Source\\D2Game\\Ai\\AiThink.cpp', 0x1ee)
-      }
-      return AI_WalkWanderAroundSelf_6FD129B0_113c(m, approxDist & 0xff, pGame, pPetUnit) !== 0
-        ? 1
-        : 0
+      const pAiEnd = MONSTER_GetMonsterDataField2C_6FC21DD0_113c(m, pPetUnit)
+      w32(m, pAiEnd + 0x1c, 0x0f)
+      AI_WalkWanderAroundSelf_6FD129B0_113c(m, approxDist & 0xff, pGame, pPetUnit)
+      return 1
     }
 
     case 2: {
@@ -1195,16 +1194,12 @@ export function AI_MercMoveActionDispatch_6FC3D3C0_113c(
         }
         freeUnitEventNodesByType(m, pGame, pPetUnit, 2)
         const pOwnerPath = u32(m, pOwnerUnit + 0x2c)
-        if (pOwnerPath !== 0) {
-          const prevY = PATH_GetPrevTargetY113c(m, pOwnerPath)
-          const prevX = PATH_GetPrevTargetX113c(m, pOwnerPath)
-          const mode = nFlag !== 0 ? 0x0f : 0x02
-          if (
-            Boolean(AI_ApproachTarget113c(worldOf(m, pGame), pPetUnit, 0, mode, prevX, prevY, 1, 0))
-          ) {
-            return 1
-          }
-        }
+        const prevY = pOwnerPath !== 0 ? PATH_GetPrevTargetY113c(m, pOwnerPath) : 0
+        const prevX = pOwnerPath !== 0 ? PATH_GetPrevTargetX113c(m, pOwnerPath) : 0
+        const pAi = MONSTER_GetMonsterDataField2C_6FC21DD0_113c(m, pPetUnit)
+        w8(m, pAi + 0x20, 0x28)
+        AI_ApproachTarget113c(m, pGame, pPetUnit, 0, 2, prevX, prevY, 1, 0)
+        return 1
       }
       AI_Stall113c(m, pGame, pPetUnit, 15)
       return 1
@@ -1257,8 +1252,8 @@ export function AI_MercMoveActionDispatch_6FC3D3C0_113c(
       const pScanCtx = K2_W11B1_SCRATCH_BASE + 0x30
       w32(m, pScanCtx, pPetUnit)
       w32(m, pScanCtx + 0x04, 0)
-      w32(m, pScanCtx + 0x08, MONSTER_GetMonsterDataField2C_6FC21DD0_113c(m, pPetUnit))
-      w32(m, pScanCtx + 0x0c, 1)
+      w32(m, pScanCtx + 0x08, 0)
+      w32(m, pScanCtx + 0x0c, 0)
       PETS_ForEachPlayerPetUnit_6FCB6AF0_113c(
         m,
         pGame,
@@ -1266,17 +1261,14 @@ export function AI_MercMoveActionDispatch_6FC3D3C0_113c(
         (mem, _g, _owner, pet, ctx) => AI_CountAdjacentUnitsCallback_6FC35590_113c(mem, pet, ctx),
         pScanCtx,
       )
-      if (i32(m, pScanCtx + 0x04) >= 1) {
+      if (i32(m, pScanCtx + 0x08) >= 1) {
         freeUnitEventNodesByType(m, pGame, pPetUnit, 2)
-        if (AI_FleeFrom113c(m, pGame, pPetUnit, pOwnerUnit, nDistOrDelay, 1) !== 0) {
+        if (AI_FleeFrom113c(m, pGame, pPetUnit, pOwnerUnit, nDirOrParam, 1) !== 0) {
           return 1
         }
-      }
-      if (seedRoll(unitSeedOf(m, pPetUnit + 0x20), 100) < 10) {
-        const wanderDist = (seedRoll(unitSeedOf(m, pPetUnit + 0x20), 3) + 3) & 0xff
-        if (AI_WalkWanderAroundSelf_6FD129B0_113c(m, wanderDist, pGame, pPetUnit) !== 0) {
-          return 1
-        }
+        freeUnitEventNodesByType(m, pGame, pPetUnit, 2)
+        AI_WalkWanderAroundSelf_6FD129B0_113c(m, nDirOrParam & 0xff, pGame, pPetUnit)
+        return 1
       }
       AI_Stall113c(m, pGame, pPetUnit, 15)
       return 1
@@ -1284,28 +1276,29 @@ export function AI_MercMoveActionDispatch_6FC3D3C0_113c(
 
     case 5: {
       w32(m, pAiCtrl + 0x18, 7)
-      const wanderDist = (seedRoll(unitSeedOf(m, pPetUnit + 0x20), 3) + 3) & 0xff
       if (
-        AI_WalkWanderAroundUnitOrSelf_6FD12870_113c(m, pOwnerUnit, wanderDist, pGame, pPetUnit) !==
-        0
+        AI_WalkWanderAroundUnitOrSelf_6FD12870_113c(
+          m,
+          pOwnerUnit,
+          nDirOrParam & 0xff,
+          pGame,
+          pPetUnit,
+        ) !== 0
       ) {
         return 1
       }
       freeUnitEventNodesByType(m, pGame, pPetUnit, 2)
-      if (AI_FleeFrom113c(m, pGame, pPetUnit, pOwnerUnit, nDistOrDelay, 1) !== 0) {
+      if (AI_FleeFrom113c(m, pGame, pPetUnit, pOwnerUnit, nDirOrParam, 1) !== 0) {
         return 1
       }
       freeUnitEventNodesByType(m, pGame, pPetUnit, 2)
       const pOwnerPath = u32(m, pOwnerUnit + 0x2c)
-      if (pOwnerPath !== 0) {
-        const prevY = PATH_GetPrevTargetY113c(m, pOwnerPath)
-        const prevX = PATH_GetPrevTargetX113c(m, pOwnerPath)
-        const mode = nFlag !== 0 ? 0x0f : 0x02
-        if (Boolean(AI_ApproachTarget113c(worldOf(m, pGame), pPetUnit, 0, mode, prevX, prevY, 1, 0))) {
-          return 1
-        }
-      }
-      return 0
+      const prevY = pOwnerPath !== 0 ? PATH_GetPrevTargetY113c(m, pOwnerPath) : 0
+      const prevX = pOwnerPath !== 0 ? PATH_GetPrevTargetX113c(m, pOwnerPath) : 0
+      const pAiEnd = MONSTER_GetMonsterDataField2C_6FC21DD0_113c(m, pPetUnit)
+      w8(m, pAiEnd + 0x20, 0x28)
+      AI_ApproachTarget113c(m, pGame, pPetUnit, 0, 2, prevX, prevY, 1, 0)
+      return 1
     }
 
     default:
@@ -2676,26 +2669,19 @@ export function PETS_RegisterSummonPetAndClampCount_6FCB7F50_113c(
   pGame: number,
   pPetUnit: number,
   nMaxPets: number,
-  pPetInfo12Bytes: number,
+  _pPetInfo12Bytes = 0,
 ): number {
   hitD2GameVa113c(0x6FCB7F50)
-  const pPlrData = UNITS_GetPlayerData113c(m, pPlayerUnit)
-  const pPlayerPets = pPlrData !== 0 ? u32(m, pPlrData + 0x44) : 0
-  if (pPlayerPets === 0) return 0
-
-  const sgpt = readSgptDataTablesPtr(m)
-  if (sgpt === 0 || nPetType <= 0 || nPetType >= i32(m, sgpt + 0xbf0)) {
+  if (pPlayerUnit === 0 || u32(m, pPlayerUnit) !== 0 || nPetType <= 0) {
     return 0
   }
-  const pPetTypesTxt = u32(m, sgpt + 0xbec)
-  if (pPetTypesTxt === 0 || pPetTypesTxt + nPetType * 0xe0 === 0) {
+
+  const sgpt = readSgptDataTablesPtr(m)
+  if (sgpt === 0 || nPetType >= i32(m, sgpt + 0xbf0)) {
     return 0
   }
 
   PETS_UnsummonSameGroupPetTypes_6FCB7C20_113c(m, pGame, pPlayerUnit, nPetType)
-  const pPetTypeSlot = SUMMON_GetPetTypeBucketPtr_6FCB6540_113c(m, nPetType, pPlayerPets)
-  if (pPetTypeSlot === 0) return 0
-
   PETS_ClampPlayerPetTypeMaxAndUnsummonExcess_6FCB6EA0_113c(
     m,
     nPetType,
@@ -2703,6 +2689,18 @@ export function PETS_RegisterSummonPetAndClampCount_6FCB7F50_113c(
     pGame,
     nMaxPets,
   )
+
+  const pPlrData = UNITS_GetPlayerData113c(m, pPlayerUnit)
+  const pPlayerPets = pPlrData !== 0 ? u32(m, pPlrData + 0x44) : 0
+  if (pPlayerPets === 0) return 0
+
+  const pPetTypeSlot = SUMMON_GetPetTypeBucketPtr_6FCB6540_113c(m, nPetType, pPlayerPets)
+  if (pPetTypeSlot === 0) return 0
+
+  const pLocalPetInfo = K2_W11B1_SCRATCH_BASE + 0x2d0
+  w32(m, pLocalPetInfo + 0x00, 0)
+  w32(m, pLocalPetInfo + 0x04, 0)
+  w32(m, pLocalPetInfo + 0x08, 0)
   if (
     petsInsertPetIntoPlayerPetSlot_6FCB7A20(
       m,
@@ -2710,32 +2708,22 @@ export function PETS_RegisterSummonPetAndClampCount_6FCB7F50_113c(
       pGame,
       pPlayerUnit,
       pPetUnit,
-      pPetInfo12Bytes,
+      pLocalPetInfo,
     ) === 0
   ) {
     return 0
   }
 
-  if (pPetUnit !== 0 && u32(m, pPetUnit) === 1) {
-    const pMonData = u32(m, pPetUnit + 0x14)
-    const pAiCtrl = pMonData !== 0 ? u32(m, pMonData + 0x28) : 0
-    if (pAiCtrl !== 0) {
-      w32(m, pAiCtrl + 0x2c, u32(m, pPlayerUnit + 0x0c))
-      w32(m, pAiCtrl + 0x30, u32(m, pPlayerUnit))
-      w32(m, pAiCtrl + 0x28, pGame)
-    }
-  }
-
   const pAssignPacketCtx = K2_W11B1_SCRATCH_BASE + 0x2e0
   const dwPetGuid = pPetUnit !== 0 ? u32(m, pPetUnit + 0x0c) : 0xffffffff
   const wMonClassId = pPetUnit !== 0 ? u16(m, pPetUnit + 0x04) : 0xffff
-  w32(m, pAssignPacketCtx + 0x00, u32(m, pPlayerUnit + 0x0c))
-  w32(m, pAssignPacketCtx + 0x04, nPetType)
-  w32(m, pAssignPacketCtx + 0x08, dwPetGuid)
-  w16(m, pAssignPacketCtx + 0x0c, wMonClassId)
-  w32(m, pAssignPacketCtx + 0x10, u32(m, pPetInfo12Bytes + 0x00))
-  w32(m, pAssignPacketCtx + 0x14, u32(m, pPetInfo12Bytes + 0x04))
-  w32(m, pAssignPacketCtx + 0x18, u32(m, pPetInfo12Bytes + 0x08))
+  w32(m, pAssignPacketCtx + 0x00, dwPetGuid)
+  w32(m, pAssignPacketCtx + 0x04, u32(m, pPlayerUnit + 0x0c))
+  w32(m, pAssignPacketCtx + 0x08, wMonClassId & 0xffff)
+  w32(m, pAssignPacketCtx + 0x0c, nPetType)
+  w32(m, pAssignPacketCtx + 0x10, 0)
+  w32(m, pAssignPacketCtx + 0x14, 0)
+  w32(m, pAssignPacketCtx + 0x18, 0)
   D2GAME_SUNIT_IterateAllLivingPlayers113c(
     m,
     pGame,

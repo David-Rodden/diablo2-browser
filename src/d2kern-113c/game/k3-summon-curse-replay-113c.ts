@@ -15,7 +15,7 @@
 import { UNITS_GetPlayerData113c } from '../common/composit.ts'
 import { INVENTORY_GetFirstItem113c, INVENTORY_GetNextItem113c } from '../common/inventory.ts'
 import { D2COMMON_SGPT_DATATABLES_VA_113C } from '../common/inline-helpers.ts'
-import { imul32 } from '../common/int-math.ts'
+import { imul32, mulDiv113c } from '../common/int-math.ts'
 import { DUNGEON_CheckRoomIsTownMemPort113c } from '../common/k0-d2common-memports.ts'
 import { SKILLS_EvalCalcByOffset113c } from '../common/skills.ts'
 import {
@@ -631,7 +631,52 @@ export function dispatchSummonOrCurseDoFuncK3_113c(
     spawnSummonPetWithSafePetInfoK3_113c(mem, pg, pSummonArg)
 
   if (doIdx === 15) {
-    return SKILLS_SrvDo_SummonShadowWarriorOrMaster_6FC6D8C0_113c(sm, pGame, pUnit, skId, effLvl, spawnSafeCb)
+    let spawnedPet = 0
+    const rc = SKILLS_SrvDo_SummonShadowWarriorOrMaster_6FC6D8C0_113c(
+      sm,
+      pGame,
+      pUnit,
+      skId,
+      effLvl,
+      (mem, pg, pSummonArg) => {
+        const pMon = spawnSummonPetWithSafePetInfoK3_113c(mem, pg, pSummonArg)
+        if (pMon !== 0) {
+          spawnedPet = pMon >>> 0
+        }
+        return pMon
+      },
+    )
+    if (rc !== 0 && spawnedPet !== 0 && pUnit !== 0) {
+      const pSkillsTxt = SKILLS_GetRecordPtrFast113c(m, skId) >>> 0
+      if (pSkillsTxt !== 0) {
+        const nOwnerMaxLife = STATLIST_GetMaxLifeFromUnit113c(m, pUnit) | 0
+        const nCalc140 =
+          SKILLS_EvalCalcByOffset113c(m, pUnit, m.u32((pSkillsTxt + 0x140) >>> 0), skId, effLvl) | 0
+        const baseLife = mulDiv113c(nCalc140, nOwnerMaxLife, 100) | 0
+        const nLifeBonusPct =
+          SKILLS_EvalCalcByOffset113c(m, pUnit, m.u32((pSkillsTxt + 0x138) >>> 0), skId, effLvl) | 0
+        let bonusLife = 0
+        if (baseLife > 0x100000) {
+          if (((baseLife & ~0xf) | 0) < 0x640) {
+            bonusLife = Number((BigInt(baseLife) * BigInt(nLifeBonusPct)) / 100n) | 0
+          } else {
+            bonusLife = Math.imul(Math.trunc(baseLife / 100), nLifeBonusPct) | 0
+          }
+        } else if (nLifeBonusPct > 0x10000) {
+          if (((nLifeBonusPct & ~0xf) | 0) < 0x640) {
+            bonusLife = Number((BigInt(baseLife) * BigInt(nLifeBonusPct)) / 100n) | 0
+          } else {
+            bonusLife = Math.imul(Math.trunc(nLifeBonusPct / 100), baseLife) | 0
+          }
+        } else {
+          bonusLife = Math.trunc(Math.imul(baseLife, nLifeBonusPct) / 100) | 0
+        }
+        const finalMaxLife = (baseLife + bonusLife) | 0
+        STATLIST_SetUnitStat113c(m, spawnedPet, 7, finalMaxLife, 0)
+        STATLIST_SetUnitStat113c(m, spawnedPet, 6, finalMaxLife, 0)
+      }
+    }
+    return rc
   }
   if (doIdx === 44) {
     return SKILLS_SrvDo_SummonPetWithAiInit_6FCB6310_113c(sm, pGame, pUnit, skId, effLvl)

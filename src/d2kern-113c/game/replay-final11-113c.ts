@@ -5,19 +5,28 @@
  * (`SparseMemory113c`) with zero legacy module imports, zero array sorting, and zero nullish coalescing.
  */
 import type { Memory113c, SparseMemory113c } from '../mem/sparse-memory.ts'
+import { D2InventoryNodeStrc, D2InventoryStrc, D2ItemDataStrc } from '../mem/layout.generated.ts'
 import { D2CommonAssertError } from '../common/inline-helpers.ts'
+import { INVENTORY_FreeInventory113c, INVENTORY_GetFirstNode113c } from '../common/inventory.ts'
 import { UNITS_FreePlayerData113c } from '../common/quest-record.ts'
-import { UNITS_GetPlayerData113c } from '../common/composit.ts'
+import {
+  UNITS_GetPlayerActiveWeaponFlags113c,
+  UNITS_GetPlayerData113c,
+  UNITS_SetPlayerActiveWeaponFlags113c,
+} from '../common/composit.ts'
 import { DRLG_GetActNoFromLevelId113c, DRLG_GetLevelDefField94_113c } from '../common/drlg/drlg.ts'
 import { STATLIST_EnumerateCopyListStats113c } from '../common/drlg/preset.ts'
 import {
   DUNGEON_GetAdjacentRoomsListFromRoom113c,
   DUNGEON_GetLevelIdFromRoom113c,
+  DUNGEON_GetPortalLevelBit113c,
   DUNGEON_GetRoomExFromRoom113c,
   DUNGEON_GetRoomPortalList113c,
+  DUNGEON_SyncActiveRoomStatusChange113c,
+  DUNGEON_UpdateRoomLevelChange113c,
 } from '../common/dungeon.ts'
 import { DUNGEON_CheckRoomIsTownMemPort113c } from '../common/k0-d2common-memports.ts'
-import { ITEMS_RemoveFromSocketedOwner113c } from '../common/items.ts'
+import { ITEMS_CheckItemFlag113c, ITEMS_RemoveFromSocketedOwner113c } from '../common/items.ts'
 import {
   PATH_ComputeSquaredDistance113c,
   PATH_FreeDynamicPath113c,
@@ -65,7 +74,9 @@ import {
 import {
   CLIENTS_SetPlayerCurrentRoom113c,
   DUNGEON_IsTownLevelId113c,
+  ROOM_ActivateRoomForClient113c,
   ROOM_DeactivateMonsterInRoom113c,
+  ROOM_DeactivateRoomForClient113c,
 } from './act-rooms-113c.ts'
 import { SUNITDMG_FreeAttackerCombatList113c } from './ai-fallen-113c.ts'
 import {
@@ -74,11 +85,18 @@ import {
 } from './boot-init-gap-a-113c.ts'
 import {
   D2GAME_ARENA_SyncArenaJoinState113c,
+  D2GAME_INVENTORY_DestroyUnitInventoryItems113c,
   D2GAME_ITEMS_UpdateAllInventoryAndEquipmentStats113c,
+  D2GAME_MONSTER_SendMonsterMovementSync113c,
   D2GAME_PLRMODES_SendStatToClientOrParty113c,
+  D2GAME_SUNIT_IterateAllLivingPlayers113c,
   D2GAME_SUNIT_SyncRoomUnitsToClient113c,
   type BootInitGapBCallees113c,
 } from './boot-init-gap-b-113c.ts'
+import { MONSTER_IsPlayerInteractInTradeState113c } from './k2-sunit-spawn-w1-113c.ts'
+import { ITEMS_RemoveUnitInventoryOrCursorItem_6FC2E7E0_113c } from './k2-w2b1-113c.ts'
+import { SUNITPROXY_GetPlayerNodeItemInNpcSlot_6FCAFAA0_113c } from './k2-w2b4-113c.ts'
+import { ITEMS_BroadcastUnitInventoryCommandFlags_6FCBBB10_113c } from './k2-w7b3-113c.ts'
 import { PLAYER_StartModeAttack113c } from './k2-real-s2c-combat-113c.ts'
 import { MISSILE_DestroyDataAndEvents113c } from './k2-gap-melee-dot-113c.ts'
 import { ITEMS_DestroyItemEventsAndSubInventory_6FC30700_113c } from './k2-laneI-0x6fc3-w1-113c.ts'
@@ -91,6 +109,7 @@ import {
   type ObjectSpawnCallees113c,
 } from './objects-populate-113c.ts'
 import {
+  OBJECTS_InitObjectUnitWithGoldPileFix113c,
   OBJECTS_SpawnDensityObjectsInRoom113c,
   PLAYER_GetParam158_113c,
   PLAYER_GetParam15C_113c,
@@ -112,6 +131,66 @@ import { hitD2GameVa113c } from '../va-trace-113c.ts'
 export type { SparseMemory113c }
 
 let replayFinal11StackPtr = 0x7ef80000
+let pendingEndOfFrameFlag1Items: { m: Memory113c; pGame: number; itemGuids: number[] } | null = null
+
+function findServerItemByGuid113c(m: Memory113c, pGame: number, dwItemGuid: number): number {
+  const guid = dwItemGuid >>> 0
+  let pItem = m.u32((pGame + 0x1720 + (guid & 0x7f) * 4) >>> 0) >>> 0
+  while (pItem !== 0) {
+    if ((m.u32((pItem + 0x0c) >>> 0) >>> 0) === guid) {
+      return pItem
+    }
+    pItem = m.u32((pItem + 0xe4) >>> 0) >>> 0
+  }
+  return 0
+}
+
+function collectPendingEndOfFrameFlag1Items113c(m: Memory113c, pGame: number): void {
+  const game = pGame >>> 0
+  if (
+    pendingEndOfFrameFlag1Items === null ||
+    pendingEndOfFrameFlag1Items.m !== m ||
+    pendingEndOfFrameFlag1Items.pGame !== game
+  ) {
+    pendingEndOfFrameFlag1Items = { m, pGame: game, itemGuids: [] }
+  }
+  const guids = pendingEndOfFrameFlag1Items.itemGuids
+  try {
+    for (let actIdx = 0; actIdx < 5; actIdx++) {
+      const pAct = m.u32((game + 0xbc + actIdx * 4) >>> 0) >>> 0
+      if (pAct === 0 || m.u32(pAct) === 0) continue
+      let pRoom = m.u32((pAct + 0x10) >>> 0) >>> 0
+      while (pRoom !== 0) {
+        let pUnit = m.u32((pRoom + 0x1c) >>> 0) >>> 0
+        while (pUnit !== 0) {
+          const pInv = m.u32((pUnit + 0x60) >>> 0) >>> 0
+          if (pInv !== 0 && (m.get(pInv, D2InventoryStrc.dwSignature) >>> 0) === 0x01020304) {
+            let pNode = m.get(pInv, D2InventoryStrc.pFirstNode) >>> 0
+            while (pNode !== 0) {
+              const dwItemGuid = m.get(pNode, D2InventoryNodeStrc.dwItemId) >>> 0
+              const pItem = findServerItemByGuid113c(m, game, dwItemGuid)
+              if (pItem !== 0 && m.u32(pItem >>> 0) === 4) {
+                const pItemData = m.u32((pItem + 0x14) >>> 0) >>> 0
+                if (
+                  pItemData !== 0 &&
+                  ((m.get(pItemData, D2ItemDataStrc.dwItemFlags) & 1) !== 0) &&
+                  !guids.includes(dwItemGuid)
+                ) {
+                  guids.push(dwItemGuid)
+                }
+              }
+              pNode = m.get(pNode, D2InventoryNodeStrc.pNext) >>> 0
+            }
+          }
+          pUnit = m.u32((pUnit + 0xe0) >>> 0) >>> 0
+        }
+        pRoom = m.u32((pRoom + 0x7c) >>> 0) >>> 0
+      }
+    }
+  } catch {
+    // Sparse vector snapshots may omit inactive rooms/inventories; preserve collected GUIDs cleanly.
+  }
+}
 
 function setPlayerNeutralOrTownNeutralMode113c(
   m: Memory113c,
@@ -268,7 +347,7 @@ export function ROOM_DeactivateAnyUnitInRoom113c(
  */
 const SECONDARY_TORCH_SPAWN_CALLEES_113C: ObjectSpawnCallees113c = {
   initObject(mem, pUnit, pg, nUnitId, pr, x, y) {
-    OBJECTS_InitObjectUnit113c(mem, pUnit, pg, nUnitId, pr, x, y)
+    OBJECTS_InitObjectUnitWithGoldPileFix113c(mem, pUnit, pg, nUnitId, pr, x, y)
   },
   placeServerUnit(mem, y, pUnit, pr, x, pg, a2) {
     SUNIT_PlaceServerUnitInRoom113c(mem, pr, y, pUnit, x, pg, a2)
@@ -404,6 +483,92 @@ export interface ClientsUpdatePlayerRoomOpts113c {
   readonly onRoomChanged?: (m: Memory113c, pOldRoom: number, pNewRoom: number) => void
 }
 
+function setPlayerCurrentRoomWithSync113c(
+  m: Memory113c,
+  pClient: number,
+  pNewRoom: number,
+  syncCallees: BootInitGapBCallees113c,
+): void {
+  hitD2GameVa113c(0x6FC6B1D0)
+  if (pClient === 0) return
+  const pPlayer = (m.u32((pClient + 0x174) >>> 0) || m.u32((pClient + 0x1a8) >>> 0)) >>> 0
+  if (pPlayer === 0) return
+  const pOldRoom = m.u32((pClient + 0x1b4) >>> 0) >>> 0
+  if (pOldRoom === (pNewRoom >>> 0)) return
+
+  DUNGEON_SyncActiveRoomStatusChange113c(m, pOldRoom, pNewRoom)
+  DUNGEON_UpdateRoomLevelChange113c(m, pOldRoom, pNewRoom)
+
+  const sp = replayFinal11StackPtr
+  replayFinal11StackPtr = (sp + 0x20) >>> 0
+  try {
+    let ppNew = 0
+    let nNew = 0
+    if (pNewRoom !== 0) {
+      DUNGEON_GetAdjacentRoomsListFromRoom113c(m, pNewRoom, sp, (sp + 0x04) >>> 0)
+      ppNew = m.u32(sp) >>> 0
+      nNew = m.u32((sp + 0x04) >>> 0) | 0
+    }
+    let ppOld = 0
+    let nOld = 0
+    if (pOldRoom !== 0) {
+      DUNGEON_GetAdjacentRoomsListFromRoom113c(m, pOldRoom, (sp + 0x08) >>> 0, (sp + 0x0c) >>> 0)
+      ppOld = m.u32((sp + 0x08) >>> 0) >>> 0
+      nOld = m.u32((sp + 0x0c) >>> 0) | 0
+    }
+
+    for (let i = 0; i < nNew; i++) {
+      const rNew = m.u32((ppNew + i * 4) >>> 0) >>> 0
+      let inOld = false
+      for (let j = 0; j < nOld; j++) {
+        if ((m.u32((ppOld + j * 4) >>> 0) >>> 0) === rNew) {
+          inOld = true
+          break
+        }
+      }
+      if (!inOld) {
+        ROOM_ActivateRoomForClient113c(m, pClient, rNew, pPlayer)
+      }
+    }
+
+    for (let j = 0; j < nOld; j++) {
+      const rOld = m.u32((ppOld + j * 4) >>> 0) >>> 0
+      let inNew = false
+      for (let i = 0; i < nNew; i++) {
+        if ((m.u32((ppNew + i * 4) >>> 0) >>> 0) === rOld) {
+          inNew = true
+          break
+        }
+      }
+      if (!inNew) {
+        const pClientGame = m.u32((pClient + 0x1a8) >>> 0) >>> 0
+        ROOM_DeactivateRoomForClient113c(m, rOld, pClientGame, pClient)
+        if (rOld === pOldRoom && syncCallees.syncPlayerUnitToClient !== undefined) {
+          const pSyncPlr = CLIENTS_GetPlayerUnit113c(m, pClient, 0) >>> 0
+          syncCallees.syncPlayerUnitToClient(m, pSyncPlr, pClientGame, pClient, 0)
+        }
+      }
+    }
+
+    m.setU32((pClient + 0x1b4) >>> 0, pNewRoom >>> 0)
+    const pClientUnit174 = m.u32((pClient + 0x174) >>> 0) >>> 0
+    const pPortalPlayer = pClientUnit174 !== 0 ? pClientUnit174 : pPlayer
+    if (
+      pNewRoom !== 0 &&
+      pPortalPlayer !== 0 &&
+      m.u32(pPortalPlayer) === 0 &&
+      m.u32((pPortalPlayer + 0x14) >>> 0) !== 0
+    ) {
+      const newLevelId = DUNGEON_GetLevelIdFromRoom113c(m, pNewRoom) | 0
+      const curWeaponFlags = UNITS_GetPlayerActiveWeaponFlags113c(m, pPortalPlayer) >>> 0
+      const portalBit = DUNGEON_GetPortalLevelBit113c(m, newLevelId) >>> 0
+      UNITS_SetPlayerActiveWeaponFlags113c(m, pPortalPlayer, (curWeaponFlags | portalBit) >>> 0)
+    }
+  } finally {
+    replayFinal11StackPtr = sp
+  }
+}
+
 /**
  * Synchronizes `pClient`'s room, adjacent room units, portal removals, copy-list stats,
  * inventory/equipment stats (when `pPlayer->dwFlagsEx & 0x200000`), level change notifications,
@@ -418,6 +583,12 @@ export function CLIENTS_UpdatePlayerRoom113c(
   opts?: ClientsUpdatePlayerRoomOpts113c,
 ): void {
   hitD2GameVa113c(0x6FC6B400)
+  if (
+    pendingEndOfFrameFlag1Items !== null &&
+    (pendingEndOfFrameFlag1Items.m !== m || pendingEndOfFrameFlag1Items.pGame !== (pGame >>> 0))
+  ) {
+    pendingEndOfFrameFlag1Items = null
+  }
   if (pGame === 0 || pClient === 0) {
     return
   }
@@ -460,7 +631,15 @@ export function CLIENTS_UpdatePlayerRoom113c(
       QUESTS_NotifyLevelChange113c(m, pGame, pPlayer, nOldLvl, nNewLvl)
       NPCS_OnPlayerLevelChange113c(m, pGame, nOldLvl, pPlayer, nNewLvl)
     }
-    CLIENTS_SetPlayerCurrentRoom113c(m, pClient, pNewRoom)
+    if (
+      opts !== undefined &&
+      opts.syncCallees !== undefined &&
+      opts.syncCallees.syncPlayerUnitToClient !== undefined
+    ) {
+      setPlayerCurrentRoomWithSync113c(m, pClient, pNewRoom, opts.syncCallees)
+    } else {
+      CLIENTS_SetPlayerCurrentRoom113c(m, pClient, pNewRoom)
+    }
     if (opts !== undefined && opts.onRoomChanged !== undefined) {
       opts.onRoomChanged(m, pOldRoom, pNewRoom)
     }
@@ -477,6 +656,9 @@ export function CLIENTS_UpdatePlayerRoom113c(
     if (UNITS_GetRoom113c(m, pPlayer) !== 0) {
       UNITROOM_RefreshUnit113c(m, pPlayer)
     }
+  }
+  if (opts !== undefined) {
+    collectPendingEndOfFrameFlag1Items113c(m, pGame)
   }
 }
 
@@ -718,6 +900,22 @@ export function GAME_ClearAllActRoomUpdateLists113c(m: Memory113c, pGame: number
       while (pRoom !== 0) {
         let pUnit = m.u32((pRoom + 0x1c) >>> 0) >>> 0
         while (pUnit !== 0) {
+          const pInv = m.u32((pUnit + 0x60) >>> 0) >>> 0
+          let hasInvNodes = false
+          if (pInv !== 0) {
+            try {
+              hasInvNodes = INVENTORY_GetFirstNode113c(m, pInv) !== 0
+            } catch {
+              hasInvNodes = false
+            }
+          }
+          if (hasInvNodes) {
+            D2GAME_INVENTORY_DestroyUnitInventoryItems113c(m, pUnit, pGame, {
+              onDeleteItemCallback: (mem, _pg, pPlr, pItem) =>
+                ITEMS_RemoveUnitInventoryOrCursorItem_6FC2E7E0_113c(mem, pPlr, pItem),
+              freeItemServerUnit: (mem, pg, pItem) => SUNIT_FreeUnit113c(mem, pg, pItem),
+            })
+          }
           SUNIT_DeactivateUnitStatesAndEvents113c(m, pUnit, pGame)
           pUnit = m.u32((pUnit + 0xe0) >>> 0) >>> 0
         }
@@ -725,6 +923,32 @@ export function GAME_ClearAllActRoomUpdateLists113c(m: Memory113c, pGame: number
         pRoom = m.u32((pRoom + 0x7c) >>> 0) >>> 0
       }
       m.setU32(pAct, 0)
+    }
+  }
+  if (
+    pendingEndOfFrameFlag1Items !== null &&
+    pendingEndOfFrameFlag1Items.m === m &&
+    pendingEndOfFrameFlag1Items.pGame === (pGame >>> 0)
+  ) {
+    const guids = pendingEndOfFrameFlag1Items.itemGuids
+    pendingEndOfFrameFlag1Items = null
+    const game = pGame >>> 0
+    for (let i = 0; i < guids.length; i++) {
+      const pItem = findServerItemByGuid113c(m, game, guids[i]!)
+      if (pItem !== 0 && ITEMS_CheckItemFlag113c(m, pItem, 1) !== 0) {
+        D2GAME_SUNIT_IterateAllLivingPlayers113c(
+          m,
+          game,
+          (mem, _pg, pPlr, pTargetItem) =>
+            ITEMS_RemoveUnitInventoryOrCursorItem_6FC2E7E0_113c(
+              mem as SparseMemory113c,
+              pPlr,
+              pTargetItem,
+            ),
+          pItem,
+        )
+        SUNIT_FreeUnit113c(m, game, pItem)
+      }
     }
   }
   const pArena = m.u32((pGame + 0x1d28) >>> 0) >>> 0
@@ -753,6 +977,86 @@ export function SUNIT_SyncAdjacentRoomUnitsToClient113c(
   if (!bIgnoreActDirtyFlag && (pAct === 0 || m.u32(pAct) === 0)) {
     return
   }
+  const baseCallees: BootInitGapBCallees113c = callees !== undefined ? callees : {}
+  const resolvedCallees: BootInitGapBCallees113c = {
+    ...baseCallees,
+    ...(baseCallees.onUnitPreSync !== undefined
+      ? {
+          onUnitPreSync(mem: Memory113c, pg: number, pUnit: number, pCl: number): void {
+            if (
+              pUnit !== 0 &&
+              (mem.u32(pUnit) >>> 0) === 1 &&
+              (mem.u32((pUnit + 0xc4) >>> 0) & 1) !== 0 &&
+              (mem.u32((pUnit + 0x10) >>> 0) >>> 0) !== 1
+            ) {
+              const cls = mem.u32((pUnit + 0x04) >>> 0) >>> 0
+              if (
+                STATES_CheckState113c(mem, pUnit, 0x5d) !== 0 ||
+                cls === 0x123 ||
+                cls === 0x1a1 ||
+                cls === 0x1a2
+              ) {
+                const origFlags = mem.u32((pUnit + 0xc4) >>> 0) >>> 0
+                mem.setU32((pUnit + 0xc4) >>> 0, (origFlags & ~1) >>> 0)
+                try {
+                  baseCallees.onUnitPreSync!(mem, pg, pUnit, pCl)
+                } finally {
+                  mem.setU32((pUnit + 0xc4) >>> 0, (mem.u32((pUnit + 0xc4) >>> 0) | 1) >>> 0)
+                }
+                D2GAME_MONSTER_SendMonsterMovementSync113c(mem, pUnit, pg, pCl, resolvedCallees)
+                if (
+                  baseCallees.onMonsterPostSync !== undefined &&
+                  (mem.u8((pUnit + 0xca) >>> 0) & 1) === 0
+                ) {
+                  baseCallees.onMonsterPostSync(mem, pUnit, pCl)
+                }
+                return
+              }
+            }
+            baseCallees.onUnitPreSync!(mem, pg, pUnit, pCl)
+            if (
+              pUnit !== 0 &&
+              (mem.u32(pUnit) >>> 0) === 1 &&
+              baseCallees.onMonsterPostSync !== undefined &&
+              (mem.u8((pUnit + 0xca) >>> 0) & 1) === 0
+            ) {
+              baseCallees.onMonsterPostSync(mem, pUnit, pCl)
+            }
+          },
+        }
+      : {}),
+    ...(baseCallees.onClearUnitReassignFlags !== undefined ||
+    baseCallees.onMonsterPostSync !== undefined
+      ? {
+          onClearUnitReassignFlags(mem: Memory113c, pUnit: number, pg: number): void {
+            if (baseCallees.onClearUnitReassignFlags !== undefined) {
+              baseCallees.onClearUnitReassignFlags(mem, pUnit, pg)
+            }
+          },
+        }
+      : {}),
+    isMonsterOwnedByPlayer:
+      baseCallees.isMonsterOwnedByPlayer !== undefined
+        ? baseCallees.isMonsterOwnedByPlayer
+        : (mem, pMonster, pPlayer) =>
+            MONSTER_IsPlayerInteractInTradeState113c(mem, pMonster, pPlayer),
+    sendPetSyncForMonster:
+      baseCallees.sendPetSyncForMonster !== undefined
+        ? baseCallees.sendPetSyncForMonster
+        : (mem, pg, pUnit, pCl, nType) =>
+            ITEMS_BroadcastUnitInventoryCommandFlags_6FCBBB10_113c(
+              mem as SparseMemory113c,
+              nType,
+              pg,
+              pUnit,
+              pCl,
+            ),
+    findMercPetType:
+      baseCallees.findMercPetType !== undefined
+        ? baseCallees.findMercPetType
+        : (mem, pg, pClientPlayer, pUnit) =>
+            SUNITPROXY_GetPlayerNodeItemInNpcSlot_6FCAFAA0_113c(mem, pUnit, pg, pClientPlayer),
+  }
   const sp = replayFinal11StackPtr
   replayFinal11StackPtr = (sp + 0x10) >>> 0
   try {
@@ -766,10 +1070,10 @@ export function SUNIT_SyncAdjacentRoomUnitsToClient113c(
     if (nRooms > 0 && pRoomsArr !== 0 && nRooms <= 64) {
       for (let i = 0; i < nRooms; i++) {
         const pAdjRoom = m.u32((pRoomsArr + i * 4) >>> 0) >>> 0
-        D2GAME_SUNIT_SyncRoomUnitsToClient113c(m, pAdjRoom, pClient, pGame, callees)
+        D2GAME_SUNIT_SyncRoomUnitsToClient113c(m, pAdjRoom, pClient, pGame, resolvedCallees)
       }
     } else if (bIgnoreActDirtyFlag && pRoom !== 0) {
-      D2GAME_SUNIT_SyncRoomUnitsToClient113c(m, pRoom, pClient, pGame, callees)
+      D2GAME_SUNIT_SyncRoomUnitsToClient113c(m, pRoom, pClient, pGame, resolvedCallees)
     }
   } finally {
     replayFinal11StackPtr = sp
@@ -826,10 +1130,23 @@ export function SUNIT_FreeUnit113c(m: Memory113c, pGame: number, pUnit: number):
       SUNITDMG_FreeAttackerCombatList113c(m, pUnit, pGame)
       SUNIT_ClearUnitInventoryItems113c(m, pGame, pUnit)
       const pPlayerData0 = UNITS_GetPlayerData113c(m, pUnit) >>> 0
+      const pInv0 = m.u32((pUnit + 0x60) >>> 0) >>> 0
+      if (pInv0 !== 0) {
+        INVENTORY_FreeInventory113c(m, pInv0)
+      }
       if (pPlayerData0 !== 0) {
-        m.setU32((pPlayerData0 + 0x60) >>> 0, 0)
-        m.setU32((pPlayerData0 + 0x64) >>> 0, 0)
-        m.setU32((pPlayerData0 + 0x68) >>> 0, 0)
+        m.setU32((pPlayerData0 + 0x34) >>> 0, 0)
+        m.setU32((pPlayerData0 + 0x38) >>> 0, 0)
+        m.setU32((pPlayerData0 + 0x98) >>> 0, 0)
+        for (let introIdx = 0; introIdx < 3; introIdx++) {
+          const pIntroSlot = (pPlayerData0 + 0x60 + introIdx * 4) >>> 0
+          const pIntroEntry = m.u32(pIntroSlot) >>> 0
+          if (pIntroEntry !== 0) {
+            if (m.u32(pIntroEntry) !== 0) m.setU32(pIntroEntry, 0)
+            if (m.u32((pIntroEntry + 4) >>> 0) !== 0) m.setU32((pIntroEntry + 4) >>> 0, 0)
+            m.setU32(pIntroSlot, 0)
+          }
+        }
         let hasValidWaypoints = true
         for (let off = 0x1c; off < 0x28; off += 4) {
           if (m.u32((pPlayerData0 + off) >>> 0) === 0) {

@@ -71,10 +71,13 @@ import {
   UNITS_GetRoom113c,
   UNIT_GetAlignment113c,
 } from '../common/unit.ts'
-import type { Memory113c } from '../mem/sparse-memory.ts'
+import type { Memory113c, SparseMemory113c } from '../mem/sparse-memory.ts'
 import { SUNITDMG_FreeAttackerCombatList113c } from './ai-fallen-113c.ts'
 import { MONREG_FindOrAllocActRoomNode113c } from './boot-init-gap-a-113c.ts'
-import { D2GAME_SUNIT_IterateAllLivingPlayers113c } from './boot-init-gap-b-113c.ts'
+import {
+  D2GAME_PARTY_GetPartyIdForUnit113c,
+  D2GAME_SUNIT_IterateAllLivingPlayers113c,
+} from './boot-init-gap-b-113c.ts'
 import { AIGENERAL_CopyAiCommandParams113c } from './replay-kernel-113c.ts'
 import { SUNIT_RemoveServerUnit113c } from './game-strc.ts'
 import { UNITS_ChangeAnimMode113c } from './monster-events.ts'
@@ -91,7 +94,11 @@ import {
   EVENT_GetNextEventFrame113c,
   EVENT_RemoveUnitEvents113c,
 } from './timer-wheel.ts'
-import { QUESTS_SetGlobalQuestState_6FC53920_113c } from './k2-laneJ-0x6fc4-w1-113c.ts'
+import {
+  QUESTS_CheckGlobalQuestState_6FC538D0_113c,
+  QUESTS_SetGlobalQuestState_6FC53920_113c,
+} from './k2-laneJ-0x6fc4-w1-113c.ts'
+import { MONSTER_CloseAllNpcInteractionsAndNotify_6FC68410_113c } from './k2-laneL-0x6fc6-w1-113c.ts'
 import {
   ACT5Q3_SyncPrisonOfIceQuestStateCallback_6FC78110_113c,
   ACT5Q4_SyncNihlathakQuestStateCallback_6FC77C00_113c,
@@ -132,13 +139,56 @@ import {
   ACT1Q1_SendAlert01IfQuest01Active_6FC82D30_113c,
   ACT1Q4_SpawnGriswoldInTristram_6FC860D0_113c,
 } from './k2-w4b3-113c.ts'
+import {
+  ACT3Q5_SyncCouncilQuestFlagsCallback113c,
+  ACT3Q6_SyncGidbinnState02Callback113c,
+  MONSTER_CountInteractingPlayers113c,
+  MONSTER_HasAnyInteractingPlayer113c,
+} from './k2-sunit-spawn-w1-113c.ts'
+import { ACT2Q6_UnitIterateSetQuest14State2_6FCE2A90_113c } from './k2-w2b7-113c.ts'
+import { SUNIT_BroadcastRemoveAndFreeUnit_6FC4CD10_113c } from './k2-w3b2-113c.ts'
 import { SUNIT_FindFirstLivingPlayerOrMonsterMatching_6FCFFCC0_113c } from './k2-w5b7-113c.ts'
+import {
+  ACT2Q3_UnitIterate_SyncQuestProgress_6FCE3750_113c,
+  ACT2Q4_UnitIterate_SyncQuestProgress_6FCE3550_113c,
+} from './k2-w5b4-113c.ts'
+import {
+  ACT2Q0_RelocateJerhynBetweenPalaceAndHarem_6FCE8FD0_113c,
+  ACT2Q1_PlayerJoinSyncQuest9StateCallback_6FCE4430_113c,
+  ACT2Q4_SendAlert0BIfQuest12Active_6FCE5030_113c,
+  ACT2Q6_SendAlert0DIfQuest14Active_6FCE4D30_113c,
+} from './k2-w5b5-113c.ts'
+import {
+  ACT3Q2_SyncPlayerGidbinnStateCallback_6FD046F0_113c,
+  ACT3Q4_SendLamEsensTomeQuestAlertCallback_6FD06550_113c,
+  ACT3Q7_SendMephistoQuestAlertCallback_6FD05BE0_113c,
+  ACT3Q7_SyncPlayerMephistoBitsFromQuest14Callback_6FD03560_113c,
+} from './k2-w5b8-113c.ts'
 import { NET_BroadcastSystemChatMessage_6FCEBE70_113c } from './k2-w6b3-113c.ts'
 import { QUESTS_Act2RadamentSetStateAndDebugPrint_6FC55EB0_113c } from './k2-w7b1-113c.ts'
 import {
   ACT1Q4_BroadcastDebugQuestNotice_6FC835B0_113c,
   ACT1Q4_UpdateGibbetModeAndCainState_6FC88280_113c,
 } from './k2-w7b2-113c.ts'
+import {
+  ACT2Q3_StartEclipseEvent_6FCE6A30_113c,
+  PETS_UnsummonPlayerPetByGuid_6FCB7B50_113c,
+} from './k2-w7b3-113c.ts'
+import { ACT2Q3_ScheduleTaintedSunTimer_6FCE7250_113c } from './k2-w9b2-113c.ts'
+import { MONSTER_GetInteractDataPtr_6FC21370_113c } from './k2-laneH-0x6fc2-w1-113c.ts'
+import { PARTY_FindSubPartyById_6FCBBD00_113c } from './k2-w2b4-113c.ts'
+import { QUESTS_SendNpcIntroPacket91_6FC55B60_113c } from './k2-w3b3-113c.ts'
+import {
+  ACT4Q1_SyncPlayerQuest19State_6FCD96A0_113c,
+  ACT4Q3_SendQuestAlertIfEligible_6FCD99D0_113c,
+  ACT4Q3_SyncPlayerQuest1AState_6FCD9290_113c,
+} from './k2-w4b8-113c.ts'
+import { NPCS_FreeVendorAndGambleInventoriesForSlot_6FCB0170_113c } from './k2-w5b2-113c.ts'
+import {
+  NET_SendPacket7F_PartyMemberLifeAndLevel_6FCAE2A0_113c,
+  NPCS_ResetVendorSlotInventory_6FCB02E0_113c,
+} from './k2-w6b2-113c.ts'
+import { ACT1Q4_OnPlayerEnterTristramWithCainUnrescued_6FC883C0_113c } from './k2-w8b2-113c.ts'
 import { hitD2GameVa113c } from '../va-trace-113c.ts'
 
 /** `D2Game.dll` image base (`0x6FC20000`) used to compute internal callback VAs without raw literals. */
@@ -263,15 +313,6 @@ export interface Post150LaneI1Hooks113c {
   onAct2TownEntered?: (m: Memory113c, pGame: number, pUnit: number) => void
 }
 
-function readGameQuestState(m: Memory113c, pGame: number, nQuestId: number, nState: number): number {
-  if (pGame === 0) return 0
-  const pQuestCtrl = m.u32((pGame + 0x10f4) >>> 0) >>> 0
-  if (pQuestCtrl === 0) return 0
-  const pQuestBits = m.u32((pQuestCtrl + 0x0c) >>> 0) >>> 0
-  if (pQuestBits === 0) return 0
-  return DRLGWARP_TestRoomTileBit113c(m, pQuestBits, nQuestId, nState)
-}
-
 function writeGameQuestState(m: Memory113c, pGame: number, nQuestId: number, nState: number): void {
   if (pGame === 0) return
   const pQuestCtrl = m.u32((pGame + 0x10f4) >>> 0) >>> 0
@@ -279,18 +320,6 @@ function writeGameQuestState(m: Memory113c, pGame: number, nQuestId: number, nSt
   const pQuestBits = m.u32((pQuestCtrl + 0x0c) >>> 0) >>> 0
   if (pQuestBits === 0) return
   QUESTRECORD_SetQuestState113c(m, pQuestBits, nQuestId, nState)
-}
-
-function setQuestMainStateDefault(
-  m: Memory113c,
-  pQuest: number,
-  nState: number,
-  hooks?: Post150LaneI1Hooks113c,
-): void {
-  m.setU8((pQuest + 0x0c) >>> 0, nState & 0xff)
-  if (hooks?.onQuestSetMainState !== undefined) {
-    hooks.onQuestSetMainState(m, pQuest, nState & 0xff)
-  }
 }
 
 function statusCyclerExDefault(
@@ -305,42 +334,6 @@ function statusCyclerExDefault(
     return
   }
   m.setU8((pQuest + 0x0c) >>> 0, bState & 0xff)
-}
-
-function iterateUnitsOfTypeDefault(
-  m: Memory113c,
-  pGame: number,
-  nUnitType: number,
-  pArg: number,
-  callbackRva: number,
-  hooks?: Post150LaneI1Hooks113c,
-): number {
-  const callbackVa = (D2GAME_IMAGE_BASE_113C + callbackRva) >>> 0
-  if (hooks?.onIterateUnitsOfType !== undefined) {
-    return hooks.onIterateUnitsOfType(m, pGame, nUnitType, pArg, callbackVa) | 0
-  }
-  if (pGame === 0) return 0
-  let tableBase = 0
-  if (nUnitType === 0) {
-    tableBase = (pGame + 0x1120) >>> 0
-  } else if (nUnitType === 1) {
-    tableBase = (pGame + 0x1320) >>> 0
-  } else {
-    return 0
-  }
-  for (let i = 0; i < 128; i++) {
-    let pUnit = m.u32((tableBase + i * 4) >>> 0) >>> 0
-    while (pUnit !== 0) {
-      if (STATES_CheckState113c(m, pUnit, 7) === 0) {
-        if (hooks?.onQuestHelperCall !== undefined) {
-          const res = hooks.onQuestHelperCall(m, callbackRva, pGame, pUnit, pArg)
-          if (res === 1) return pUnit | 0
-        }
-      }
-      pUnit = m.u32((pUnit + 0xe4) >>> 0) >>> 0
-    }
-  }
-  return 0
 }
 
 function forEachPlayerInGameDefault(
@@ -369,16 +362,6 @@ function forEachPlayerInGameDefault(
   )
 }
 
-function hasActiveNpcInteract(m: Memory113c, pInteract: number): number {
-  if (pInteract === 0) return 0
-  let pNode = m.u32(pInteract >>> 0) >>> 0
-  while (pNode !== 0) {
-    if (m.u32(pNode >>> 0) !== 0) return 1
-    pNode = m.u32((pNode + 0x08) >>> 0) >>> 0
-  }
-  return 0
-}
-
 function countActiveNpcInteracts(m: Memory113c, pInteract: number): number {
   if (pInteract === 0) return 0
   let pNode = m.u32(pInteract >>> 0) >>> 0
@@ -388,30 +371,6 @@ function countActiveNpcInteracts(m: Memory113c, pInteract: number): number {
     pNode = m.u32((pNode + 0x08) >>> 0) >>> 0
   }
   return count
-}
-
-function clearMonsterInteractList(m: Memory113c, pGame: number, pUnit: number): void {
-  if (pUnit === 0) return
-  if (m.u32(pUnit >>> 0) !== 1) return
-  const pMonsterData = m.u32((pUnit + 0x14) >>> 0) >>> 0
-  if (pMonsterData === 0) return
-  const pInteract = m.u32((pMonsterData + 0x30) >>> 0) >>> 0
-  if (pInteract === 0) return
-  let pNode = m.u32(pInteract >>> 0) >>> 0
-  while (pNode !== 0) {
-    const pPlayer = m.u32(pNode >>> 0) >>> 0
-    const pNext = m.u32((pNode + 0x08) >>> 0) >>> 0
-    if (pPlayer !== 0) {
-      m.setU32((pPlayer + 0x64) >>> 0, 0xffffffff)
-      m.setU32((pPlayer + 0x68) >>> 0, 6)
-      m.setU8((pPlayer + 0x6c) >>> 0, 0)
-    }
-    if (pGame !== 0) {
-      freeMemBlock(m, pNode)
-    }
-    pNode = pNext
-  }
-  m.setU32(pInteract >>> 0, 0)
 }
 
 // ============================================================================
@@ -1745,65 +1704,125 @@ export function NPCS_UpdateMercenaryOrVendorSlots113c(
   hooks?: Post150LaneI1Hooks113c,
 ): void {
   hitD2GameVa113c(0x6FCB0320)
-  const pNpcCtrl = m.u32((pGame + 0x1d24) >>> 0) >>> 0
-  if (pNpcCtrl === 0) return
-  const count = (m.u32(pNpcCtrl >>> 0) | 0)
-  if (count <= 0) return
-  const sgpt = getSgptDataTablesPtr(m)
-  const monStatsBase = sgpt !== 0 ? m.u32((sgpt + 0xa78) >>> 0) >>> 0 : 0
-  const monStatsCount = sgpt !== 0 ? (m.u32((sgpt + 0xa80) | 0) >>> 0) : 0
-  let offset = 0
-  for (let i = 0; i < count; i++, offset += 0x44) {
-    const pArray = m.u32((pNpcCtrl + 0x04) >>> 0) >>> 0
-    const pRec = (pArray + offset) >>> 0
-    const hcIdx = (m.u32(pRec >>> 0) | 0)
-    let pMonStats = 0
-    if (hcIdx >= 0 && hcIdx < monStatsCount && monStatsBase !== 0) {
-      pMonStats = (monStatsBase + hcIdx * 0x1a8) >>> 0
-    }
-    let nMonAct = 0
-    if (pMonStats !== 0) {
-      nMonAct = m.u8((pMonStats + 0x6b) >>> 0) - 1
-    }
-    if (nMonAct === nAct) {
-      if (m.u32((pRec + 0x34) >>> 0) !== 0 && bTownEmpty === 0) {
-        if ((m.u32((pRec + 0x38) | 0) >>> 0) <= 0) {
-          let roll = 0
-          if (hooks?.onSeedRollLimited !== undefined) {
-            roll = hooks.onSeedRollLimited(m, (pNpcCtrl + 0x08) >>> 0, 0x3fff)
-          }
-          m.setU32((pRec + 0x3c) >>> 0, roll >>> 0)
-        }
-        m.setU32((pRec + 0x38) >>> 0, (((m.u32((pRec + 0x38) | 0) >>> 0) + 1) | 0) >>> 0)
+  if (hooks !== undefined) {
+    const pNpcCtrl = m.u32((pGame + 0x1d24) >>> 0) >>> 0
+    if (pNpcCtrl === 0) return
+    const count = (m.u32(pNpcCtrl >>> 0) | 0)
+    if (count <= 0) return
+    const sgpt = getSgptDataTablesPtr(m)
+    const monStatsBase = sgpt !== 0 ? m.u32((sgpt + 0xa78) >>> 0) >>> 0 : 0
+    const monStatsCount = sgpt !== 0 ? (m.u32((sgpt + 0xa80) | 0) >>> 0) : 0
+    let offset = 0
+    for (let i = 0; i < count; i++, offset += 0x44) {
+      const pArray = m.u32((pNpcCtrl + 0x04) >>> 0) >>> 0
+      const pRec = (pArray + offset) >>> 0
+      const hcIdx = (m.u32(pRec >>> 0) | 0)
+      let pMonStats = 0
+      if (hcIdx >= 0 && hcIdx < monStatsCount && monStatsBase !== 0) {
+        pMonStats = (monStatsBase + hcIdx * 0x1a8) >>> 0
       }
-      if (m.u32((pRec + 0x18) >>> 0) === 0 && bTownEmpty !== 0) {
-        if (countActiveNpcInteracts(m, m.u32((pRec + 0x2c) >>> 0) >>> 0) <= 0) {
-          if (m.u8((pRec + 0x1c) >>> 0) === 1 || m.u32((pRec + 0x0c) >>> 0) !== 0) {
-            if (hooks?.onFreeNpcInventoryNode !== undefined) {
-              hooks.onFreeNpcInventoryNode(m, pGame, pRec)
-            } else {
-              m.setU32((pRec + 0x04) >>> 0, 0)
-              m.setU32((pRec + 0x08) >>> 0, 0)
-              m.setU32((pRec + 0x14) >>> 0, 0)
+      let nMonAct = 0
+      if (pMonStats !== 0) {
+        nMonAct = m.u8((pMonStats + 0x6b) >>> 0) - 1
+      }
+      if (nMonAct === nAct) {
+        if (m.u32((pRec + 0x34) >>> 0) !== 0 && bTownEmpty === 0) {
+          if ((m.u32((pRec + 0x38) | 0) >>> 0) <= 0) {
+            let roll = 0
+            if (hooks.onSeedRollLimited !== undefined) {
+              roll = hooks.onSeedRollLimited(m, (pNpcCtrl + 0x08) >>> 0, 0x3fff)
             }
-            m.setU8((pRec + 0x20) >>> 0, 0)
-            m.setU8((pRec + 0x1c) >>> 0, 0)
-            const pInv = INVENTORY_AllocInventory113c(m, m.u32((pGame + 0x1c) >>> 0) >>> 0, 0)
-            m.setU32((pRec + 0x04) >>> 0, pInv >>> 0)
-          } else if (m.u8((pRec + 0x1e) >>> 0) === 1) {
-            if (hooks?.onReinitNpcRecord !== undefined) {
-              hooks.onReinitNpcRecord(m, pGame, pRec, 0)
-            } else {
+            m.setU32((pRec + 0x3c) >>> 0, roll >>> 0)
+          }
+          m.setU32((pRec + 0x38) >>> 0, (((m.u32((pRec + 0x38) | 0) >>> 0) + 1) | 0) >>> 0)
+        }
+        if (m.u32((pRec + 0x18) >>> 0) === 0 && bTownEmpty !== 0) {
+          if (countActiveNpcInteracts(m, m.u32((pRec + 0x2c) >>> 0) >>> 0) <= 0) {
+            if (m.u8((pRec + 0x1c) >>> 0) === 1 || m.u32((pRec + 0x0c) >>> 0) !== 0) {
+              if (hooks.onFreeNpcInventoryNode !== undefined) {
+                hooks.onFreeNpcInventoryNode(m, pGame, pRec)
+              } else {
+                m.setU32((pRec + 0x04) >>> 0, 0)
+                m.setU32((pRec + 0x08) >>> 0, 0)
+                m.setU32((pRec + 0x14) >>> 0, 0)
+              }
               m.setU8((pRec + 0x20) >>> 0, 0)
-              m.setU32((pRec + 0x28) >>> 0, 0)
+              m.setU8((pRec + 0x1c) >>> 0, 0)
               const pInv = INVENTORY_AllocInventory113c(m, m.u32((pGame + 0x1c) >>> 0) >>> 0, 0)
               m.setU32((pRec + 0x04) >>> 0, pInv >>> 0)
+            } else if (m.u8((pRec + 0x1e) >>> 0) === 1) {
+              if (hooks.onReinitNpcRecord !== undefined) {
+                hooks.onReinitNpcRecord(m, pGame, pRec, 0)
+              } else {
+                m.setU8((pRec + 0x20) >>> 0, 0)
+                m.setU32((pRec + 0x28) >>> 0, 0)
+                const pInv = INVENTORY_AllocInventory113c(m, m.u32((pGame + 0x1c) >>> 0) >>> 0, 0)
+                m.setU32((pRec + 0x04) >>> 0, pInv >>> 0)
+              }
+              m.setU8((pRec + 0x1e) >>> 0, 0)
             }
-            m.setU8((pRec + 0x1e) >>> 0, 0)
           }
         }
       }
     }
+    return
+  }
+
+  if (pGame === 0) return
+  const pNpcCtrl = m.u32((pGame + 0x1d24) >>> 0) >>> 0
+  if (pNpcCtrl === 0) return
+  let dwTick = 0
+  try {
+    dwTick = m.u32(0x6fd18d10) >>> 0
+  } catch {
+    dwTick = 0
+  }
+  const pArray = m.u32((pNpcCtrl + 0x04) >>> 0) >>> 0
+  if ((m.u32(pNpcCtrl >>> 0) | 0) <= 0) return
+
+  const targetAct = nAct & 0xff
+  const emptyTown = (bTownEmpty | 0) !== 0
+  let i = 0
+  let pRec = pArray >>> 0
+  for (;;) {
+    if (
+      (pRec + 0x20) >>> 0 !== 0 &&
+      m.u8((pRec + 0x22) >>> 0) === targetAct &&
+      m.u8((pRec + 0x23) >>> 0) === 1 &&
+      (m.u32((pRec + 0x1c) >>> 0) | 0) === 1 &&
+      m.u8((pRec + 0x20) >>> 0) === 1
+    ) {
+      if (emptyTown) {
+        const dwGuid = m.u32((pRec + 0x40) >>> 0) >>> 0
+        let pNpcUnit = m.u32((pGame + ((dwGuid & 0x7f) << 2) + 0x1320) >>> 0) >>> 0
+        while (pNpcUnit !== 0 && (m.u32((pNpcUnit + 0x0c) >>> 0) >>> 0) !== dwGuid) {
+          pNpcUnit = m.u32((pNpcUnit + 0xe4) >>> 0) >>> 0
+        }
+        if (pNpcUnit === 0 || (m.u32((pNpcUnit + 0x04) >>> 0) >>> 0) !== (m.u32(pRec >>> 0) >>> 0)) {
+          NPCS_FreeVendorAndGambleInventoriesForSlot_6FCB0170_113c(m, pGame, pRec)
+          m.setU8((pRec + 0x20) >>> 0, 0)
+          m.setU32((pRec + 0x28) >>> 0, 0)
+          const pInv = INVENTORY_AllocInventory113c(m, m.u32((pGame + 0x1c) >>> 0) >>> 0, 0) >>> 0
+          m.setU32((pRec + 0x04) >>> 0, pInv)
+        } else {
+          const pInteract = MONSTER_GetInteractDataPtr_6FC21370_113c(m, pNpcUnit) >>> 0
+          if ((MONSTER_CountInteractingPlayers113c(m, pInteract) | 0) === 0) {
+            NPCS_ResetVendorSlotInventory_6FCB02E0_113c(m, pGame, pRec, pNpcUnit)
+          } else {
+            m.setU8((pRec + 0x27) >>> 0, 1)
+          }
+        }
+      } else {
+        const expireTick = (m.u32((pRec + 0x28) >>> 0) + 0x3a980) >>> 0
+        if (dwTick >>> 0 > expireTick) {
+          m.setU32((pRec + 0x28) >>> 0, dwTick >>> 0)
+          m.setU8((pRec + 0x27) >>> 0, 1)
+        }
+      }
+    }
+    i = (i + 1) | 0
+    pRec = (pRec + 0x44) >>> 0
+    if (i >= (m.u32(pNpcCtrl >>> 0) | 0)) break
   }
 }
 
@@ -1824,51 +1843,97 @@ export function NPCS_OnPlayerLevelChange113c(
 ): void {
   hitD2GameVa113c(0x6FCB0C60)
   const savedStack = laneI1StackPtr
-  const pCtx = allocStackFrame(m, 8)
-  m.setU32(pCtx >>> 0, (nFromLevel | 0) >>> 0)
-  m.setU32((pCtx + 0x04) >>> 0, (0) >>> 0)
+  if (hooks !== undefined) {
+    const pCtx = allocStackFrame(m, 8)
+    m.setU32(pCtx >>> 0, (nFromLevel | 0) >>> 0)
+    m.setU32((pCtx + 0x04) >>> 0, (0) >>> 0)
 
-  let fromAct = -1
-  if (nFromLevel === 1) fromAct = 0
-  else if (nFromLevel === 40) fromAct = 1
-  else if (nFromLevel === 75) fromAct = 2
-  else if (nFromLevel === 103) fromAct = 3
-  else if (nFromLevel === 109) fromAct = 4
+    let fromAct = -1
+    if (nFromLevel === 1) fromAct = 0
+    else if (nFromLevel === 40) fromAct = 1
+    else if (nFromLevel === 75) fromAct = 2
+    else if (nFromLevel === 103) fromAct = 3
+    else if (nFromLevel === 109) fromAct = 4
 
-  if (fromAct >= 0) {
-    forEachPlayerInGameDefault(
-      m,
-      pGame,
-      pCtx,
-      0x8f410,
-      ARENA_CountPlayersInLevelCallback113c,
-      hooks,
-    )
-    const remainingInFromLevel = m.u32((pCtx + 0x04) >>> 0) >>> 0
-    const bTownEmpty = remainingInFromLevel === 0 ? 1 : 0
-    NPCS_UpdateMercenaryOrVendorSlots113c(m, pGame, fromAct, bTownEmpty, hooks)
-    if (bTownEmpty !== 0 && fromAct < 4 && hooks?.onActPlayerCountChanged !== undefined) {
-      hooks.onActPlayerCountChanged(m, pGame, fromAct, 0)
+    if (fromAct >= 0) {
+      forEachPlayerInGameDefault(
+        m,
+        pGame,
+        pCtx,
+        0x8f410,
+        ARENA_CountPlayersInLevelCallback113c,
+        hooks,
+      )
+      const remainingInFromLevel = m.u32((pCtx + 0x04) >>> 0) >>> 0
+      const bTownEmpty = remainingInFromLevel === 0 ? 1 : 0
+      NPCS_UpdateMercenaryOrVendorSlots113c(m, pGame, fromAct, bTownEmpty, hooks)
+      if (bTownEmpty !== 0 && fromAct < 4 && hooks.onActPlayerCountChanged !== undefined) {
+        hooks.onActPlayerCountChanged(m, pGame, fromAct, 0)
+      }
     }
+
+    let toAct = -1
+    if (nToLevel === 1) toAct = 0
+    else if (nToLevel === 40) toAct = 1
+    else if (nToLevel === 75) toAct = 2
+    else if (nToLevel === 109) toAct = 4
+
+    if (toAct >= 0) {
+      NPCS_UpdateMercenaryOrVendorSlots113c(m, pGame, toAct, 0, hooks)
+      if (toAct < 3 && hooks.onActPlayerCountChanged !== undefined) {
+        hooks.onActPlayerCountChanged(m, pGame, toAct, 1)
+      }
+      if (toAct === 1 && hooks.onAct2TownEntered !== undefined) {
+        hooks.onAct2TownEntered(m, pGame, pUnit)
+      }
+    }
+
+    freeStackFrame(savedStack)
+    return
   }
 
-  let toAct = -1
-  if (nToLevel === 1) toAct = 0
-  else if (nToLevel === 40) toAct = 1
-  else if (nToLevel === 75) toAct = 2
-  else if (nToLevel === 109) toAct = 4
+  try {
+    const fromLvl = nFromLevel | 0
+    let fromAct = -1
+    if (fromLvl === 1) fromAct = 0
+    else if (fromLvl === 40) fromAct = 1
+    else if (fromLvl === 75) fromAct = 2
+    else if (fromLvl === 103) fromAct = 3
+    else if (fromLvl === 109) fromAct = 4
 
-  if (toAct >= 0) {
-    NPCS_UpdateMercenaryOrVendorSlots113c(m, pGame, toAct, 0, hooks)
-    if (toAct < 3 && hooks?.onActPlayerCountChanged !== undefined) {
-      hooks.onActPlayerCountChanged(m, pGame, toAct, 1)
+    if (fromAct >= 0) {
+      const pCtx = allocStackFrame(m, 8)
+      m.setU32(pCtx >>> 0, fromLvl >>> 0)
+      m.setU32((pCtx + 0x04) >>> 0, 0)
+      D2GAME_SUNIT_IterateAllLivingPlayers113c(
+        m,
+        pGame,
+        ARENA_CountPlayersInLevelCallback113c,
+        pCtx,
+      )
+      const remainingInFromLevel = m.u32((pCtx + 0x04) >>> 0) >>> 0
+      const bTownEmpty = remainingInFromLevel === 0 ? 1 : 0
+      NPCS_UpdateMercenaryOrVendorSlots113c(m, pGame, fromAct, bTownEmpty)
     }
-    if (toAct === 1 && hooks?.onAct2TownEntered !== undefined) {
-      hooks.onAct2TownEntered(m, pGame, pUnit)
+
+    const toLvl = nToLevel | 0
+    if (toLvl === 1) {
+      QUESTS_SendNpcIntroPacket91_6FC55B60_113c(m, pUnit, 0, pGame)
+    } else if (toLvl === 40) {
+      QUESTS_SendNpcIntroPacket91_6FC55B60_113c(m, pUnit, 1, pGame)
+      ACT1Q4_OnPlayerEnterTristramWithCainUnrescued_6FC883C0_113c(
+        m as SparseMemory113c,
+        pUnit,
+        pGame,
+      )
+    } else if (toLvl === 75) {
+      QUESTS_SendNpcIntroPacket91_6FC55B60_113c(m, pUnit, 2, pGame)
+    } else if (toLvl === 109) {
+      QUESTS_SendNpcIntroPacket91_6FC55B60_113c(m, pUnit, 4, pGame)
     }
+  } finally {
+    freeStackFrame(savedStack)
   }
-
-  freeStackFrame(savedStack)
 }
 
 /**
@@ -1908,7 +1973,7 @@ export function ACT3Q1_Callback03_LevelChanged113c(
 }
 
 /**
- * Act 3 Quest 2 (Blade of the Old Religion) level-change callback (`cbIdx = 3`, Entering `0x6C`).
+ * Act 4 Quest 3 (Terror's End) level-change callback (`cbIdx = 3`, Leaving `0x67`, Entering `0x6C`).
  *
  * @va D2Game:0x6FCDA3A0 (239B)
  */
@@ -1916,41 +1981,66 @@ export function ACT3Q2_Callback03_LevelChanged113c(
   m: Memory113c,
   pQuest: number,
   pArg: number,
-  hooks?: Post150LaneI1Hooks113c,
+  _hooks?: Post150LaneI1Hooks113c,
 ): void {
   hitD2GameVa113c(0x6FCDA3A0)
-  if (m.u32((pArg + 0x18) >>> 0) === 0x6c) {
+  if (pQuest === 0 || pArg === 0) return
+  const nFromLevel = m.u32((pArg + 0x14) >>> 0) | 0
+  const nToLevel = m.u32((pArg + 0x18) >>> 0) | 0
+
+  if (nFromLevel === 0x67 && m.u8((pQuest + 0x0c) >>> 0) === 2) {
     const pUnit = m.u32((pArg + 0x0c) >>> 0) >>> 0
-    const pPlayerData = UNITS_GetPlayerData113c(m, pUnit)
     const pGame = m.u32(pArg >>> 0) >>> 0
+    const pPlayerData = UNITS_GetPlayerData113c(m, pUnit) >>> 0
     const diffIdx = m.u8((pGame + 0x6d) >>> 0)
     const pQuestFlags = m.u32((pPlayerData + diffIdx * 4 + 0x10) >>> 0) >>> 0
-    const hasState0 = DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 0x15, 0)
-    const hasState1 = DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 0x15, 1)
-    if (m.u8((pQuest + 0x0a) >>> 0) === 1) {
-      if ((hasState0 === 0 && hasState1 === 0) || m.u32((pQuest + 0x14) >>> 0) < 2) {
-        m.setU32((pQuest + 0x14) >>> 0, 2)
-        statusCyclerExDefault(
-          m,
-          pQuest,
-          m.u8((pQuest + 0x0c) >>> 0) === 0 ? 1 : 0,
-          m.u8((pQuest + 0x0c) >>> 0),
-          hooks,
-        )
-      }
+    const questId = m.u32((pQuest + 0xe0) >>> 0) | 0
+    if (DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, questId, 0) === 1) {
+      return
     }
-    const pQuestData = m.u32((pQuest + 0x18) >>> 0) >>> 0
-    if (m.u8((pQuestData + 0x01) >>> 0) === 1) {
-      m.setU32((pQuest + 0xb0) >>> 0, (D2GAME_IMAGE_BASE_113C + 0xb9290) >>> 0)
-      if (hooks?.onQuestHelperCall !== undefined) {
-        hooks.onQuestHelperCall(m, 0xb99d0, pQuest, pArg)
-      }
+    if (m.u8((pQuest + 0x0c) >>> 0) < 3) {
+      QUESTS_Act2RadamentSetStateAndDebugPrint_6FC55EB0_113c(m, pQuest, 3)
     }
+    if (m.u8((pQuest + 0x0b) >>> 0) < 1) {
+      m.setU8((pQuest + 0x14) >>> 0, 0)
+      m.setU8((pQuest + 0x0b) >>> 0, 1)
+    }
+    SUNIT_FindFirstLivingPlayerOrMonsterMatching_6FCFFCC0_113c(
+      m,
+      m.u32((pQuest + 0x04) >>> 0) >>> 0,
+      ACT4Q3_SyncPlayerQuest1AState_6FCD9290_113c,
+      0,
+      0,
+    )
+  }
+
+  if (nToLevel === 0x6c && m.u8((pQuest + 0x09) >>> 0) !== 0) {
+    if (m.u8((pQuest + 0x0c) >>> 0) < 3) {
+      QUESTS_Act2RadamentSetStateAndDebugPrint_6FC55EB0_113c(m, pQuest, 3)
+    }
+    if (m.u8((pQuest + 0x0b) >>> 0) < 1) {
+      m.setU8((pQuest + 0x0b) >>> 0, 1)
+      m.setU8((pQuest + 0x14) >>> 0, 0)
+      SUNIT_FindFirstLivingPlayerOrMonsterMatching_6FCFFCC0_113c(
+        m,
+        m.u32((pQuest + 0x04) >>> 0) >>> 0,
+        ACT4Q3_SendQuestAlertIfEligible_6FCD99D0_113c,
+        0,
+        0,
+      )
+    }
+    SUNIT_FindFirstLivingPlayerOrMonsterMatching_6FCFFCC0_113c(
+      m,
+      m.u32((pQuest + 0x04) >>> 0) >>> 0,
+      ACT4Q3_SyncPlayerQuest1AState_6FCD9290_113c,
+      0,
+      0,
+    )
   }
 }
 
 /**
- * Act 3 Quest 3 (Khalim's Will) level-change callback (`cbIdx = 3`, Leaving `0x67`).
+ * Act 4 Quest 1 (The Fallen Angel) level-change callback (`cbIdx = 3`, Leaving `0x67`).
  *
  * @va D2Game:0x6FCDA550 (137B)
  */
@@ -1961,24 +2051,33 @@ export function ACT3Q3_Callback03_LevelChanged113c(
   _hooks?: Post150LaneI1Hooks113c,
 ): void {
   hitD2GameVa113c(0x6FCDA550)
+  if (pQuest === 0 || pArg === 0) return
   if (m.u32((pArg + 0x14) >>> 0) === 0x67) {
-    const pUnit = m.u32((pArg + 0x0c) >>> 0) >>> 0
-    const dwGuid = pUnit !== 0 ? m.u32((pUnit + 0x0c) >>> 0) : 0xffffffff
     if (m.u16((pQuest + 0x9c) >>> 0) > 0) {
+      const pUnit = m.u32((pArg + 0x0c) >>> 0) >>> 0
+      const dwGuid = pUnit !== 0 ? (m.u32((pUnit + 0x0c) >>> 0) >>> 0) : 0xffffffff
       QUESTS_GuidListRemove113c(m, (pQuest + 0x1c) >>> 0, dwGuid)
     }
-    const pPlayerData = UNITS_GetPlayerData113c(m, pUnit)
-    const pGame = m.u32(pArg >>> 0) >>> 0
-    const diffIdx = m.u8((pGame + 0x6d) >>> 0)
-    const pQuestFlags = m.u32((pPlayerData + diffIdx * 4 + 0x10) >>> 0) >>> 0
-    if (
-      DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 0x16, 0) !== 1 &&
-      m.u8((pQuest + 0x0a) >>> 0) === 1
-    ) {
-      const pQuestData = m.u32((pQuest + 0x18) >>> 0) >>> 0
-      if (m.u8((pQuestData + 0x00) >>> 0) !== 1) {
-        m.setU8((pQuest + 0x0b) >>> 0, 1)
-        m.setU32((pQuest + 0x0c) >>> 0, 1)
+    if (m.u8((pQuest + 0x0c) >>> 0) === 2) {
+      const pUnit = m.u32((pArg + 0x0c) >>> 0) >>> 0
+      const pGame = m.u32(pArg >>> 0) >>> 0
+      const pPlayerData = UNITS_GetPlayerData113c(m, pUnit) >>> 0
+      const diffIdx = m.u8((pGame + 0x6d) >>> 0)
+      const pQuestFlags = m.u32((pPlayerData + diffIdx * 4 + 0x10) >>> 0) >>> 0
+      const questId = m.u32((pQuest + 0xe0) >>> 0) | 0
+      if (DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, questId, 0) !== 1) {
+        QUESTS_Act2RadamentSetStateAndDebugPrint_6FC55EB0_113c(m, pQuest, 3)
+        SUNIT_FindFirstLivingPlayerOrMonsterMatching_6FCFFCC0_113c(
+          m,
+          m.u32((pQuest + 0x04) >>> 0) >>> 0,
+          ACT4Q1_SyncPlayerQuest19State_6FCD96A0_113c,
+          0,
+          0,
+        )
+        if (m.u8((pQuest + 0x0b) >>> 0) === 0) {
+          m.setU8((pQuest + 0x14) >>> 0, 0)
+          m.setU8((pQuest + 0x0b) >>> 0, 1)
+        }
       }
     }
   }
@@ -1995,17 +2094,13 @@ export function ACT2Q1_Callback03_LevelChanged113c(
   pArg: number,
 ): void {
   hitD2GameVa113c(0x6FCE2E20)
-  if (m.u32((pArg + 0x14) >>> 0) === 0x28) {
-    const pUnit = m.u32((pArg + 0x0c) >>> 0) >>> 0
-    const dwGuid = pUnit !== 0 ? m.u32((pUnit + 0x0c) >>> 0) : 0xffffffff
-    if (m.u16((pQuest + 0x9c) >>> 0) > 0) {
-      QUESTS_GuidListRemove113c(m, (pQuest + 0x1c) >>> 0, dwGuid)
-    }
-  }
-  if (m.u32((pArg + 0x18) >>> 0) === 0x32) {
-    const pQuestData = m.u32((pQuest + 0x18) >>> 0) >>> 0
-    m.setU8((pQuestData + 0x01) >>> 0, 1)
-  }
+  if (m.u8((pQuest + 0x09) >>> 0) === 0) return
+  if ((m.u32((pArg + 0x18) >>> 0) | 0) < 0x28) return
+  if ((m.u32((pArg + 0x14) >>> 0) | 0) !== 0x28) return
+  if (m.u16((pQuest + 0x9c) >>> 0) <= 0) return
+  const pUnit = m.u32((pArg + 0x0c) >>> 0) >>> 0
+  const dwGuid = pUnit !== 0 ? (m.u32((pUnit + 0x0c) >>> 0) >>> 0) : 0xffffffff
+  QUESTS_GuidListRemove113c(m, (pQuest + 0x1c) >>> 0, dwGuid)
 }
 
 /**
@@ -2037,85 +2132,81 @@ export function ACT2Q3_Callback03_LevelChanged113c(
   m: Memory113c,
   pQuest: number,
   pArg: number,
-  hooks?: Post150LaneI1Hooks113c,
+  _hooks?: Post150LaneI1Hooks113c,
 ): void {
   hitD2GameVa113c(0x6FCE6450)
-  const nFromLevel = m.u32((pArg + 0x14) >>> 0)
-  if (nFromLevel === 0x28) {
+  const nToLevel = m.u32((pArg + 0x18) >>> 0) | 0
+  if (nToLevel < 0x28 || nToLevel >= 0x4b) return
+
+  if ((m.u32((pArg + 0x14) >>> 0) | 0) === 0x28 && m.u16((pQuest + 0x9c) >>> 0) > 0) {
     const pUnit = m.u32((pArg + 0x0c) >>> 0) >>> 0
-    const dwGuid = pUnit !== 0 ? m.u32((pUnit + 0x0c) >>> 0) : 0xffffffff
-    const pQuestData = m.u32((pQuest + 0x18) >>> 0) >>> 0
-    if (m.u16((pQuestData + 0x9c) >>> 0) > 0) {
-      QUESTS_GuidListRemove113c(m, (pQuestData + 0x1c) >>> 0, dwGuid)
-    }
-  } else if (nFromLevel === 0x2c || nFromLevel === 0x2d) {
-    if (hooks?.onQuestHelperCall !== undefined) {
-      hooks.onQuestHelperCall(m, 0xc2a90, m.u32(pArg >>> 0) >>> 0, pArg)
-    }
+    const dwGuid = pUnit !== 0 ? (m.u32((pUnit + 0x0c) >>> 0) >>> 0) : 0xffffffff
+    QUESTS_GuidListRemove113c(m, (pQuest + 0x1c) >>> 0, dwGuid)
   }
-  const nToLevel = m.u32((pArg + 0x18) >>> 0)
-  switch (nToLevel) {
-    case 0x2b:
-    case 0x2c:
-    case 0x3b:
-    case 0x3c: {
-      if (nToLevel === 0x2c && hooks?.onQuestHelperCall !== undefined) {
-        hooks.onQuestHelperCall(m, 0xc2a90, m.u32(pArg >>> 0) >>> 0, pArg)
-      }
-      if (m.u8((pQuest + 0x0a) >>> 0) !== 1) return
-      const stateVal = m.u32((pQuest + 0x14) >>> 0)
-      if (stateVal > 1) return
-      if (stateVal === 0) {
-        m.setU32((pQuest + 0x14) >>> 0, 1)
-      }
-      m.setU8((pQuest + 0x0b) >>> 0, 1)
-      setQuestMainStateDefault(m, pQuest, 1, hooks)
-      return
-    }
-    case 0x2d:
-    case 0x3a:
-    case 0x3d: {
-      if (nToLevel === 0x2d && hooks?.onQuestHelperCall !== undefined) {
-        hooks.onQuestHelperCall(m, 0xc2a90, m.u32(pArg >>> 0) >>> 0, pArg)
-      }
-      if (m.u8((pQuest + 0x0a) >>> 0) !== 1) return
-      if (m.u32((pQuest + 0x14) >>> 0) >= 2) return
-      m.setU32((pQuest + 0x14) >>> 0, 2)
-      const bState = m.u8((pQuest + 0x0c) >>> 0)
-      if (bState === 1 || bState === 2) {
-        setQuestMainStateDefault(m, pQuest, bState, hooks)
-      } else {
-        setQuestMainStateDefault(m, pQuest, 1, hooks)
-      }
-      return
-    }
-    case 0x4a: {
-      if (m.u8((pQuest + 0x0a) >>> 0) !== 1) return
-      if (m.u32((pQuest + 0x14) >>> 0) >= 3) return
-      m.setU32((pQuest + 0x14) >>> 0, 3)
-      const bState = m.u8((pQuest + 0x0c) >>> 0)
-      if (bState - 1 <= 2) {
-        setQuestMainStateDefault(m, pQuest, bState, hooks)
-      } else {
-        setQuestMainStateDefault(m, pQuest, 1, hooks)
-      }
-      return
-    }
-    default: {
+  if (m.u8((pQuest + 0x09) >>> 0) === 0) return
+
+  const pQuestData = m.u32((pQuest + 0x18) >>> 0) >>> 0
+  if (m.u8((pQuestData + 0x01) >>> 0) === 0) {
+    let nTombLevel = m.u32((pQuestData + 0x34) >>> 0) | 0
+    if (nTombLevel === 0) {
       const pGame = m.u32(pArg >>> 0) >>> 0
       const pAct2 = m.u32((pGame + 0xc0) >>> 0) >>> 0
-      const bossTomb = pAct2 !== 0 ? DRLGLOGIC_GetBossTombLevel113c(m, pAct2) : 0
-      if (nToLevel === bossTomb && m.u8((pQuest + 0x0a) >>> 0) === 1 && m.u32((pQuest + 0x14) >>> 0) < 4) {
-        m.setU32((pQuest + 0x14) >>> 0, 4)
-        const bState = m.u8((pQuest + 0x0c) >>> 0)
-        if (bState - 1 <= 2) {
-          setQuestMainStateDefault(m, pQuest, bState, hooks)
-        } else {
-          setQuestMainStateDefault(m, pQuest, 1, hooks)
-        }
+      nTombLevel = DRLGLOGIC_GetBossTombLevel113c(m, pAct2) | 0
+      m.setU32((pQuestData + 0x34) >>> 0, nTombLevel >>> 0)
+    }
+    if (nTombLevel === 0) return
+
+    if (nToLevel === nTombLevel) {
+      if (m.u8((pQuest + 0x0c) >>> 0) === 2) return
+      QUESTS_Act2RadamentSetStateAndDebugPrint_6FC55EB0_113c(m, pQuest, 2)
+      if (m.u8((pQuest + 0x0b) >>> 0) <= 1) {
+        m.setU8((pQuest + 0x14) >>> 0, 0)
+        m.setU8((pQuest + 0x0b) >>> 0, 2)
       }
+      ACT2Q6_UnitIterateSetQuest14State2_6FCE2A90_113c(
+        m,
+        m.u32(pArg >>> 0) >>> 0,
+        m.u32((pArg + 0x0c) >>> 0) >>> 0,
+        0,
+      )
       return
     }
+    if (nToLevel === 0x2e) {
+      if (m.u8((pQuest + 0x0c) >>> 0) === 0) {
+        QUESTS_Act2RadamentSetStateAndDebugPrint_6FC55EB0_113c(m, pQuest, 2)
+        ACT2Q6_UnitIterateSetQuest14State2_6FCE2A90_113c(
+          m,
+          m.u32(pArg >>> 0) >>> 0,
+          m.u32((pArg + 0x0c) >>> 0) >>> 0,
+          0,
+        )
+      }
+      if (m.u8((pQuest + 0x0b) >>> 0) !== 0) return
+      m.setU8((pQuest + 0x14) >>> 0, 0)
+      m.setU8((pQuest + 0x0b) >>> 0, 1)
+      SUNIT_FindFirstLivingPlayerOrMonsterMatching_6FCFFCC0_113c(
+        m,
+        m.u32((pQuest + 0x04) >>> 0) >>> 0,
+        ACT2Q6_SendAlert0DIfQuest14Active_6FCE4D30_113c,
+        0,
+        0,
+      )
+      return
+    }
+  }
+
+  if (nToLevel === 0x49 && m.u8((pQuest + 0x0c) >>> 0) <= 1) {
+    QUESTS_Act2RadamentSetStateAndDebugPrint_6FC55EB0_113c(m, pQuest, 2)
+    if (m.u8((pQuest + 0x0b) >>> 0) <= 1) {
+      m.setU8((pQuest + 0x14) >>> 0, 0)
+      m.setU8((pQuest + 0x0b) >>> 0, 2)
+    }
+    ACT2Q6_UnitIterateSetQuest14State2_6FCE2A90_113c(
+      m,
+      m.u32(pArg >>> 0) >>> 0,
+      m.u32((pArg + 0x0c) >>> 0) >>> 0,
+      0,
+    )
   }
 }
 
@@ -2131,32 +2222,34 @@ export function ACT2Q4_Callback03_LevelChanged113c(
   _hooks?: Post150LaneI1Hooks113c,
 ): void {
   hitD2GameVa113c(0x6FCE6E00)
-  if (m.u32((pArg + 0x14) >>> 0) === 0x28) {
+  if ((m.u32((pArg + 0x14) >>> 0) | 0) !== 0x28) return
+  if (m.u16((pQuest + 0x9c) >>> 0) > 0) {
     const pUnit = m.u32((pArg + 0x0c) >>> 0) >>> 0
-    const dwGuid = pUnit !== 0 ? m.u32((pUnit + 0x0c) >>> 0) : 0xffffffff
-    if (m.u16((pQuest + 0x9c) >>> 0) > 0) {
-      QUESTS_GuidListRemove113c(m, (pQuest + 0x1c) >>> 0, dwGuid)
-    }
-    const pPlayerData = UNITS_GetPlayerData113c(m, pUnit)
-    const pGame = m.u32(pArg >>> 0) >>> 0
-    const diffIdx = m.u8((pGame + 0x6d) >>> 0)
-    const pQuestFlags = m.u32((pPlayerData + diffIdx * 4 + 0x10) >>> 0) >>> 0
-    if (
-      DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 0x0a, 0) !== 1 &&
-      DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 0x0a, 1) !== 1 &&
-      m.u8((pQuest + 0x0a) >>> 0) === 1
-    ) {
-      const pQuestData = m.u32((pQuest + 0x18) >>> 0) >>> 0
-      if (m.u8((pQuestData + 0x03) >>> 0) !== 1) {
-        m.setU8((pQuest + 0x0b) >>> 0, 1)
-        m.setU32((pQuest + 0x0c) >>> 0, 1)
-      }
-    }
+    const dwGuid = pUnit !== 0 ? (m.u32((pUnit + 0x0c) >>> 0) >>> 0) : 0xffffffff
+    QUESTS_GuidListRemove113c(m, (pQuest + 0x1c) >>> 0, dwGuid)
   }
+  if (m.u8((pQuest + 0x0c) >>> 0) !== 2) return
+
+  const pQuestFlags = getPlayerQuestFlagsFromArg113c(m, pArg)
+  const nQuestNo = m.u32((pQuest + 0xe0) >>> 0) | 0
+  if (
+    DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, nQuestNo, 0) === 1 ||
+    DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, nQuestNo, 1) === 1
+  ) {
+    return
+  }
+  QUESTS_Act2RadamentSetStateAndDebugPrint_6FC55EB0_113c(m, pQuest, 3)
+  SUNIT_FindFirstLivingPlayerOrMonsterMatching_6FCFFCC0_113c(
+    m,
+    m.u32((pQuest + 0x04) >>> 0) >>> 0,
+    ACT2Q1_PlayerJoinSyncQuest9StateCallback_6FCE4430_113c,
+    0,
+    0,
+  )
 }
 
 /**
- * Act 2 Quest 5 (The Summoner) level-change callback (`cbIdx = 3`, Leaving `0x28`, Entering `0x4A`, `0x2E`).
+ * Act 2 Quest 5 (The Summoner) level-change callback (`cbIdx = 3`, Entering `0x2C`/`0x2D`/`0x28`, Leaving `0x28`).
  *
  * @va D2Game:0x6FCE73A0 (210B)
  */
@@ -2164,45 +2257,44 @@ export function ACT2Q5_Callback03_LevelChanged113c(
   m: Memory113c,
   pQuest: number,
   pArg: number,
-  hooks?: Post150LaneI1Hooks113c,
+  _hooks?: Post150LaneI1Hooks113c,
 ): void {
   hitD2GameVa113c(0x6FCE73A0)
-  if (m.u32((pArg + 0x14) >>> 0) === 0x28) {
-    const pUnit = m.u32((pArg + 0x0c) >>> 0) >>> 0
-    const dwGuid = pUnit !== 0 ? m.u32((pUnit + 0x0c) >>> 0) : 0xffffffff
-    if (m.u16((pQuest + 0x9c) >>> 0) > 0) {
-      QUESTS_GuidListRemove113c(m, (pQuest + 0x1c) >>> 0, dwGuid)
+  const nFromLevel = m.u32((pArg + 0x14) >>> 0) | 0
+  const nToLevel = m.u32((pArg + 0x18) >>> 0) | 0
+  const pQuestData = m.u32((pQuest + 0x18) >>> 0) >>> 0
+
+  if (
+    (nToLevel === 0x2c || nToLevel === 0x2d) &&
+    m.u8((pQuest + 0x0c) >>> 0) === 0 &&
+    m.u8((pQuest + 0x09) >>> 0) === 1
+  ) {
+    ACT2Q3_ScheduleTaintedSunTimer_6FCE7250_113c(m as SparseMemory113c, pQuest)
+  }
+
+  if (nToLevel === 0x28 && m.u8((pQuestData + 0x03) >>> 0) === 1) {
+    if ((ACT2Q3_StartEclipseEvent_6FCE6A30_113c(m, pQuest) & 0xff) !== 0) {
+      SUNIT_FindFirstLivingPlayerOrMonsterMatching_6FCFFCC0_113c(
+        m,
+        m.u32((pQuest + 0x04) >>> 0) >>> 0,
+        ACT2Q3_UnitIterate_SyncQuestProgress_6FCE3750_113c,
+        0,
+        0,
+      )
+      m.setU8((pQuestData + 0x03) >>> 0, 0)
     }
   }
-  const nToLevel = m.u32((pArg + 0x18) >>> 0)
-  if (nToLevel === 0x4a) {
-    const pQuestData = m.u32((pQuest + 0x18) >>> 0) >>> 0
-    if (m.u8((pQuestData + 0x01) >>> 0) === 0) {
-      const pGame = m.u32(pArg >>> 0) >>> 0
+
+  if (nFromLevel === 0x28) {
+    if (m.u16((pQuest + 0x9c) >>> 0) > 0) {
       const pUnit = m.u32((pArg + 0x0c) >>> 0) >>> 0
-      m.setU8((pQuestData + 0x01) >>> 0, 1)
-      if (hooks?.onQuestHelperCall !== undefined) {
-        hooks.onQuestHelperCall(m, 0xcbe70, pGame, pUnit, 0x132)
-      }
+      const dwGuid = pUnit !== 0 ? (m.u32((pUnit + 0x0c) >>> 0) >>> 0) : 0xffffffff
+      QUESTS_GuidListRemove113c(m, (pQuest + 0x1c) >>> 0, dwGuid)
     }
-    if (m.u8((pQuest + 0x0a) >>> 0) === 1 && m.u32((pQuest + 0x14) >>> 0) === 1) {
-      m.setU32((pQuest + 0x14) >>> 0, 2)
-      statusCyclerExDefault(
-        m,
-        pQuest,
-        m.u8((pQuest + 0x0c) >>> 0) !== 1 ? 1 : 0,
-        m.u8((pQuest + 0x0c) >>> 0),
-        hooks,
-      )
+    if (m.u8((pQuest + 0x0c) >>> 0) === 2) {
+      m.setU8((pQuest + 0x0c) >>> 0, 3)
+      broadcastInlineQuestStateDebug113c(m, pQuest, 3)
     }
-    if (m.u8((pQuestData + 0x03) >>> 0) === 1) {
-      m.setU32((pQuest + 0xb0) >>> 0, (D2GAME_IMAGE_BASE_113C + 0xc6a30) >>> 0)
-      if (hooks?.onQuestHelperCall !== undefined) {
-        hooks.onQuestHelperCall(m, 0xc7250, pQuest, pArg)
-      }
-    }
-  } else if (nToLevel === 0x2e && m.u8((pQuest + 0x0a) >>> 0) === 1 && m.u32((pQuest + 0x14) >>> 0) <= 3) {
-    m.setU8((pQuest + 0x0b) >>> 0, 0)
   }
 }
 
@@ -2215,101 +2307,125 @@ export function ACT2Q6_Callback03_LevelChanged113c(
   m: Memory113c,
   pQuest: number,
   pArg: number,
-  hooks?: Post150LaneI1Hooks113c,
+  _hooks?: Post150LaneI1Hooks113c,
 ): void {
   hitD2GameVa113c(0x6FCE9190)
-  const nFromLevel = m.u32((pArg + 0x14) >>> 0)
-  if (nFromLevel === 0x28) {
-    const pUnit = m.u32((pArg + 0x0c) >>> 0) >>> 0
-    const dwGuid = pUnit !== 0 ? m.u32((pUnit + 0x0c) >>> 0) : 0xffffffff
-    if (m.u16((pQuest + 0x9c) >>> 0) > 0) {
-      QUESTS_GuidListRemove113c(m, (pQuest + 0x1c) >>> 0, dwGuid)
+  const nFromLevel = m.u32((pArg + 0x14) >>> 0) | 0
+  const nToLevel = m.u32((pArg + 0x18) >>> 0) | 0
+
+  if (nToLevel === 0x4a) {
+    let bUpdated = false
+    if (m.u8((pQuest + 0x0c) >>> 0) < 4) {
+      bUpdated = true
+      m.setU8((pQuest + 0x0c) >>> 0, 4)
+      broadcastInlineQuestStateDebug113c(m, pQuest, 4)
     }
-    const pPlayerData = UNITS_GetPlayerData113c(m, pUnit)
-    const pGame = m.u32(pArg >>> 0) >>> 0
-    const diffIdx = m.u8((pGame + 0x6d) >>> 0)
-    const pQuestFlags = m.u32((pPlayerData + diffIdx * 4 + 0x10) >>> 0) >>> 0
-    if (
-      DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 0x0d, 0) !== 1 &&
-      DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 0x0d, 1) !== 1 &&
-      m.u8((pQuest + 0x0a) >>> 0) === 1
-    ) {
-      const pQuestData = m.u32((pQuest + 0x18) >>> 0) >>> 0
-      if (m.u8((pQuestData + 0x02) >>> 0) !== 1 && m.u32((pQuest + 0x14) >>> 0) >= 2) {
-        m.setU8((pQuest + 0x0b) >>> 0, 1)
-        m.setU32((pQuest + 0x0c) >>> 0, 1)
+    if (m.u8((pQuest + 0x0b) >>> 0) < 4) {
+      m.setU8((pQuest + 0x14) >>> 0, 0)
+      m.setU8((pQuest + 0x0b) >>> 0, 4)
+      SUNIT_FindFirstLivingPlayerOrMonsterMatching_6FCFFCC0_113c(
+        m,
+        m.u32((pQuest + 0x04) >>> 0) >>> 0,
+        ACT2Q4_SendAlert0BIfQuest12Active_6FCE5030_113c,
+        0,
+        0,
+      )
+      bUpdated = true
+    }
+    if (bUpdated) {
+      SUNIT_FindFirstLivingPlayerOrMonsterMatching_6FCFFCC0_113c(
+        m,
+        m.u32((pQuest + 0x04) >>> 0) >>> 0,
+        ACT2Q4_UnitIterate_SyncQuestProgress_6FCE3550_113c,
+        0,
+        0,
+      )
+    }
+    return
+  }
+
+  if (nToLevel === 0x32) {
+    const pQuestFlags = getPlayerQuestFlagsFromArg113c(m, pArg)
+    QUESTRECORD_SetQuestState113c(m, pQuestFlags, 0x0c, 8)
+    QUESTRECORD_SetQuestState113c(m, pQuestFlags, 0x0c, 7)
+  }
+
+  if (nFromLevel !== 0x28) return
+
+  const pQuestData = m.u32((pQuest + 0x18) >>> 0) >>> 0
+  if (m.u8((pQuestData + 0x0c) >>> 0) === 1) {
+    const pQuestGame = m.u32((pQuest + 0x04) >>> 0) >>> 0
+    const dwMonGuid = m.u32((pQuestData + 0x3c) >>> 0) >>> 0
+    if (pQuestGame === 0) {
+      throw new D2CommonAssertError('0x6fd19ff9', 0x2d3)
+    }
+    let pMon = m.u32((pQuestGame + ((dwMonGuid & 0x7f) << 2) + 0x1320) >>> 0) >>> 0
+    while (pMon !== 0 && (m.u32((pMon + 0x0c) >>> 0) >>> 0) !== dwMonGuid) {
+      pMon = m.u32((pMon + 0xe4) >>> 0) >>> 0
+    }
+    let keepFlag = false
+    if (pMon !== 0) {
+      let pInteract = 0
+      if ((m.u32(pMon >>> 0) | 0) === 1) {
+        const pMonData = m.u32((pMon + 0x14) >>> 0) >>> 0
+        if (pMonData !== 0) {
+          pInteract = m.u32((pMonData + 0x30) >>> 0) >>> 0
+        }
       }
+      if (MONSTER_HasAnyInteractingPlayer113c(m, pInteract) !== 0) {
+        MONSTER_CloseAllNpcInteractionsAndNotify_6FC68410_113c(m, pQuestGame, pMon, 0)
+        keepFlag = true
+      } else {
+        SUNIT_BroadcastRemoveAndFreeUnit_6FC4CD10_113c(m, pQuestGame, pMon)
+      }
+    }
+    if (!keepFlag) {
+      m.setU8((pQuestData + 0x0c) >>> 0, 0)
     }
   }
-  const nToLevel = m.u32((pArg + 0x18) >>> 0)
-  if (nToLevel === 0x2e) {
-    const pQuestData = m.u32((pQuest + 0x18) >>> 0) >>> 0
-    if (m.u8((pQuestData + 0x0b) >>> 0) === 0) {
-      const pGame = m.u32(pArg >>> 0) >>> 0
-      const pUnit = m.u32((pArg + 0x0c) >>> 0) >>> 0
-      m.setU8((pQuestData + 0x0b) >>> 0, 1)
-      if (hooks?.onQuestHelperCall !== undefined) {
-        hooks.onQuestHelperCall(m, 0xcbe70, pGame, pUnit, 0x14d)
-      }
+
+  if (m.u8((pQuestData + 0x0d) >>> 0) === 0 && m.u8((pQuestData + 0x11) >>> 0) !== 0) {
+    const pQuestGame = m.u32((pQuest + 0x04) >>> 0) >>> 0
+    const dwObjGuid = m.u32((pQuestData + 0x38) >>> 0) >>> 0
+    if (pQuestGame === 0) {
+      throw new D2CommonAssertError('0x6fd19ff9', 0x2d3)
     }
-    if (m.u8((pQuest + 0x0a) >>> 0) === 1) {
-      if (m.u32((pQuest + 0x14) >>> 0) < 2) {
-        m.setU8((pQuestData + 0x01) >>> 0, 1)
-      } else if (m.u32((pQuest + 0x14) >>> 0) === 2) {
-        const bState = m.u8((pQuest + 0x0c) >>> 0)
-        if (bState !== 2 && bState !== 3) {
-          setQuestMainStateDefault(m, pQuest, 2, hooks)
-        }
-      }
-    }
-  } else if (nFromLevel === 0x49 && nToLevel === 0x28) {
-    const pQuestData = m.u32((pQuest + 0x18) >>> 0) >>> 0
-    if (m.u8((pQuestData + 0x09) >>> 0) === 1) {
-      m.setU8((pQuestData + 0x0a) >>> 0, 1)
-      const pTyrael = m.u32((pQuestData + 0x5c) >>> 0) >>> 0
-      if (pTyrael !== 0 && m.u32(pTyrael >>> 0) === 1) {
-        const pMonsterData = m.u32((pTyrael + 0x14) >>> 0) >>> 0
-        const pInteract = pMonsterData !== 0 ? m.u32((pMonsterData + 0x30) >>> 0) >>> 0 : 0
-        if (hasActiveNpcInteract(m, pInteract) !== 0) {
-          clearMonsterInteractList(m, m.u32(pArg >>> 0) >>> 0, pTyrael)
-        }
-      }
-      if (pTyrael !== 0 && hooks?.onQuestHelperCall !== undefined) {
-        const savedStack = laneI1StackPtr
-        const pCoords = allocStackFrame(m, 8)
-        const pPath = m.u32((pTyrael + 0x2c) >>> 0) >>> 0
-        if (pPath !== 0) {
-          PATH_GetTargetTypeAndPosition113c(m, pTyrael, pCoords)
-        }
-        const pRoom = UNITS_GetRoom113c(m, pTyrael)
-        hooks.onQuestHelperCall(m, 0x2cd10, m.u32(pArg >>> 0) >>> 0, pRoom, pTyrael)
+    const pObj = lookupObjectByGuidInGame113c(m, pQuestGame, dwObjGuid)
+    if (pObj !== 0) {
+      const savedStack = laneI1StackPtr
+      const pIoCoord = allocStackFrame(m, 8)
+      try {
+        PATH_GetTargetTypeAndPosition113c(m, pObj, pIoCoord)
+        const pRoom = UNITS_GetRoom113c(m, pObj) >>> 0
+        ACT2Q0_RelocateJerhynBetweenPalaceAndHarem_6FCE8FD0_113c(m, pIoCoord, pQuest, pRoom)
+      } finally {
         freeStackFrame(savedStack)
       }
     }
   }
-  const pQuestData = m.u32((pQuest + 0x18) >>> 0) >>> 0
-  if (m.u8((pQuestData + 0x10) >>> 0) !== 0 && nToLevel === m.u32((pQuestData + 0x30) >>> 0)) {
-    m.setU8((pQuestData + 0x10) >>> 0, 0)
-    if (hooks?.onQuestHelperCall !== undefined) {
-      hooks.onQuestHelperCall(m, 0xc8fd0, pQuest, pArg)
-    }
-  }
-  if (m.u8((pQuestData + 0x00) >>> 0) !== 0) {
+
+  if (m.u16((pQuest + 0x9c) >>> 0) > 0) {
     const pUnit = m.u32((pArg + 0x0c) >>> 0) >>> 0
-    const pPlayerData = UNITS_GetPlayerData113c(m, pUnit)
-    const pGame = m.u32(pArg >>> 0) >>> 0
-    const diffIdx = m.u8((pGame + 0x6d) >>> 0)
-    const pQuestFlags = m.u32((pPlayerData + diffIdx * 4 + 0x10) >>> 0) >>> 0
-    if (
-      DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 0x0e, 4) === 0 &&
-      DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 0x0e, 5) === 0
-    ) {
-      if (DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 0x0d, 3) !== 0) {
-        QUESTRECORD_SetQuestState113c(m, pQuestFlags, 0x0e, 4)
-        return
-      }
-      QUESTRECORD_SetQuestState113c(m, pQuestFlags, 0x0e, 5)
-    }
+    const dwGuid = pUnit !== 0 ? (m.u32((pUnit + 0x0c) >>> 0) >>> 0) : 0xffffffff
+    QUESTS_GuidListRemove113c(m, (pQuest + 0x1c) >>> 0, dwGuid)
+  }
+
+  const pQuestFlags = getPlayerQuestFlagsFromArg113c(m, pArg)
+  if (
+    DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 0x0c, 0) === 1 ||
+    DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 0x0c, 1) === 1
+  ) {
+    return
+  }
+  if (m.u8((pQuest + 0x0c) >>> 0) === 3) {
+    QUESTS_Act2RadamentSetStateAndDebugPrint_6FC55EB0_113c(m, pQuest, 4)
+    SUNIT_FindFirstLivingPlayerOrMonsterMatching_6FCFFCC0_113c(
+      m,
+      m.u32((pQuest + 0x04) >>> 0) >>> 0,
+      ACT2Q4_UnitIterate_SyncQuestProgress_6FCE3550_113c,
+      0,
+      0,
+    )
   }
 }
 
@@ -2342,99 +2458,110 @@ export function ACT3Q4_Callback03_LevelChanged113c(
   m: Memory113c,
   pQuest: number,
   pArg: number,
-  hooks?: Post150LaneI1Hooks113c,
+  _hooks?: Post150LaneI1Hooks113c,
 ): void {
   hitD2GameVa113c(0x6FD071D0)
-  if (m.u32((pArg + 0x14) >>> 0) === 0x4b) {
-    const pUnit = m.u32((pArg + 0x0c) >>> 0) >>> 0
-    const dwGuid = pUnit !== 0 ? m.u32((pUnit + 0x0c) >>> 0) : 0xffffffff
+  const nFromLevel = m.u32((pArg + 0x14) >>> 0) | 0
+  const nToLevel = m.u32((pArg + 0x18) >>> 0) | 0
+
+  if (nFromLevel === 0x4b) {
     if (m.u16((pQuest + 0x9c) >>> 0) > 0) {
+      const pUnit = m.u32((pArg + 0x0c) >>> 0) >>> 0
+      const dwGuid = pUnit !== 0 ? (m.u32((pUnit + 0x0c) >>> 0) >>> 0) : 0xffffffff
       QUESTS_GuidListRemove113c(m, (pQuest + 0x1c) >>> 0, dwGuid)
     }
-    const pPlayerData = UNITS_GetPlayerData113c(m, pUnit)
-    const pGame = m.u32(pArg >>> 0) >>> 0
-    const diffIdx = m.u8((pGame + 0x6d) >>> 0)
-    const pQuestFlags = m.u32((pPlayerData + diffIdx * 4 + 0x10) >>> 0) >>> 0
-    if (
-      DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 0x11, 0) !== 1 &&
-      DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 0x11, 1) !== 1 &&
-      m.u8((pQuest + 0x0a) >>> 0) === 1
-    ) {
-      const pQuestData = m.u32((pQuest + 0x18) >>> 0) >>> 0
-      if (m.u8((pQuestData + 0x0b) >>> 0) !== 1) {
-        m.setU8((pQuest + 0x0b) >>> 0, 1)
-        m.setU32((pQuest + 0x0c) >>> 0, 1)
+    const fState = m.u8((pQuest + 0x0c) >>> 0)
+    if (fState >= 2 && fState <= 3) {
+      const pQuestFlags = getPlayerQuestFlagsFromArg113c(m, pArg)
+      const nQuestNo = m.u32((pQuest + 0xe0) >>> 0) | 0
+      if (
+        DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, nQuestNo, 0) === 1 ||
+        DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, nQuestNo, 0x0b) === 1
+      ) {
+        return
       }
+      if (m.u8((pQuest + 0x0b) >>> 0) < 3) {
+        m.setU8((pQuest + 0x14) >>> 0, 0)
+        m.setU8((pQuest + 0x0b) >>> 0, 2)
+      }
+      const b11 = QUESTS_CheckGlobalQuestState_6FC538D0_113c(m, m.u32(pArg >>> 0) >>> 0, 0x11, 0x0d)
+      QUESTS_Act2RadamentSetStateAndDebugPrint_6FC55EB0_113c(m, pQuest, b11 === 1 ? 4 : 5)
+      SUNIT_FindFirstLivingPlayerOrMonsterMatching_6FCFFCC0_113c(
+        m,
+        m.u32((pQuest + 0x04) >>> 0) >>> 0,
+        ACT3Q7_SyncPlayerMephistoBitsFromQuest14Callback_6FD03560_113c,
+        0,
+        0,
+      )
     }
   }
-  const nToLevel = m.u32((pArg + 0x18) >>> 0)
-  if (nToLevel - 0x4c <= 0x1b) {
-    const rel = nToLevel - 0x4c
-    const isRelicArea =
-      rel === 0 ||
-      rel === 1 ||
-      rel === 2 ||
-      rel === 3 ||
-      rel === 4 ||
-      rel === 5 ||
-      rel === 6 ||
-      rel === 7 ||
-      rel === 9 ||
-      rel === 13 ||
-      rel === 16 ||
-      rel === 17 ||
-      rel === 19 ||
-      rel === 27
-    if (isRelicArea) {
-      let bTrigger = false
-      if (nToLevel === 0x55) {
-        if (readGameQuestState(m, m.u32((pQuest + 0x04) >>> 0) >>> 0, 0x11, 7) === 0) {
-          bTrigger = true
-        }
-      } else if (nToLevel === 0x5c || nToLevel === 0x5d) {
-        if (readGameQuestState(m, m.u32((pQuest + 0x04) >>> 0) >>> 0, 0x11, 9) === 0) {
-          bTrigger = true
-        }
-      } else if (nToLevel === 0x59 || nToLevel === 0x5b) {
-        if (readGameQuestState(m, m.u32((pQuest + 0x04) >>> 0) >>> 0, 0x11, 8) === 0) {
-          bTrigger = true
-        }
-      } else if (nToLevel === 0x53) {
-        if (readGameQuestState(m, m.u32((pQuest + 0x04) >>> 0) >>> 0, 0x11, 0x0a) === 0) {
-          bTrigger = true
-        }
-      } else {
-        bTrigger = true
-      }
-      if (bTrigger && m.u8((pQuest + 0x0a) >>> 0) === 1 && m.u32((pQuest + 0x14) >>> 0) <= 2) {
-        const pQuestData = m.u32((pQuest + 0x18) >>> 0) >>> 0
-        m.setU32((pQuestData + 0x58) >>> 0, 0)
-        iterateUnitsOfTypeDefault(
-          m,
-          m.u32((pQuest + 0x04) >>> 0) >>> 0,
-          0,
-          pQuest,
-          0xe6910,
-          hooks,
-        )
-        m.setU32((pQuest + 0x14) >>> 0, 2)
-        if (m.u32((pQuestData + 0x58) >>> 0) === 0) {
-          const bState = m.u8((pQuest + 0x0c) >>> 0)
-          statusCyclerExDefault(
-            m,
-            pQuest,
-            bState !== 1 ? 1 : 0,
-            bState,
-            hooks,
-          )
-        }
-      }
+
+  if (nToLevel >= 0x62 && m.u8((pQuest + 0x09) >>> 0) !== 0 && m.u8((pQuest + 0x0c) >>> 0) === 0) {
+    m.setU8((pQuest + 0x0c) >>> 0, 1)
+    m.setU32((pQuest + 0xa8) >>> 0, (D2GAME_IMAGE_BASE_113C + 0xe6910) >>> 0)
+  }
+
+  if (nToLevel === 0x64) {
+    let bSync = false
+    const fLast = m.u8((pQuest + 0x0b) >>> 0)
+    if (fLast === 2 || fLast === 1) {
+      m.setU8((pQuest + 0x14) >>> 0, 0)
+      m.setU8((pQuest + 0x0b) >>> 0, 3)
+      SUNIT_FindFirstLivingPlayerOrMonsterMatching_6FCFFCC0_113c(
+        m,
+        m.u32((pQuest + 0x04) >>> 0) >>> 0,
+        ACT3Q7_SendMephistoQuestAlertCallback_6FD05BE0_113c,
+        0,
+        0,
+      )
+      bSync = true
     }
+    if (m.u8((pQuest + 0x0c) >>> 0) === 1) {
+      const b11 = QUESTS_CheckGlobalQuestState_6FC538D0_113c(m, m.u32(pArg >>> 0) >>> 0, 0x11, 0x0d)
+      QUESTS_Act2RadamentSetStateAndDebugPrint_6FC55EB0_113c(m, pQuest, b11 === 1 ? 4 : 5)
+      bSync = true
+    }
+    if (bSync) {
+      SUNIT_FindFirstLivingPlayerOrMonsterMatching_6FCFFCC0_113c(
+        m,
+        m.u32((pQuest + 0x04) >>> 0) >>> 0,
+        ACT3Q7_SyncPlayerMephistoBitsFromQuest14Callback_6FD03560_113c,
+        0,
+        0,
+      )
+    }
+    return
+  }
+
+  if (nToLevel === 0x66) {
+    if (m.u8((pQuest + 0x0b) >>> 0) !== 4) {
+      m.setU8((pQuest + 0x14) >>> 0, 0)
+      m.setU8((pQuest + 0x0b) >>> 0, 4)
+      SUNIT_FindFirstLivingPlayerOrMonsterMatching_6FCFFCC0_113c(
+        m,
+        m.u32((pQuest + 0x04) >>> 0) >>> 0,
+        ACT3Q7_SendMephistoQuestAlertCallback_6FD05BE0_113c,
+        0,
+        0,
+      )
+    }
+    const fState = m.u8((pQuest + 0x0c) >>> 0)
+    if (fState !== 4 && fState !== 5) {
+      const b11 = QUESTS_CheckGlobalQuestState_6FC538D0_113c(m, m.u32(pArg >>> 0) >>> 0, 0x11, 0x0d)
+      QUESTS_Act2RadamentSetStateAndDebugPrint_6FC55EB0_113c(m, pQuest, b11 === 1 ? 4 : 5)
+    }
+    SUNIT_FindFirstLivingPlayerOrMonsterMatching_6FCFFCC0_113c(
+      m,
+      m.u32((pQuest + 0x04) >>> 0) >>> 0,
+      ACT3Q7_SyncPlayerMephistoBitsFromQuest14Callback_6FD03560_113c,
+      0,
+      0,
+    )
   }
 }
 
 /**
- * Act 3 Quest 5 (The Blackened Temple) level-change callback (`cbIdx = 3`, Leaving `0x4B`).
+ * Act 3 Quest 5 (The Blackened Temple) level-change callback (`cbIdx = 3`, Entering `0x52`, Leaving `0x4B`).
  *
  * @va D2Game:0x6FD07560 (222B)
  */
@@ -2442,54 +2569,54 @@ export function ACT3Q5_Callback03_LevelChanged113c(
   m: Memory113c,
   pQuest: number,
   pArg: number,
-  hooks?: Post150LaneI1Hooks113c,
+  _hooks?: Post150LaneI1Hooks113c,
 ): void {
   hitD2GameVa113c(0x6FD07560)
-  if (m.u32((pArg + 0x14) >>> 0) === 0x4b) {
-    const pUnit = m.u32((pArg + 0x0c) >>> 0) >>> 0
-    const dwGuid = pUnit !== 0 ? m.u32((pUnit + 0x0c) >>> 0) : 0xffffffff
-    if (m.u16((pQuest + 0x9c) >>> 0) > 0) {
-      QUESTS_GuidListRemove113c(m, (pQuest + 0x1c) >>> 0, dwGuid)
-    }
-    const pPlayerData = UNITS_GetPlayerData113c(m, pUnit)
-    const pGame = m.u32(pArg >>> 0) >>> 0
-    const diffIdx = m.u8((pGame + 0x6d) >>> 0)
-    const pQuestFlags = m.u32((pPlayerData + diffIdx * 4 + 0x10) >>> 0) >>> 0
-    if (
-      DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 0x12, 0) !== 1 &&
-      DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 0x12, 1) !== 1 &&
-      m.u8((pQuest + 0x0a) >>> 0) === 1
-    ) {
-      const pQuestData = m.u32((pQuest + 0x18) >>> 0) >>> 0
-      if (m.u8((pQuestData + 0x02) >>> 0) !== 1) {
-        m.setU8((pQuest + 0x0b) >>> 0, 1)
-        m.setU32((pQuest + 0x0c) >>> 0, 1)
-      }
-    }
-    if (
-      m.u32((pQuest + 0x14) >>> 0) < 2 &&
-      readGameQuestState(m, m.u32((pQuest + 0x04) >>> 0) >>> 0, 0x11, 0x0b) === 1
-    ) {
-      const pQuestData = m.u32((pQuest + 0x18) >>> 0) >>> 0
-      m.setU8((pQuestData + 0x04) >>> 0, 0)
-      iterateUnitsOfTypeDefault(
-        m,
-        m.u32(pArg >>> 0) >>> 0,
-        0,
-        pQuest,
-        0xe69e0,
-        hooks,
-      )
-      if (m.u8((pQuestData + 0x04) >>> 0) === 0) {
-        m.setU32((pQuest + 0x14) >>> 0, 2)
-        statusCyclerExDefault(m, pQuest, 1, m.u8((pQuest + 0x0c) >>> 0), hooks)
-      }
-    }
+  const nFromLevel = m.u32((pArg + 0x14) >>> 0) | 0
+  const nToLevel = m.u32((pArg + 0x18) >>> 0) | 0
+
+  if (nToLevel === 0x52 && m.u8((pQuest + 0x09) >>> 0) !== 0 && m.u8((pQuest + 0x0c) >>> 0) === 0) {
+    m.setU8((pQuest + 0x0c) >>> 0, 1)
+    m.setU32((pQuest + 0xa8) >>> 0, (D2GAME_IMAGE_BASE_113C + 0xe69e0) >>> 0)
   }
+
+  if (nFromLevel !== 0x4b) return
+
+  if (m.u16((pQuest + 0x9c) >>> 0) > 0) {
+    const pUnit = m.u32((pArg + 0x0c) >>> 0) >>> 0
+    const dwGuid = pUnit !== 0 ? (m.u32((pUnit + 0x0c) >>> 0) >>> 0) : 0xffffffff
+    QUESTS_GuidListRemove113c(m, (pQuest + 0x1c) >>> 0, dwGuid)
+  }
+
+  const fState = m.u8((pQuest + 0x0c) >>> 0)
+  if (fState < 2 || fState > 3) return
+
+  const pQuestFlags = getPlayerQuestFlagsFromArg113c(m, pArg)
+  const nQuestNo = m.u32((pQuest + 0xe0) >>> 0) | 0
+  if (
+    DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, nQuestNo, 0) === 1 ||
+    DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, nQuestNo, 4) === 1
+  ) {
+    return
+  }
+
+  if (m.u8((pQuest + 0x0b) >>> 0) < 3) {
+    m.setU8((pQuest + 0x14) >>> 0, 0)
+    m.setU8((pQuest + 0x0b) >>> 0, 2)
+  }
+  const b11 = QUESTS_CheckGlobalQuestState_6FC538D0_113c(m, m.u32(pArg >>> 0) >>> 0, 0x11, 0x0d)
+  QUESTS_Act2RadamentSetStateAndDebugPrint_6FC55EB0_113c(m, pQuest, b11 === 1 ? 4 : 5)
+  SUNIT_FindFirstLivingPlayerOrMonsterMatching_6FCFFCC0_113c(
+    m,
+    m.u32((pQuest + 0x04) >>> 0) >>> 0,
+    ACT3Q5_SyncCouncilQuestFlagsCallback113c,
+    0,
+    0,
+  )
 }
 
 /**
- * Act 3 Quest 6 (The Guardian / Travincal) level-change callback (`cbIdx = 3`, levels `0x4B..0x4F`).
+ * Act 3 Quest 6 (The Guardian / Travincal) level-change callback (`cbIdx = 3`, Entering `0x4E`, Leaving `0x4B`).
  *
  * @va D2Game:0x6FD07880 (184B)
  */
@@ -2497,40 +2624,49 @@ export function ACT3Q6_Callback03_LevelChanged113c(
   m: Memory113c,
   pQuest: number,
   pArg: number,
-  hooks?: Post150LaneI1Hooks113c,
+  _hooks?: Post150LaneI1Hooks113c,
 ): void {
   hitD2GameVa113c(0x6FD07880)
-  if (m.u32((pArg + 0x14) >>> 0) === 0x4b) {
-    const pUnit = m.u32((pArg + 0x0c) >>> 0) >>> 0
-    const dwGuid = pUnit !== 0 ? m.u32((pUnit + 0x0c) >>> 0) : 0xffffffff
-    if (m.u16((pQuest + 0x9c) >>> 0) > 0) {
-      QUESTS_GuidListRemove113c(m, (pQuest + 0x1c) >>> 0, dwGuid)
-    }
-    const pPlayerData = UNITS_GetPlayerData113c(m, pUnit)
-    const pGame = m.u32(pArg >>> 0) >>> 0
-    const diffIdx = m.u8((pGame + 0x6d) >>> 0)
-    const pQuestFlags = m.u32((pPlayerData + diffIdx * 4 + 0x10) >>> 0) >>> 0
-    if (
-      DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 0x10, 0) !== 1 &&
-      DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 0x10, 1) !== 1 &&
-      m.u8((pQuest + 0x0a) >>> 0) === 1
-    ) {
-      const pQuestData = m.u32((pQuest + 0x18) >>> 0) >>> 0
-      if (m.u8((pQuestData + 0x02) >>> 0) !== 1) {
-        m.setU8((pQuest + 0x0b) >>> 0, 1)
-        m.setU32((pQuest + 0x0c) >>> 0, 1)
-      }
-    }
+  const nFromLevel = m.u32((pArg + 0x14) >>> 0) | 0
+  const nToLevel = m.u32((pArg + 0x18) >>> 0) | 0
+
+  if (nToLevel === 0x4e && m.u8((pQuest + 0x09) >>> 0) !== 0 && m.u8((pQuest + 0x0c) >>> 0) === 0) {
+    m.setU8((pQuest + 0x0c) >>> 0, 1)
   }
-  const nToLevel = m.u32((pArg + 0x18) >>> 0)
-  if ((nToLevel === 0x4d || nToLevel === 0x4e || nToLevel === 0x4f) && m.u32((pQuest + 0x14) >>> 0) === 1) {
-    m.setU32((pQuest + 0x14) >>> 0, 2)
-    statusCyclerExDefault(m, pQuest, 1, m.u8((pQuest + 0x0c) >>> 0), hooks)
+
+  if (nFromLevel !== 0x4b) return
+
+  if (m.u16((pQuest + 0x9c) >>> 0) > 0) {
+    const pUnit = m.u32((pArg + 0x0c) >>> 0) >>> 0
+    const dwGuid = pUnit !== 0 ? (m.u32((pUnit + 0x0c) >>> 0) >>> 0) : 0xffffffff
+    QUESTS_GuidListRemove113c(m, (pQuest + 0x1c) >>> 0, dwGuid)
+  }
+
+  const fState = m.u8((pQuest + 0x0c) >>> 0)
+  if (fState === 2) {
+    const pQuestFlags = getPlayerQuestFlagsFromArg113c(m, pArg)
+    const nQuestNo = m.u32((pQuest + 0xe0) >>> 0) | 0
+    if (
+      DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, nQuestNo, 0) === 1 ||
+      DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, nQuestNo, 0x0f) === 1
+    ) {
+      return
+    }
+    QUESTS_Act2RadamentSetStateAndDebugPrint_6FC55EB0_113c(m, pQuest, 3)
+    SUNIT_FindFirstLivingPlayerOrMonsterMatching_6FCFFCC0_113c(
+      m,
+      m.u32((pQuest + 0x04) >>> 0) >>> 0,
+      ACT3Q2_SyncPlayerGidbinnStateCallback_6FD046F0_113c,
+      0,
+      0,
+    )
+  } else if (fState === 5) {
+    m.setU8((pQuest + 0x0a) >>> 0, 0)
   }
 }
 
 /**
- * Act 3 Quest 7 (Kurast Bazaar / Ruined Temple) level-change callback (`cbIdx = 3`, Entering `0x52`).
+ * Act 3 Quest 7 (Flayer Jungle / Gidbinn) level-change callback (`cbIdx = 3`, Entering `0x4D`).
  *
  * @va D2Game:0x6FD07A10 (34B)
  */
@@ -2538,17 +2674,17 @@ export function ACT3Q7_Callback03_LevelChanged113c(
   m: Memory113c,
   pQuest: number,
   pArg: number,
-  hooks?: Post150LaneI1Hooks113c,
+  _hooks?: Post150LaneI1Hooks113c,
 ): void {
   hitD2GameVa113c(0x6FD07A10)
-  if (m.u32((pArg + 0x18) >>> 0) === 0x52 && m.u32((pQuest + 0x14) >>> 0) < 2) {
-    m.setU32((pQuest + 0x14) >>> 0, 2)
-    setQuestMainStateDefault(m, pQuest, 1, hooks)
-  }
+  if ((m.u32((pArg + 0x18) >>> 0) | 0) !== 0x4d) return
+  if (m.u8((pQuest + 0x09) >>> 0) === 0) return
+  if (m.u8((pQuest + 0x0c) >>> 0) >= 3) return
+  QUESTS_Act2RadamentSetStateAndDebugPrint_6FC55EB0_113c(m, pQuest, 1)
 }
 
 /**
- * Act 3 Quest 8 (Durance of Hate / Mephisto) level-change callback (`cbIdx = 3`, levels `0x4B`, `0x62`, `0x64`, `0x66`).
+ * Act 3 Quest 8 (Durance / Sewer) level-change callback (`cbIdx = 3`, Entering `0x4F`, Leaving `0x4B`).
  *
  * @va D2Game:0x6FD07BE0 (245B)
  */
@@ -2556,58 +2692,49 @@ export function ACT3Q8_Callback03_LevelChanged113c(
   m: Memory113c,
   pQuest: number,
   pArg: number,
-  hooks?: Post150LaneI1Hooks113c,
+  _hooks?: Post150LaneI1Hooks113c,
 ): void {
   hitD2GameVa113c(0x6FD07BE0)
-  if (m.u32((pArg + 0x14) >>> 0) === 0x4b) {
-    const pUnit = m.u32((pArg + 0x0c) >>> 0) >>> 0
-    const dwGuid = pUnit !== 0 ? m.u32((pUnit + 0x0c) >>> 0) : 0xffffffff
-    if (m.u16((pQuest + 0x9c) >>> 0) > 0) {
-      QUESTS_GuidListRemove113c(m, (pQuest + 0x1c) >>> 0, dwGuid)
-    }
-    const pPlayerData = UNITS_GetPlayerData113c(m, pUnit)
-    const pGame = m.u32(pArg >>> 0) >>> 0
-    const diffIdx = m.u8((pGame + 0x6d) >>> 0)
-    const pQuestFlags = m.u32((pPlayerData + diffIdx * 4 + 0x10) >>> 0) >>> 0
-    if (
-      DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 0x13, 0) !== 1 &&
-      DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 0x13, 1) !== 1 &&
-      m.u8((pQuest + 0x0a) >>> 0) === 1
-    ) {
-      const pQuestData = m.u32((pQuest + 0x18) >>> 0) >>> 0
-      if (m.u8((pQuestData + 0x00) >>> 0) !== 1) {
-        m.setU8((pQuest + 0x0b) >>> 0, 1)
-        m.setU32((pQuest + 0x0c) >>> 0, 1)
-      }
-    }
+  const nFromLevel = m.u32((pArg + 0x14) >>> 0) | 0
+  const nToLevel = m.u32((pArg + 0x18) >>> 0) | 0
+
+  if (nToLevel === 0x4f && m.u8((pQuest + 0x09) >>> 0) !== 0 && m.u8((pQuest + 0x0c) >>> 0) < 1) {
+    m.setU8((pQuest + 0x0c) >>> 0, 1)
   }
-  const nToLevel = m.u32((pArg + 0x18) >>> 0)
-  if (nToLevel === 0x62) {
-    if (m.u8((pQuest + 0x0a) >>> 0) === 1 && m.u32((pQuest + 0x14) >>> 0) === 1) {
-      m.setU32((pQuest + 0x14) >>> 0, 2)
-      statusCyclerExDefault(
-        m,
-        pQuest,
-        m.u8((pQuest + 0x0c) >>> 0) !== 1 ? 1 : 0,
-        m.u8((pQuest + 0x0c) >>> 0),
-        hooks,
-      )
-    }
-  } else if (
-    (nToLevel === 0x64 || nToLevel === 0x66) &&
-    m.u8((pQuest + 0x0a) >>> 0) === 1 &&
-    m.u32((pQuest + 0x14) >>> 0) <= 2
-  ) {
-    m.setU32((pQuest + 0x14) >>> 0, 3)
-    const bState = m.u8((pQuest + 0x0c) >>> 0)
-    statusCyclerExDefault(
+
+  if (nFromLevel !== 0x4b) return
+
+  if (m.u16((pQuest + 0x9c) >>> 0) > 0) {
+    const pUnit = m.u32((pArg + 0x0c) >>> 0) >>> 0
+    const dwGuid = pUnit !== 0 ? (m.u32((pUnit + 0x0c) >>> 0) >>> 0) : 0xffffffff
+    QUESTS_GuidListRemove113c(m, (pQuest + 0x1c) >>> 0, dwGuid)
+  }
+
+  if (m.u8((pQuest + 0x0c) >>> 0) !== 2) return
+
+  const pQuestFlags = getPlayerQuestFlagsFromArg113c(m, pArg)
+  const nQuestNo = m.u32((pQuest + 0xe0) >>> 0) | 0
+  if (DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, nQuestNo, 0) === 1) return
+
+  if (m.u8((pQuest + 0x0b) >>> 0) !== 1) {
+    m.setU8((pQuest + 0x14) >>> 0, 0)
+    m.setU8((pQuest + 0x0b) >>> 0, 1)
+    SUNIT_FindFirstLivingPlayerOrMonsterMatching_6FCFFCC0_113c(
       m,
-      pQuest,
-      bState !== 1 && bState !== 2 ? 1 : 0,
-      bState,
-      hooks,
+      m.u32((pQuest + 0x04) >>> 0) >>> 0,
+      ACT3Q4_SendLamEsensTomeQuestAlertCallback_6FD06550_113c,
+      0,
+      0,
     )
   }
+  QUESTS_Act2RadamentSetStateAndDebugPrint_6FC55EB0_113c(m, pQuest, 3)
+  SUNIT_FindFirstLivingPlayerOrMonsterMatching_6FCFFCC0_113c(
+    m,
+    m.u32((pQuest + 0x04) >>> 0) >>> 0,
+    ACT3Q6_SyncGidbinnState02Callback113c,
+    0,
+    0,
+  )
 }
 
 // ============================================================================
@@ -2699,77 +2826,142 @@ export function PLRINTRO_CleanInvalidMonsterMinions113c(
   hooks?: Post150LaneI1Hooks113c,
 ): void {
   hitD2GameVa113c(0x6FCB7D10)
-  const sgpt = getSgptDataTablesPtr(m)
-  const petTypesCount = sgpt !== 0 ? (m.u32((sgpt + 0xbf0) | 0) >>> 0) : 0
-  if (petTypesCount <= 1) return
-  let offset = 0x0c
-  for (let petType = 1; petType < petTypesCount; petType++, offset += 0x0c) {
-    if (offset === 0x54) continue
-    const pPetsRoot = m.u32((pPlayerData + 0x44) >>> 0) >>> 0
-    if (pPetsRoot === 0) continue
-    const pBucketBase = safeReadU32PlrIntro113c(m, pPetsRoot)
-    if (pBucketBase === 0) continue
-    const pBucket = (pBucketBase + offset) >>> 0
-    let pNode = safeReadU32PlrIntro113c(m, pBucket)
-    while (pNode !== 0) {
-      let pNext = 0
-      let dwPetGuid = 0
-      try {
-        pNext = m.u32((pNode + 0x14) >>> 0) >>> 0
-        dwPetGuid = m.u32((pNode + 0x04) >>> 0) >>> 0
-      } catch {
-        break
-      }
-      let pMonster = m.u32((pGame + ((dwPetGuid & 0x7f) << 2) + 0x1320) >>> 0) >>> 0
-      while (pMonster !== 0) {
-        if (m.u32((pMonster + 0x0c) >>> 0) >>> 0 === dwPetGuid) break
-        pMonster = m.u32((pMonster + 0xe4) >>> 0) >>> 0
-      }
-      let shouldRemove = false
-      if (pMonster === 0) {
-        shouldRemove = true
-      } else if ((m.u8((pMonster + 0xc6) >>> 0) & 1) !== 0) {
-        shouldRemove = true
-      } else {
-        const dwType = m.u32(pMonster >>> 0) >>> 0
-        const eMode = m.u32((pMonster + 0x10) >>> 0)
-        if (dwType === 0) {
-          if (eMode === 0 || eMode === 17) shouldRemove = true
-        } else if (dwType === 1) {
-          if (eMode === 0 || eMode === 12) shouldRemove = true
-        } else {
-          shouldRemove = true
+  if (hooks !== undefined) {
+    const sgpt = getSgptDataTablesPtr(m)
+    const petTypesCount = sgpt !== 0 ? (m.u32((sgpt + 0xbf0) | 0) >>> 0) : 0
+    if (petTypesCount <= 1) return
+    let offset = 0x0c
+    for (let petType = 1; petType < petTypesCount; petType++, offset += 0x0c) {
+      if (offset === 0x54) continue
+      const pPetsRoot = m.u32((pPlayerData + 0x44) >>> 0) >>> 0
+      if (pPetsRoot === 0) continue
+      const pBucketBase = safeReadU32PlrIntro113c(m, pPetsRoot)
+      if (pBucketBase === 0) continue
+      const pBucket = (pBucketBase + offset) >>> 0
+      let pNode = safeReadU32PlrIntro113c(m, pBucket)
+      while (pNode !== 0) {
+        let pNext = 0
+        let dwPetGuid = 0
+        try {
+          pNext = m.u32((pNode + 0x14) >>> 0) >>> 0
+          dwPetGuid = m.u32((pNode + 0x04) >>> 0) >>> 0
+        } catch {
+          break
         }
-      }
-      if (shouldRemove) {
-        if (hooks?.onRemovePlayerPet !== undefined) {
-          hooks.onRemovePlayerPet(m, pGame, pPlayer, pMonster, petType, dwPetGuid)
+        let pMonster = m.u32((pGame + ((dwPetGuid & 0x7f) << 2) + 0x1320) >>> 0) >>> 0
+        while (pMonster !== 0) {
+          if (m.u32((pMonster + 0x0c) >>> 0) >>> 0 === dwPetGuid) break
+          pMonster = m.u32((pMonster + 0xe4) >>> 0) >>> 0
+        }
+        let shouldRemove = false
+        if (pMonster === 0) {
+          shouldRemove = true
+        } else if ((m.u8((pMonster + 0xc6) >>> 0) & 1) !== 0) {
+          shouldRemove = true
         } else {
-          // Unlink pNode from [pBucket] list
-          let prev = 0
-          let cur = m.u32(pBucket >>> 0) >>> 0
-          while (cur !== 0) {
-            if (cur === pNode) {
-              if (prev !== 0) {
-                m.setU32((prev + 0x14) >>> 0, pNext)
-              } else {
-                m.setU32(pBucket >>> 0, pNext)
-              }
-              break
-            }
-            prev = cur
-            cur = m.u32((cur + 0x14) >>> 0) >>> 0
+          const dwType = m.u32(pMonster >>> 0) >>> 0
+          const eMode = m.u32((pMonster + 0x10) >>> 0)
+          if (dwType === 0) {
+            if (eMode === 0 || eMode === 17) shouldRemove = true
+          } else if (dwType === 1) {
+            if (eMode === 0 || eMode === 12) shouldRemove = true
+          } else {
+            shouldRemove = true
           }
         }
+        if (shouldRemove) {
+          if (hooks.onRemovePlayerPet !== undefined) {
+            hooks.onRemovePlayerPet(m, pGame, pPlayer, pMonster, petType, dwPetGuid)
+          } else {
+            let prev = 0
+            let cur = m.u32(pBucket >>> 0) >>> 0
+            while (cur !== 0) {
+              if (cur === pNode) {
+                if (prev !== 0) {
+                  m.setU32((prev + 0x14) >>> 0, pNext)
+                } else {
+                  m.setU32(pBucket >>> 0, pNext)
+                }
+                break
+              }
+              prev = cur
+              cur = m.u32((cur + 0x14) >>> 0) >>> 0
+            }
+          }
+        }
+        pNode = pNext
       }
-      pNode = pNext
     }
+    return
+  }
+
+  let pPetsRoot = pPlayerData >>> 0
+  if (
+    pPetsRoot !== 0 &&
+    pPlayer !== 0 &&
+    m.u32(pPlayer >>> 0) === 0 &&
+    (m.u32((pPlayer + 0x14) >>> 0) >>> 0) === pPetsRoot
+  ) {
+    pPetsRoot = m.u32((pPetsRoot + 0x44) >>> 0) >>> 0
+  }
+
+  const sgpt0 = getSgptDataTablesPtr(m)
+  let petTypesCount = sgpt0 !== 0 ? (m.u32((sgpt0 + 0xbf0) >>> 0) | 0) : 0
+  if (petTypesCount <= 1) return
+
+  let petType = 1
+  let offset = 0x0c
+  for (;;) {
+    if (offset >= 0 && petType < petTypesCount && offset !== 0x54 && pPetsRoot !== 0) {
+      const pBucketBase = m.u32(pPetsRoot >>> 0) >>> 0
+      const pBucket = pBucketBase !== 0 ? ((pBucketBase + offset) >>> 0) : 0
+      if (pBucket !== 0) {
+        let pNode = m.u32(pBucket >>> 0) >>> 0
+        while (pNode !== 0) {
+          if (pGame === 0) {
+            throw new D2CommonAssertError('0x6fd19ff9', 0x2d3)
+          }
+          const pNext = m.u32((pNode + 0x14) >>> 0) >>> 0
+          const dwPetGuid = m.u32((pNode + 0x04) >>> 0) >>> 0
+          let pMonster = m.u32((pGame + ((dwPetGuid & 0x7f) << 2) + 0x1320) >>> 0) >>> 0
+          while (pMonster !== 0) {
+            if ((m.u32((pMonster + 0x0c) >>> 0) >>> 0) === dwPetGuid) break
+            pMonster = m.u32((pMonster + 0xe4) >>> 0) >>> 0
+          }
+          let shouldRemove = false
+          if (pMonster === 0) {
+            shouldRemove = true
+          } else if ((m.u8((pMonster + 0xc6) >>> 0) & 1) !== 0) {
+            shouldRemove = true
+          } else {
+            const dwType = m.u32(pMonster >>> 0) >>> 0
+            const eMode = m.u32((pMonster + 0x10) >>> 0) | 0
+            if (dwType === 0) {
+              if (eMode === 0 || eMode === 0x11) shouldRemove = true
+            } else if (dwType === 1) {
+              if (eMode === 0 || eMode === 0x0c) shouldRemove = true
+            } else {
+              shouldRemove = true
+            }
+          }
+          if (shouldRemove) {
+            PETS_UnsummonPlayerPetByGuid_6FCB7B50_113c(m, pGame, pPlayer, dwPetGuid, 0)
+          }
+          pNode = pNext
+        }
+      }
+    }
+    const dtNext = getSgptDataTablesPtr(m)
+    petTypesCount = dtNext !== 0 ? (m.u32((dtNext + 0xbf0) >>> 0) | 0) : 0
+    petType = (petType + 1) | 0
+    offset = (offset + 0x0c) | 0
+    if (petType >= petTypesCount) break
   }
 }
 
 /**
  * Cleans invalid minions via `PLRINTRO_CleanInvalidMonsterMinions113c` and sends all active
- * pet entries with `PetTypesTxt` flag bit 2 (`0x04`) to `pClient`.
+ * pet entries with `PetTypesTxt` flag bit 2 (`0x04`) to `pPlayer`'s client via `NET_SendPacket7F`.
  *
  * @va D2Game:0x6FCB8250 (310B)
  */
@@ -2781,69 +2973,135 @@ export function PLRINTRO_SendAllPlayerPetsToClient113c(
   hooks?: Post150LaneI1Hooks113c,
 ): void {
   hitD2GameVa113c(0x6FCB8250)
-  if (pPlayer === 0 || m.u32(pPlayer >>> 0) !== 0 || pGame === 0) return
-  const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer)
-  if (pPlayerData === 0) return
+  if (hooks !== undefined) {
+    if (pPlayer === 0 || m.u32(pPlayer >>> 0) !== 0 || pGame === 0) return
+    const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer)
+    if (pPlayerData === 0) return
+    const pPetsRoot = m.u32((pPlayerData + 0x44) >>> 0) >>> 0
+    if (pPetsRoot === 0) return
+    PLRINTRO_CleanInvalidMonsterMinions113c(m, pGame, pPlayer, pPlayerData, hooks)
+    const sgpt = getSgptDataTablesPtr(m)
+    if (sgpt === 0) return
+    const petTypesCount = (m.u32((sgpt + 0xbf0) | 0) >>> 0)
+    let petTypesBase = safeReadU32PlrIntro113c(m, (sgpt + 0xbe8) >>> 0)
+    if (petTypesBase === 0) {
+      petTypesBase = safeReadU32PlrIntro113c(m, (sgpt + 0xbec) >>> 0)
+    }
+    const maskByte = getBitMaskByte(m, 8, 4)
+    for (let petType = 1; petType < petTypesCount; petType++) {
+      if (petTypesBase === 0) continue
+      const pPetTxt = (petTypesBase + petType * 0xe0) >>> 0
+      if (pPetTxt === 0) continue
+      let petFlags = 0
+      try {
+        petFlags = m.u8((pPetTxt + 0x04) >>> 0)
+      } catch {
+        continue
+      }
+      if ((petFlags & maskByte) === 0) continue
+      const pBucketBase = safeReadU32PlrIntro113c(m, pPetsRoot)
+      if (pBucketBase === 0) continue
+      const pBucket = (pBucketBase + petType * 0x0c) >>> 0
+      let pNode = safeReadU32PlrIntro113c(m, pBucket)
+      while (pNode !== 0) {
+        let dwPetGuid = 0
+        let nClassId = 0
+        let dwOwnerGuid = 0
+        let wHydraFlags = 0
+        let pNext = 0
+        try {
+          dwPetGuid = m.u32((pNode + 0x04) >>> 0) >>> 0
+          nClassId = m.u32(pNode >>> 0) >>> 0
+          dwOwnerGuid = m.u32((pNode + 0x0c) >>> 0) >>> 0
+          wHydraFlags = m.u16((pNode + 0x10) >>> 0)
+          pNext = m.u32((pNode + 0x14) >>> 0) >>> 0
+        } catch {
+          break
+        }
+        if (hooks.onSendPetPacketToClient !== undefined) {
+          hooks.onSendPetPacketToClient(
+            m,
+            pClient,
+            petType,
+            dwPetGuid,
+            nClassId,
+            dwOwnerGuid,
+            wHydraFlags,
+          )
+        }
+        pNode = pNext
+      }
+    }
+    return
+  }
+
+  const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer) >>> 0
   const pPetsRoot = m.u32((pPlayerData + 0x44) >>> 0) >>> 0
   if (pPetsRoot === 0) return
-  PLRINTRO_CleanInvalidMonsterMinions113c(m, pGame, pPlayer, pPlayerData, hooks)
-  const sgpt = getSgptDataTablesPtr(m)
-  if (sgpt === 0) return
-  const petTypesCount = (m.u32((sgpt + 0xbf0) | 0) >>> 0)
-  let petTypesBase = safeReadU32PlrIntro113c(m, (sgpt + 0xbe8) >>> 0)
-  if (petTypesBase === 0) {
-    petTypesBase = safeReadU32PlrIntro113c(m, (sgpt + 0xbec) >>> 0)
+
+  PLRINTRO_CleanInvalidMonsterMinions113c(m, pGame, pPlayer, pPetsRoot)
+
+  let resolvedClient = 0
+  if (pPlayer !== 0 && m.u32(pPlayer >>> 0) === 0) {
+    resolvedClient = m.u32((UNITS_GetPlayerData113c(m, pPlayer) + 0x9c) >>> 0) >>> 0
   }
-  const maskByte = getBitMaskByte(m, 8, 4)
-  for (let petType = 1; petType < petTypesCount; petType++) {
-    if (petTypesBase === 0) continue
-    const pPetTxt = (petTypesBase + petType * 0xe0) >>> 0
-    if (pPetTxt === 0) continue
-    let petFlags = 0
-    try {
-      petFlags = m.u8((pPetTxt + 0x04) >>> 0)
-    } catch {
-      continue
-    }
-    if ((petFlags & maskByte) === 0) continue
-    const pBucketBase = safeReadU32PlrIntro113c(m, pPetsRoot)
-    if (pBucketBase === 0) continue
-    const pBucket = (pBucketBase + petType * 0x0c) >>> 0
-    let pNode = safeReadU32PlrIntro113c(m, pBucket)
-    while (pNode !== 0) {
-      let dwPetGuid = 0
-      let nClassId = 0
-      let dwOwnerGuid = 0
-      let wHydraFlags = 0
-      let pNext = 0
-      try {
-        dwPetGuid = m.u32((pNode + 0x04) >>> 0) >>> 0
-        nClassId = m.u32(pNode >>> 0) >>> 0
-        dwOwnerGuid = m.u32((pNode + 0x0c) >>> 0) >>> 0
-        wHydraFlags = m.u16((pNode + 0x10) >>> 0)
-        pNext = m.u32((pNode + 0x14) >>> 0) >>> 0
-      } catch {
-        break
+
+  const sgpt0 = getSgptDataTablesPtr(m)
+  let petTypesCount = sgpt0 !== 0 ? (m.u32((sgpt0 + 0xbf0) >>> 0) | 0) : 0
+  if (petTypesCount <= 1) return
+
+  let petType = 1
+  let offset = 0x0c
+  let txtOff = 0xe0
+  for (;;) {
+    const dtCur = getSgptDataTablesPtr(m)
+    if (offset >= 0 && petType < petTypesCount && dtCur !== 0) {
+      const pBucketBase = m.u32(pPetsRoot >>> 0) >>> 0
+      const pBucket = pBucketBase !== 0 ? ((pBucketBase + offset) >>> 0) : 0
+      const petTypesBase = m.u32((dtCur + 0xbe8) >>> 0) >>> 0
+      if (pBucket !== 0 && petTypesBase !== 0) {
+        const pPetTxt = (petTypesBase + txtOff) >>> 0
+        if (pPetTxt !== 0) {
+          const maskByte = getBitMaskByte(m, 8, 4)
+          if ((m.u8((pPetTxt + 0x04) >>> 0) & maskByte) !== 0) {
+            let pNode = m.u32(pBucket >>> 0) >>> 0
+            while (pNode !== 0) {
+              if ((m.u8(pNode >>> 0) & 1) === 0) {
+                if (pGame === 0) {
+                  throw new D2CommonAssertError('0x6fd19ff9', 0x2d3)
+                }
+                const dwPetGuid = m.u32((pNode + 0x04) >>> 0) >>> 0
+                let pMonster = m.u32((pGame + ((dwPetGuid & 0x7f) << 2) + 0x1320) >>> 0) >>> 0
+                while (pMonster !== 0) {
+                  if ((m.u32((pMonster + 0x0c) >>> 0) >>> 0) === dwPetGuid) break
+                  pMonster = m.u32((pMonster + 0xe4) >>> 0) >>> 0
+                }
+                if (pMonster !== 0) {
+                  NET_SendPacket7F_PartyMemberLifeAndLevel_6FCAE2A0_113c(
+                    m,
+                    resolvedClient,
+                    pMonster,
+                  )
+                }
+              }
+              pNode = m.u32((pNode + 0x14) >>> 0) >>> 0
+            }
+          }
+        }
       }
-      if (hooks?.onSendPetPacketToClient !== undefined) {
-        hooks.onSendPetPacketToClient(
-          m,
-          pClient,
-          petType,
-          dwPetGuid,
-          nClassId,
-          dwOwnerGuid,
-          wHydraFlags,
-        )
-      }
-      pNode = pNext
     }
+    txtOff = (txtOff + 0xe0) | 0
+    const dtEnd = getSgptDataTablesPtr(m)
+    petTypesCount = dtEnd !== 0 ? (m.u32((dtEnd + 0xbf0) >>> 0) | 0) : 0
+    petType = (petType + 1) | 0
+    offset = (offset + 0x0c) | 0
+    if (petType >= petTypesCount) break
   }
 }
 
 /**
- * Sends all party members' pets to `pPlayer`'s client (`[pPlayerData + 0x9C]`) when `pPlayer`
- * belongs to a valid party (`nPartyId != -1`).
+ * Sends party member life/level sync (`NET_SendPacket7F_PartyMemberLifeAndLevel`) for all other
+ * members in `pPlayer`'s party (`[pGame + 0x1D2C]`) to `pPlayer`'s client (`[pPlayerData + 0x9C]`).
  *
  * @va D2Game:0x6FCBC620 (193B)
  */
@@ -2854,68 +3112,99 @@ export function PARTY_SendPartyPetsToClient113c(
   hooks?: Post150LaneI1Hooks113c,
 ): void {
   hitD2GameVa113c(0x6FCBC620)
-  if (pPlayer === 0 || m.u32(pPlayer >>> 0) !== 0 || pGame === 0) return
-  const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer)
-  const pClient = pPlayerData !== 0 ? m.u32((pPlayerData + 0x9c) >>> 0) >>> 0 : 0
-  const dwPlayerGuid = m.u32((pPlayer + 0x0c) >>> 0) >>> 0
+  if (hooks !== undefined) {
+    if (pPlayer === 0 || m.u32(pPlayer >>> 0) !== 0 || pGame === 0) return
+    const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer)
+    const pClient = pPlayerData !== 0 ? m.u32((pPlayerData + 0x9c) >>> 0) >>> 0 : 0
+    const dwPlayerGuid = m.u32((pPlayer + 0x0c) >>> 0) >>> 0
 
-  // Resolve party ID and party node from pGame->pPartyControl (+0x1D2C)
-  const pPartyCtrl = m.u32((pGame + 0x1d2c) >>> 0) >>> 0
-  if (pPartyCtrl === 0) return
-  let nPartyId = 0xffff
-  let pPartySub = m.u32((pPartyCtrl + 0x04) >>> 0) >>> 0
-  outer: while (pPartySub !== 0) {
-    let pMember = m.u32((pPartySub + 0x04) >>> 0) >>> 0
-    while (pMember !== 0) {
-      if (m.u32(pMember >>> 0) >>> 0 === dwPlayerGuid) {
-        nPartyId = m.u16(pPartySub >>> 0)
-        break outer
+    const pPartyCtrl = m.u32((pGame + 0x1d2c) >>> 0) >>> 0
+    if (pPartyCtrl === 0) return
+    let nPartyId = 0xffff
+    let pPartySub = m.u32((pPartyCtrl + 0x04) >>> 0) >>> 0
+    outer: while (pPartySub !== 0) {
+      let pMember = m.u32((pPartySub + 0x04) >>> 0) >>> 0
+      while (pMember !== 0) {
+        if (m.u32(pMember >>> 0) >>> 0 === dwPlayerGuid) {
+          nPartyId = m.u16(pPartySub >>> 0)
+          break outer
+        }
+        pMember = m.u32((pMember + 0x04) >>> 0) >>> 0
       }
-      pMember = m.u32((pMember + 0x04) >>> 0) >>> 0
+      pPartySub = m.u32((pPartySub + 0x08) >>> 0) >>> 0
     }
-    pPartySub = m.u32((pPartySub + 0x08) >>> 0) >>> 0
-  }
-  if (nPartyId === 0xffff) return
+    if (nPartyId === 0xffff) return
 
-  let pFoundParty = m.u32((pPartyCtrl + 0x04) >>> 0) >>> 0
-  while (pFoundParty !== 0) {
-    if (m.u16(pFoundParty >>> 0) === nPartyId) break
-    pFoundParty = m.u32((pFoundParty + 0x08) >>> 0) >>> 0
-  }
-  if (pFoundParty === 0) return
-
-  let pMemberNode = m.u32((pFoundParty + 0x04) >>> 0) >>> 0
-  while (pMemberNode !== 0) {
-    const memberGuid = m.u32(pMemberNode >>> 0) >>> 0
-    let pMemberUnit = m.u32((pGame + ((memberGuid & 0x7f) << 2) + 0x1120) >>> 0) >>> 0
-    while (pMemberUnit !== 0) {
-      if (m.u32((pMemberUnit + 0x0c) >>> 0) >>> 0 === memberGuid) break
-      pMemberUnit = m.u32((pMemberUnit + 0xe4) >>> 0) >>> 0
+    let pFoundParty = m.u32((pPartyCtrl + 0x04) >>> 0) >>> 0
+    while (pFoundParty !== 0) {
+      if (m.u16(pFoundParty >>> 0) === nPartyId) break
+      pFoundParty = m.u32((pFoundParty + 0x08) >>> 0) >>> 0
     }
-    if (pMemberUnit !== 0) {
-      const pMemberPlrData = UNITS_GetPlayerData113c(m, pMemberUnit)
-      const pPetsRoot = pMemberPlrData !== 0 ? m.u32((pMemberPlrData + 0x44) >>> 0) >>> 0 : 0
-      if (pPetsRoot !== 0) {
-        const pBucketBase = m.u32(pPetsRoot >>> 0) >>> 0
-        for (let offset = 0; offset < 0x18; offset += 0x0c) {
-          const pBucket = (pBucketBase + offset) >>> 0
-          let pPetNode = pBucket !== 0 ? m.u32(pBucket >>> 0) >>> 0 : 0
-          while (pPetNode !== 0) {
-            if (hooks?.onSendPetPacketToClient !== undefined) {
-              hooks.onSendPetPacketToClient(
-                m,
-                pClient,
-                (offset / 0x0c) | 0,
-                m.u32((pPetNode + 0x04) >>> 0) >>> 0,
-                m.u32(pPetNode >>> 0) >>> 0,
-                m.u32((pPetNode + 0x0c) >>> 0) >>> 0,
-                m.u16((pPetNode + 0x10) >>> 0),
-              )
+    if (pFoundParty === 0) return
+
+    let pMemberNode = m.u32((pFoundParty + 0x04) >>> 0) >>> 0
+    while (pMemberNode !== 0) {
+      const memberGuid = m.u32(pMemberNode >>> 0) >>> 0
+      let pMemberUnit = m.u32((pGame + ((memberGuid & 0x7f) << 2) + 0x1120) >>> 0) >>> 0
+      while (pMemberUnit !== 0) {
+        if (m.u32((pMemberUnit + 0x0c) >>> 0) >>> 0 === memberGuid) break
+        pMemberUnit = m.u32((pMemberUnit + 0xe4) >>> 0) >>> 0
+      }
+      if (pMemberUnit !== 0) {
+        const pMemberPlrData = UNITS_GetPlayerData113c(m, pMemberUnit)
+        const pPetsRoot = pMemberPlrData !== 0 ? m.u32((pMemberPlrData + 0x44) >>> 0) >>> 0 : 0
+        if (pPetsRoot !== 0) {
+          const pBucketBase = m.u32(pPetsRoot >>> 0) >>> 0
+          for (let offset = 0; offset < 0x18; offset += 0x0c) {
+            const pBucket = (pBucketBase + offset) >>> 0
+            let pPetNode = pBucket !== 0 ? m.u32(pBucket >>> 0) >>> 0 : 0
+            while (pPetNode !== 0) {
+              if (hooks.onSendPetPacketToClient !== undefined) {
+                hooks.onSendPetPacketToClient(
+                  m,
+                  pClient,
+                  (offset / 0x0c) | 0,
+                  m.u32((pPetNode + 0x04) >>> 0) >>> 0,
+                  m.u32(pPetNode >>> 0) >>> 0,
+                  m.u32((pPetNode + 0x0c) >>> 0) >>> 0,
+                  m.u16((pPetNode + 0x10) >>> 0),
+                )
+              }
+              pPetNode = m.u32((pPetNode + 0x18) >>> 0) >>> 0
             }
-            pPetNode = m.u32((pPetNode + 0x18) >>> 0) >>> 0
           }
         }
       }
+      pMemberNode = m.u32((pMemberNode + 0x04) >>> 0) >>> 0
+    }
+    return
+  }
+
+  let pClient = 0
+  if (pPlayer !== 0 && m.u32(pPlayer >>> 0) === 0) {
+    pClient = m.u32((UNITS_GetPlayerData113c(m, pPlayer) + 0x9c) >>> 0) >>> 0
+  }
+  if (pPlayer === 0 || m.u32((pPlayer + 0x80) >>> 0) === 0 || m.u32(pPlayer >>> 0) !== 0) {
+    return
+  }
+  const wPartyId = D2GAME_PARTY_GetPartyIdForUnit113c(m, pPlayer, pGame) & 0xffff
+  if (wPartyId === 0xffff) return
+  const pSubParty = PARTY_FindSubPartyById_6FCBBD00_113c(m, pGame, wPartyId) >>> 0
+  if (pSubParty === 0) return
+
+  let pMemberNode = m.u32((pSubParty + 0x04) >>> 0) >>> 0
+  while (pMemberNode !== 0) {
+    if (pGame === 0) {
+      throw new D2CommonAssertError('0x6fd19ff9', 0x2d3)
+    }
+    const memberGuid = m.u32(pMemberNode >>> 0) >>> 0
+    let pMemberUnit = m.u32((pGame + ((memberGuid & 0x7f) << 2) + 0x1120) >>> 0) >>> 0
+    while (pMemberUnit !== 0) {
+      if ((m.u32((pMemberUnit + 0x0c) >>> 0) >>> 0) === memberGuid) break
+      pMemberUnit = m.u32((pMemberUnit + 0xe4) >>> 0) >>> 0
+    }
+    if (pMemberUnit !== 0 && pMemberUnit !== (pPlayer >>> 0)) {
+      NET_SendPacket7F_PartyMemberLifeAndLevel_6FCAE2A0_113c(m, pClient, pMemberUnit)
     }
     pMemberNode = m.u32((pMemberNode + 0x04) >>> 0) >>> 0
   }

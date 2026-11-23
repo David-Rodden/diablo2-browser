@@ -201,6 +201,13 @@ const BUILTIN_FALLBACK_SKINS: readonly CharacterSkinCatalogEntry[] = Object.free
     manifestPath: 'so-jaina/skin.json',
   }),
   Object.freeze({
+    id: 'so-wow-human-mage',
+    name: Object.freeze({ zh: '人类女法师（随装备换装）', en: 'Human Mage (follows equipment)' }),
+    targetClass: 'so',
+    source: 'builtin',
+    manifestPath: 'so-wow-human-mage/skin.json',
+  }),
+  Object.freeze({
     id: 'am-sylvanas',
     name: Object.freeze({ zh: '黑暗游侠希尔瓦娜斯', en: 'Sylvanas (Dark Ranger)' }),
     targetClass: 'am',

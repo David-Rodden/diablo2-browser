@@ -78,23 +78,28 @@ import {
   AI_TryMonsterTeleportEscape113c,
   SUNITDMG_FreeAttackerCombatList113c,
 } from './ai-fallen-113c.ts';
-import {
-  SEED_RollLimitedRandomNumber113c,
-} from './combat-a1c-113c.ts';
+import { SEED_RollLimitedRandomNumber113c } from './combat-a1c-113c.ts';
+import { PLAYER_StartModeAtCoords113c } from './c2s-packet-113c.ts';
 import {
   AI_FleeFrom113c,
   AI_IdleWander113c,
   AI_Stall113c,
+  AI_DispatchTargetByAiFlag113c,
   MONSTER_StartMode113c,
   PLAYER_ScheduleSkillActionFrameEvents113c,
   PLAYER_StartModeCast113c,
 } from './k2-real-s2c-combat-113c.ts';
+import { PLAYER_HandleDeathCorpseAndSave_6FC99730_113c } from './k2-w16b1-113c.ts';
+import { OBJ_TryOperateObjectIfInRange_6FC8A720_113c } from './k2-w4b3-113c.ts';
+import { MONAI_CheckLineOfWalkFreeCoordsBetweenUnits_6FCD0E90_113c } from './k2-w4b7-113c.ts';
+import { AI_WalkWanderAroundUnitOrSelf_6FD12870_113c } from './k2-w5b10-113c.ts';
 import { SUNIT_GetServerUnit113c } from './game-strc.ts';
 import {
   getRegisteredAiTargetModeCallback113c,
   MONSTER_ClearModeEvents113c,
   MONSTER_RegisterContinuousModeEvent113c,
   registerAiTargetModeCallback113c,
+  registerMonsterAiPipeline113c,
   SKILLS_SetUsedSkill113c,
   SUNIT_IsDeadOrDying113c,
   UNITS_ChangeAnimMode113c,
@@ -113,6 +118,7 @@ import {
   UNIT_GetPosX113c,
   UNIT_GetPosY113c,
 } from './regpop-spawn-113c.ts';
+import { AI_RogueTownMem113c } from './town-npc-ai-113c.ts';
 import { EVENT_GetNextEventFrame113c } from './timer-wheel.ts';
 import { NET_QueuePacketPtrToClient113c } from '../net/packet-sink.ts';
 import { hitD2GameVa113c } from '../va-trace-113c.ts';
@@ -141,6 +147,17 @@ function withTownRuntimeGapStack<T>(size: number, fn: (sp: number) => T): T {
     townRuntimeGapStackPtr = sp;
   }
 }
+
+registerMonsterAiPipeline113c({
+  handleStunDoorOrLeaderFollow: (m, pUnit, pGame, pAiTickArgs) =>
+    AI_HandleStunDoorOrLeaderFollow113c(m, pUnit, pGame, pAiTickArgs),
+  dispatchTargetByAiFlag: (m, pUnit, pAiTickArgs, pGame) =>
+    (AI_DispatchTargetByAiFlag113c(m, pAiTickArgs, pUnit, pGame) as number) | 0,
+  acquireOrValidateCombatTarget: (m, pAiTickArgs, pUnit, pGame) =>
+    AI_AcquireOrValidateCombatTarget113c(m, pAiTickArgs, pUnit, pGame),
+  runRogueTownAi: (m, pGame, pUnit, pAiTickArgs) =>
+    AI_RogueTownMem113c(m, pGame, pUnit, pAiTickArgs),
+});
 
 function checkQuestBitStateHelper(m: Memory113c, pBitBuffer: number, nQuestId: number, nSubBit: number): number {
   return DRLGWARP_TestRoomTileBit113c(m, pBitBuffer >>> 0, nQuestId | 0, nSubBit | 0);
@@ -378,7 +395,7 @@ export function AI_FollowPackLeaderOrAttack113c(
   }
   const dist = AI_CalcApproxUnitDistSubtiles113c(m, pUnit, pLeader);
   if (dist <= 1 && m.u32(pAiControl + 0x10) === 0) {
-    if (MONSTER_StartMode113c(m, pGame, pUnit, 2, pLeader, 0, 0) !== 0) {
+    if (AI_FleeFrom113c(m, pGame, pUnit, pLeader, 0x13, 1) !== 0) {
       return 1;
     }
   } else {
@@ -397,32 +414,7 @@ export function AI_FollowPackLeaderOrAttack113c(
       m.setU8(pAiGeneral + 0x20, 0x28);
     }
   }
-  if (pLeader === 0) {
-    AI_Stall113c(m, pGame, pUnit, 2);
-    return 1;
-  }
-  const targetX = UNIT_GetPosX113c(m, pLeader);
-  const targetY = UNIT_GetPosY113c(m, pLeader);
-  const pSeed = (pUnit + 0x20) >>> 0;
-  const r0 = stepSeedLcg(m, pSeed);
-  let dx = 0;
-  let dy = 0;
-  if ((r0 & 1) !== 0) {
-    dy = 0x13;
-    dx = SEED_RollLimitedFast113c(m, pSeed, 0x13);
-  } else {
-    dx = 0x13;
-    dy = SEED_RollLimitedFast113c(m, pSeed, 0x13);
-  }
-  const r1 = stepSeedLcg(m, pSeed);
-  if ((r1 & 1) !== 0) {
-    dy = -dy;
-  }
-  const r2 = stepSeedLcg(m, pSeed);
-  if ((r2 & 1) !== 0) {
-    dx = -dx;
-  }
-  MONSTER_StartMode113c(m, pGame, pUnit, 2, 0, (targetX + dy) | 0, (targetY + dx) | 0);
+  AI_WalkWanderAroundUnitOrSelf_6FD12870_113c(m, pLeader, 0x13, pGame, pUnit);
   return 1;
 }
 
@@ -462,14 +454,7 @@ export function AI_TryOpenNearbyClosedDoor113c(
     return 0;
   }
   const doorGuid = i32(m, pDoor + 0xc);
-  const pResolvedDoor = SUNIT_GetServerUnit113c(m, pGame, 2, doorGuid);
-  if (pResolvedDoor !== 0 && pUnit !== 0) {
-    if (m.u32(pUnit) !== 1 || m.u8(pObjTxt + 0x16d) !== 0) {
-      if (UNITS_IsUnitInObjRectRange113c(m, pUnit, pResolvedDoor) !== 0 && m.u32(pResolvedDoor + 0x10) === 0) {
-        UNITS_ChangeAnimMode113c(m, pResolvedDoor, 1);
-      }
-    }
-  }
+  OBJ_TryOperateObjectIfInRange_6FC8A720_113c(m, 2, pUnit, pGame, doorGuid);
   AI_Stall113c(m, pGame, pUnit, 5);
   return 1;
 }
@@ -518,7 +503,7 @@ export function AI_AcquireOrValidateCombatTarget113c(
     return 1;
   }
   const classId = pUnit === 0 ? -1 : i32(m, pUnit + 4);
-  if (MONSTATS2_CheckModeBit113c(m, classId, 1) === 0) {
+  if (MONSTATS_CheckFlagBit113c(m, classId, 1) === 0) {
     return 0;
   }
   if (MONSTATS2_CheckModeBit113c(m, classId, 2) === 0) {
@@ -538,7 +523,7 @@ export function AI_AcquireOrValidateCombatTarget113c(
     return 0;
   }
   const pCurTarget = m.u32(pAiTickArgs + 8);
-  if (checkObstacleClearanceBetweenUnits(m, pCurTarget, pUnit) !== 0) {
+  if (MONAI_CheckLineOfWalkFreeCoordsBetweenUnits_6FCD0E90_113c(m, pUnit, pCurTarget) !== 0) {
     return 0;
   }
   const scanRes = withTownRuntimeGapStack(12, (ctx) => {
@@ -563,6 +548,37 @@ let k4QuestTimerDispatcher:
   | ((m: Memory113c, pfnTimer: number, pGame: number, pQuestData: number) => number)
   | null = null;
 
+let armedSliceQuestTimerDefer: { m: Memory113c; pGame: number } | null = null;
+let pendingEndOfFrameSliceQuestTimer: { m: Memory113c; pGame: number } | null = null;
+
+export function armDeferSliceQuestTimers113c(m: Memory113c, pGame: number): void {
+  const game = pGame >>> 0;
+  if (game !== 0 && m.u32((game + 0x10f4) >>> 0) !== 0) {
+    armedSliceQuestTimerDefer = { m, pGame: game };
+  } else {
+    armedSliceQuestTimerDefer = null;
+  }
+}
+
+export function flushDeferredSliceQuestTimers113c(m: Memory113c, pGame: number): void {
+  const game = pGame >>> 0;
+  armedSliceQuestTimerDefer = null;
+  if (
+    pendingEndOfFrameSliceQuestTimer !== null &&
+    pendingEndOfFrameSliceQuestTimer.m === m &&
+    pendingEndOfFrameSliceQuestTimer.pGame === game
+  ) {
+    pendingEndOfFrameSliceQuestTimer = null;
+    if (
+      game !== 0 &&
+      (m.u32((game + 0xa8) >>> 0) % 20) === 0 &&
+      m.u32((game + 0x10f4) >>> 0) !== 0
+    ) {
+      QUESTS_StepQuestTimers113c(m, game);
+    }
+  }
+}
+
 export function registerK4QuestTimerDispatcher113c(
   dispatcher: ((m: Memory113c, pfnTimer: number, pGame: number, pQuestData: number) => number) | null,
 ): void {
@@ -575,6 +591,16 @@ export function QUESTS_StepQuestTimers113c(
   pGame: number,
   onQuestTimerCallback?: (m: Memory113c, pfnTimer: number, pGame: number, pQuestData: number) => number,
 ): void {
+  if (
+    onQuestTimerCallback === undefined &&
+    armedSliceQuestTimerDefer !== null &&
+    armedSliceQuestTimerDefer.m === m &&
+    armedSliceQuestTimerDefer.pGame === (pGame >>> 0)
+  ) {
+    armedSliceQuestTimerDefer = null;
+    pendingEndOfFrameSliceQuestTimer = { m, pGame: pGame >>> 0 };
+    return;
+  }
   hitD2GameVa113c(0x6FC53B70);
   const pQuestControl = m.u32(pGame + 0x10f4);
   if (pQuestControl === 0) {
@@ -1164,9 +1190,9 @@ export function D2NET_SendUnitPosSync0x15ToClient113c(
   let rawPt = pPath !== 0 ? (PATH_GetType113c(m, pPath) & 0xff) : 0;
   let outX = wPosX & 0xffff;
   let outY = wPosY & 0xffff;
-  let outStep = bUnkFlag & 0xff;
+  const outStep = bUnkFlag & 0xff;
   if (rawPt === 5 || rawPt === 6) {
-    outStep = 1;
+    rawPt = 1;
     outX = pPath !== 0 ? (PATH_GetLastPointX113c(m, pPath) & 0xffff) : outX;
     outY = pPath !== 0 ? (PATH_GetLastPointY113c(m, pPath) & 0xffff) : outY;
   } else if (rawPt === 8) {
@@ -1906,12 +1932,11 @@ export function PLAYER_FinishModeAndResetToNeutral113c(
     PLAYER_StartModeCast113c(m, pGame, pUnit, 0, '1HS', true);
   }
   if (curMode === 0) {
-    UNITS_ChangeAnimMode113c(m, pUnit, 0x11);
-    SUNIT_ValidatePathTargetUnit113c(m, pUnit, pGame);
+    PLAYER_HandleDeathCorpseAndSave_6FC99730_113c(m as never, pGame, pUnit, 0, 0, 0x11);
     return;
   }
   if (curMode === 0x13) {
-    startUnitModeAtCoordsInternal(m, pGame, pUnit, 0, 4, -1, 0, 0);
+    PLAYER_StartModeAtCoords113c(m, pGame, pUnit, 4, -1, 0, 0, 0);
     return;
   }
   PLAYER_SetNeutralOrTownNeutralMode113c(m, pGame, pUnit, 1, 0, 0);

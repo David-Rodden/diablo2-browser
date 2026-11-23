@@ -58,6 +58,7 @@ import { MONSTER_StartMode113c } from './combat-a1c-113c.ts'
 import { SUNIT_GetServerUnit113c } from './game-strc.ts'
 import { AURA_ForEachUnitInRadius113c } from './k2-gap-itemdef-113c.ts'
 import {
+  type K2GapMeleeDotHooks113c,
   MISSILE_ApplyDamageAndArmorShred113c,
   MISSILE_BuildDamageStrcFromStats113c,
   MISSILE_CreateServerProjectile113c,
@@ -831,6 +832,7 @@ export function MISSILE_SrvDo_LinearWithSkillCalcSubMissileMask05_6FC613D0_113c(
   m: D2KernMemory113c,
   pGame: number,
   pMissile: number,
+  hooks?: K2GapMeleeDotHooks113c,
 ): number {
   hitD2GameVa113c(0x6FC613D0)
   let pMissilesTxt = 0
@@ -894,7 +896,7 @@ export function MISSILE_SrvDo_LinearWithSkillCalcSubMissileMask05_6FC613D0_113c(
     nSubMissile,
     0x05,
   )
-  return MISSILE_SrvDo01_LinearProjectile113c(m, pMissile, pGame)
+  return MISSILE_SrvDo01_LinearProjectile113c(m, pMissile, pGame, hooks)
 }
 
 /**
@@ -904,6 +906,7 @@ export function MISSILE_SrvDo_LinearWithParamScaledSubMissileMask05_6FC61670_113
   m: D2KernMemory113c,
   pGame: number,
   pMissile: number,
+  hooks?: K2GapMeleeDotHooks113c,
 ): number {
   hitD2GameVa113c(0x6FC61670)
   let pMissilesTxt = 0
@@ -936,7 +939,7 @@ export function MISSILE_SrvDo_LinearWithParamScaledSubMissileMask05_6FC61670_113
     nSubMissile,
     0x05,
   )
-  return MISSILE_SrvDo01_LinearProjectile113c(m, pMissile, pGame)
+  return MISSILE_SrvDo01_LinearProjectile113c(m, pMissile, pGame, hooks)
 }
 
 /**
@@ -1114,6 +1117,11 @@ export function MISSILE_SrvDo_GuidedWithPathFlag08SubMissile_6FC61DE0_113c(
 
 /**
  * @va D2Game:0x6FC663A0
+ *
+ * `D2Game.dll@0x6FC663A0..0x6FC663E6` (`eax = pTarget`, `edi = nSkillId`, `esi = nChargeLevel`,
+ * stack `[pGame, pUnit, nDuration]`, `ret 0xC`): applies `wAuraState2` StatList (`0x6FC65EE0`)
+ * onto `pTarget` with `pCaster = pUnit`, then spawns charged missile (`0x6FC65410`) with
+ * `pOwner/pOrigin = pTarget` (`ebx`) and `(TargetX, TargetY)` pointing to `pUnit`.
  */
 export function SKILLS_ApplySecondaryAuraAndSpawnChargedMissile_6FC663A0_113c(
   m: D2KernMemory113c,
@@ -1131,18 +1139,19 @@ export function SKILLS_ApplySecondaryAuraAndSpawnChargedMissile_6FC663A0_113c(
     SKILLS_ApplySecondaryAuraStateStats_6FC65EE0_113c(
       m,
       pGame,
-      pUnit,
+      pTarget,
       nDuration,
       nSkillId,
       nSkillLevel,
       nChargeLevel,
+      pUnit,
     ) !== 0
   ) {
     SKILLS_SpawnChargedSrvMissileWithTargetId_6FC65410_113c(
       m,
       nSkillId,
-      pUnit,
       pTarget,
+      pUnit,
       pGame,
       nDuration,
       nChargeLevel,

@@ -227,10 +227,16 @@ export function hudRepaintUnchanged(hud: HudManager, nowMs: number): boolean {
     hud.touchControls.enabled ? 1 : 0,
     hud.touchControls.compactHudActive ? 1 : 0,
     hud.touchControls.hudLayoutMode,
+    hud.touchControls.joystickMode,
     hud.touchControls.activeSkillBank,
     hud.touchControls.joystick.active ? 1 : 0,
+    Math.round(hud.touchControls.joystick.originX),
+    Math.round(hud.touchControls.joystick.originY),
     Math.round(hud.touchControls.joystick.knobX),
     Math.round(hud.touchControls.joystick.knobY),
+    hud.touchControls.isLockFeedbackActive(nowMs)
+      ? Math.max(1, Math.ceil((hud.touchControls.lockFeedbackUntilMs - nowMs) / 80))
+      : 0,
     hud.touchControls.lockedMonster?.candidate.unitId ?? -1,
     hud.touchControls.utilityMenuExpanded ? 1 : 0,
     hud.touchControls.wheelPickerSlotIndex ?? -1,
@@ -1085,9 +1091,9 @@ export function renderHudFrame(
     canvasWidth: profile.width,
   })
 
-  // 7b. Mobile Left-Thumb Dynamic Floating Joystick Overlay (Mobile Phase 2, Issue #1382)
+  // 7b. Mobile Left-Thumb Dynamic / Fixed Joystick Overlay (Mobile Phase 2, Issue #1382)
   if (hud.touchControls.enabled && resolveTouchHudContext(hud) === 'world') {
-    hud.touchControls.drawJoystick(ctx, hud.font, hud.lang)
+    hud.touchControls.drawJoystick(ctx, hud.font, hud.lang, profile.width, profile.height, nowMs)
   }
 
   // 8. Town NPC Stone Interaction Menu (`npcmenu.cpp` + `dialog.cpp` + `boxpieces.dc6`)

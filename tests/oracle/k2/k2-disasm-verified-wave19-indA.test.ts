@@ -369,6 +369,7 @@ function createFixtureWorld(): {
   pRoom: number
   pLevel: number
   pDrlg: number
+  pMonReg: number
 } {
   const m = new SparseMemory113c()
   m.fill(0x0, 0x100, 0)
@@ -501,6 +502,8 @@ function createFixtureWorld(): {
   const pLevel = allocZero(m, 0x200)
   m.setU32(pLevel + 0x00, pDrlg)
   m.setU32(pLevel + 0x1d0, 2) // Blood Moor (Act 0, non-town)
+  const pMonReg = allocZero(m, 0x300)
+  m.setU32(pGame + 0xf0 + 2 * 4, pMonReg)
 
   const pRoom = allocZero(m, 0x100)
   const pRoomEx = allocZero(m, 0x100)
@@ -553,6 +556,7 @@ function createFixtureWorld(): {
     pRoom,
     pLevel,
     pDrlg,
+    pMonReg,
   }
 }
 
@@ -915,7 +919,7 @@ describe('Wave 19 (indirectUnknown Batch A — 63 D2Game VAs across 29 disjoint 
   })
 
   it('0x6FC446D0 MONUMOD_SpawnSuperUniqueOrBoss_6FC446D0_113c: marks minion flag 0x10, bBoss=0, and iterates all 9 slots', () => {
-    const { m, pGame, pMonStats, pMonStats2, pRoom } = createFixtureWorld()
+    const { m, pGame, pMonStats, pMonStats2, pRoom, pMonReg } = createFixtureWorld()
     // Configure valid monster class 1 so MONSTER_Create succeeds
     m.setU16(pMonStats + 1 * 0x1a8 + 0x00, 1)
     m.setU16(pMonStats + 1 * 0x1a8 + 0x02, 1)
@@ -960,6 +964,7 @@ describe('Wave 19 (indirectUnknown Batch A — 63 D2Game VAs across 29 disjoint 
     expect(m.u16(pGame + 0x10f6)).toBe(5)
     // Slot 2 (mod 9 -> 0x6FC42740) WAS invoked even though slots 0..1 were 0, AND bBoss === 0!
     expect(seenModCalls).toContainEqual([0x6fc42740, 9, 0])
+    expect(m.u32(pMonReg + 0x2cc)).toBe(1)
   })
 
   it('0x6FC517F0 & 0x6FC51B40: pass pGame (not nObjectId) as arg1 to onObjectPosValidate', () => {

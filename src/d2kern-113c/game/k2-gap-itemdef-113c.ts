@@ -13,14 +13,16 @@ import {
   COLLISION_RayTrace113c,
 } from '../common/collision.ts'
 import { UNITS_GetPlayerData113c } from '../common/composit.ts'
+import { DRLG_GetAutomapCoordSlotPtr113c } from '../common/drlg/drlg-room.ts'
 import { MONSTER_GetMonStatsInteractBit113c } from '../common/drlg/drlg-ver.ts'
 import {
   DUNGEON_GetAdjacentRoomsListFromRoom113c,
   DUNGEON_GetRoomCoordinates113c,
 } from '../common/dungeon.ts'
+import { D2CommonAssertError } from '../common/inline-helpers.ts'
 import { mulDiv113c } from '../common/int-math.ts'
 import {
-  ITEMS_ApplyItemQualityMods113c,
+  ITEMMODS_ApplyItemProperty113c,
   ITEMS_CheckCommandFlags113c,
   ITEMS_GetGemApplyTypeFromItem113c,
   ITEMS_GetItemQuality113c,
@@ -157,7 +159,44 @@ import {
   SUNITDMG_DistributeExperience113c,
 } from './combat-a1c-113c.ts'
 import { SUNIT_GetServerUnit113c } from './game-strc.ts'
-import { NET_SendPacket0x23_AssignSkill113c } from './k2-gap-melee-dot-113c.ts'
+import { SKILLS_SrvDo067_ApplyBuffStateAndItemEvents_6FC628F0_113c } from './k2-w11b1-113c.ts'
+import {
+  SKILLS_SrvDo_ApplyAlliedTargetAuraStats_6FC62570_113c,
+  SKILLS_SrvDo_ApplySelfAuraAndItemEvents_6FC62730_113c,
+  SKILLS_SrvDo_DruidShapeShift_6FC65CE0_113c,
+} from './k2-w3b4-113c.ts'
+import { SKILLS_SrvDo_ApplyRadiusAuraStatList_6FC6C2A0_113c } from './k2-w4b2-113c.ts'
+import { SKILLS_SrvDo009_CorpseConsumeAuraBuff_6FC2DD50_113c } from './k2-w5b1-113c.ts'
+import {
+  SKILLS_DoRedemptionAuraPulse_6FCBA400_113c,
+  withScopedRadialCombatHooks113c,
+} from './k2-w5b3-113c.ts'
+import {
+  SKILLS_SrvDo_PulseElementalAura_6FCBAF50_113c,
+  SKILLS_SrvDo_PulseUndeadAura_6FCBABC0_113c,
+} from './k2-w5b6-113c.ts'
+import {
+  SKILLS_Event05_PeriodicAuraRandomMissileStrike_6FC65850_113c,
+  SKILLS_SrvDo_ApplyAuraOrMorphMinion_6FC2D9C0_113c,
+  SKILLS_SrvDo_ToggleOrApplyTimedSkillState_6FC66210_113c,
+} from './k2-w6b1-113c.ts'
+import { SKILLS_AuraDo_TickBladeShieldRadialDamage_6FCB35F0_113c } from './k2-w6b2-113c.ts'
+import {
+  SKILLS_EventFunc05_MoltenBoulderOrPerFrameAura_6FC65AF0_113c,
+  SKILLS_SrvDo046_EnchantOrRevivePetWithAuraState_6FC63FA0_113c,
+} from './k2-w7b1-113c.ts'
+import { SKILLS_SrvDo_CloakOfShadows_6FCB4B10_113c } from './k2-w7b2-113c.ts'
+import { SKILLS_SrvDo_RadialAuraDamage_6FCB57F0_113c } from './k2-w9b1-113c.ts'
+import type { SparseMemory113c } from '../mem/sparse-memory.ts'
+import {
+  NET_SendPacket0x23_AssignSkill113c,
+  withScopedMeleeDotHooks113c,
+  type K2GapMeleeDotHooks113c,
+} from './k2-gap-melee-dot-113c.ts'
+import {
+  SUNITDMG_ApplySideEffectsAndKill113c,
+  type SUnitDmgHooks113c,
+} from './k2-real-s2c-combat-113c.ts'
 import { SUNIT_GetOwnerUnit113c } from './k2-sunit-spawn-w1-113c.ts'
 import {
   SUNIT_IsDeadOrDying113c,
@@ -281,16 +320,49 @@ let itemdefGapMonsterKillHook: ((
   pKiller: number,
 ) => void) | null = null
 
+let itemdefGapFrameMeleeHooks: K2GapMeleeDotHooks113c | null = null
+let itemdefGapFrameRadialHooks: SUnitDmgHooks113c | null = null
+
 export function setItemdefGapMonsterKillHook113c(
   fn: ((m: Memory113c, pGame: number, pMonster: number, pKiller: number) => void) | null,
 ): void {
   itemdefGapMonsterKillHook = fn
 }
 
+export function setItemdefGapFrameHooks113c(
+  meleeHooks: K2GapMeleeDotHooks113c | null,
+  radialHooks: SUnitDmgHooks113c | null,
+): void {
+  itemdefGapFrameMeleeHooks = meleeHooks
+  itemdefGapFrameRadialHooks = radialHooks
+}
+
+function hasHydratedReplayTablesItemdef113c(m: Memory113c): boolean {
+  try {
+    return m.u32(0x6fdf0b4c) !== 0 && m.u32(0x6fd274ac) !== 0
+  } catch {
+    return false
+  }
+}
+
+function withItemdefFrameHooks113c<T>(m: Memory113c, fn: () => T): T {
+  if (
+    itemdefGapFrameMeleeHooks !== null &&
+    itemdefGapFrameRadialHooks !== null &&
+    hasHydratedReplayTablesItemdef113c(m)
+  ) {
+    const meleeHooks = itemdefGapFrameMeleeHooks
+    const radialHooks = itemdefGapFrameRadialHooks
+    return withScopedMeleeDotHooks113c(meleeHooks, () =>
+      withScopedRadialCombatHooks113c(radialHooks, fn),
+    )
+  }
+  return fn()
+}
+
 /**
- * Exact post-damage reaction step following `SUNITDMG_ApplyDamage113c` for callers
- * that invoke both `SUNITDMG_ExecuteDamage` and `SUNITDMG_ExecuteMissileDamage`
- * without double-subtracting hitpoints.
+ * Exact post-damage reaction step following `SUNITDMG_ApplyDamage113c` (`@va D2Game:0x6FCFCF20`),
+ * forwarding any custom `itemdefGapMonsterKillHook` for legacy replay-kernel callers.
  */
 function applyPostDamageHitReaction(
   m: Memory113c,
@@ -300,31 +372,35 @@ function applyPostDamageHitReaction(
   pDmg: number,
 ): void {
   if (pDefender === 0 || pDmg === 0) return
-  let resultFlags = m.u16((pDmg + 0x04) >>> 0)
-  if ((resultFlags & 0x0001) !== 0) {
-    const hitClass = m.u32((pDmg + 0x60) >>> 0)
-    m.setU32((pDefender + 0xb0) >>> 0, hitClass)
+  if (itemdefGapMonsterKillHook !== null) {
+    const killHook = itemdefGapMonsterKillHook
+    const baseHooks =
+      itemdefGapFrameRadialHooks !== null && hasHydratedReplayTablesItemdef113c(m)
+        ? itemdefGapFrameRadialHooks
+        : undefined
+    SUNITDMG_ApplySideEffectsAndKill113c(m, pGame, pAttacker, pDefender, pDmg, {
+      ...baseHooks,
+      suppressDirectS2c: true,
+      onKillUnit: (mem, _g, def, att) => {
+        killHook(mem, pGame, def, att)
+      },
+    })
+    return
   }
-  const isMonster = (m.u32(pDefender >>> 0) >>> 0) === 1
-  if (isMonster) {
-    MONSTER_CheckSandLeaperMidAir113c(m, pDmg, pDefender)
-    resultFlags = m.u16((pDmg + 0x04) >>> 0)
+  if (itemdefGapFrameRadialHooks !== null && hasHydratedReplayTablesItemdef113c(m)) {
+    SUNITDMG_ApplySideEffectsAndKill113c(
+      m,
+      pGame,
+      pAttacker,
+      pDefender,
+      pDmg,
+      itemdefGapFrameRadialHooks,
+    )
+    return
   }
-  if ((resultFlags & 0x0002) !== 0 && isMonster) {
-    if (STATES_CheckState113c(m, pDefender, 0x36) !== 0) {
-      STATES_ToggleGfxStateFlag113c(m, pDefender, 0x5c, 1)
-      return
-    }
-    if (itemdefGapMonsterKillHook !== null) {
-      itemdefGapMonsterKillHook(m, pGame, pDefender, pAttacker)
-    } else {
-      SUNITDMG_DistributeExperience113c(m, pGame, pAttacker, pDefender)
-      MONSTER_StartDeath113c(m, pGame, pDefender, pAttacker, false)
-    }
-  } else if ((resultFlags & 0x4000) !== 0 && (m.u32((pDmg + 0x4c) >>> 0) | 0) > 0) {
-    UNITROOM_RefreshUnit113c(m, pDefender)
-    m.setU32((pDefender + 0xc4) >>> 0, (m.u32((pDefender + 0xc4) >>> 0) | 0x8000) >>> 0)
-  }
+  SUNITDMG_ApplySideEffectsAndKill113c(m, pGame, pAttacker, pDefender, pDmg, {
+    suppressDirectS2c: true,
+  })
 }
 
 /** Looks up `D2MissilesTxt*` (`sgptDataTables + 0xB64`, stride `0x1A4`, count `+0xB6C`). */
@@ -459,7 +535,7 @@ function sendPacket0x22SkillCharges(
   nCharges: number,
 ): void {
   if (pClient === 0) {
-    throw new Error('sendPacket0x22SkillCharges: pClient == NULL (line 2454)')
+    throw new D2CommonAssertError('0x6fd19ff9', 2454)
   }
   const sp = itemdefGapStackPtr
   itemdefGapStackPtr = (sp + 0x10) >>> 0
@@ -2229,6 +2305,57 @@ export function AURA_ForEachUnitInRadius113c(
   }
 }
 
+function dispatchAuraPulseSrvDoFunc113c(
+  m: Memory113c,
+  pGame: number,
+  pUnit: number,
+  wDoFuncIdx: number,
+  sid: number,
+  effLvl: number,
+): number {
+  return withItemdefFrameHooks113c(m, () => {
+    const sm = m as SparseMemory113c
+    switch (wDoFuncIdx) {
+      case 6:
+        return SKILLS_SrvDo_ApplyRadiusAuraStatList_6FC6C2A0_113c(sm, pGame, pUnit, sid, effLvl) | 0
+      case 18:
+        return SKILLS_SrvDo067_ApplyBuffStateAndItemEvents_6FC628F0_113c(sm, pGame, pUnit, sid, effLvl) | 0
+      case 23:
+        return SKILLS_SrvDo_ApplySelfAuraAndItemEvents_6FC62730_113c(sm, pGame, pUnit, sid, effLvl) | 0
+      case 25:
+        return SKILLS_SrvDo_ApplyAlliedTargetAuraStats_6FC62570_113c(sm, pGame, pUnit, sid, effLvl) | 0
+      case 29:
+        return SKILLS_SrvDo046_EnchantOrRevivePetWithAuraState_6FC63FA0_113c(sm, pGame, pUnit, sid, effLvl) | 0
+      case 47:
+        return SKILLS_SrvDo_CloakOfShadows_6FCB4B10_113c(sm, pGame, pUnit, sid, effLvl) | 0
+      case 51:
+        return SKILLS_SrvDo_RadialAuraDamage_6FCB57F0_113c(sm, pGame, pUnit, sid, effLvl) | 0
+      case 54:
+        return SKILLS_AuraDo_TickBladeShieldRadialDamage_6FCB35F0_113c(sm, pGame, pUnit, sid, effLvl) | 0
+      case 66:
+        return SKILLS_SrvDo_PulseElementalAura_6FCBAF50_113c(sm, pGame, pUnit, sid, effLvl) | 0
+      case 81:
+        return SKILLS_SrvDo_PulseUndeadAura_6FCBABC0_113c(sm, pGame, pUnit, sid, effLvl) | 0
+      case 82:
+        return SKILLS_DoRedemptionAuraPulse_6FCBA400_113c(sm, pGame, pUnit, sid, effLvl) | 0
+      case 116:
+        return SKILLS_SrvDo_ToggleOrApplyTimedSkillState_6FC66210_113c(sm, pGame, pUnit, sid, effLvl) | 0
+      case 124:
+        return SKILLS_SrvDo_DruidShapeShift_6FC65CE0_113c(sm, pGame, pUnit, sid, effLvl) | 0
+      case 131:
+        return SKILLS_SrvDo_ApplyAuraOrMorphMinion_6FC2D9C0_113c(sm, pGame, pUnit, sid, effLvl) | 0
+      case 137:
+        return SKILLS_SrvDo009_CorpseConsumeAuraBuff_6FC2DD50_113c(sm, pGame, pUnit, sid, effLvl) | 0
+      case 145:
+        return SKILLS_EventFunc05_MoltenBoulderOrPerFrameAura_6FC65AF0_113c(sm, pGame, pUnit, sid, effLvl) | 0
+      case 146:
+        return SKILLS_Event05_PeriodicAuraRandomMissileStrike_6FC65850_113c(sm, pGame, pUnit, sid, effLvl) | 0
+      default:
+        return 0
+    }
+  })
+}
+
 /**
  * Activates an aura skill (`nSkillId`) on `pUnit`, executing immediately if `immediate` flag
  * (`Skills.txt + 0x05` bit 7) is set, or creating/updating its aura state statlist and scheduling
@@ -2260,7 +2387,18 @@ export function SKILLS_ActivateAuraSkillOnUnit113c(
   if (skillLvl <= 0) return
 
   if ((m.u8((pSkillsTxt + 0x05) >>> 0) & readGdwBitMaskByte(m, 0x1c)) !== 0) {
-    SKILLS_ExecuteSkillDoFunc113c(m, pUnit, pGame, skillId, skillLvl, 1, 0, 0)
+    SKILLS_ExecuteSkillDoFunc113c(
+      m,
+      pUnit,
+      pGame,
+      skillId,
+      skillLvl,
+      1,
+      0,
+      0,
+      (wDoFuncIdx, sid, effLvl) =>
+        dispatchAuraPulseSrvDoFunc113c(m, pGame, pUnit, wDoFuncIdx, sid, effLvl),
+    )
     SKILLS_SetSkillDelayTimer113c(m, skillId, pGame, pUnit, skillLvl, 1)
     return
   }
@@ -2311,7 +2449,18 @@ export function SKILLS_Event08_AuraPulseTick113c(
         (m.u8((pSkillsTxt + 0x04) >>> 0) & readGdwBitMaskByte(m, 0x14)) !== 0 &&
         SUNIT_IsDeadOrDying113c(m, pUnit) === 0
       ) {
-        SKILLS_ExecuteSkillDoFunc113c(m, pUnit, pGame, skillId, skillLvl, 1, 0, 0)
+        SKILLS_ExecuteSkillDoFunc113c(
+          m,
+          pUnit,
+          pGame,
+          skillId,
+          skillLvl,
+          1,
+          0,
+          0,
+          (wDoFuncIdx, sid, effLvl) =>
+            dispatchAuraPulseSrvDoFunc113c(m, pGame, pUnit, wDoFuncIdx, sid, effLvl),
+        )
         SKILLS_SetSkillDelayTimer113c(m, skillId, pGame, pUnit, skillLvl, 1)
         return
       }
@@ -2347,7 +2496,18 @@ export function SKILLS_Event08_AuraPulseTick113c(
         if (pUnitSkill !== 0) {
           const storedSkillId = STATLIST_GetStatValue113c(m, pStatList, 0x15e, 0) | 0
           if (storedSkillId === argSkillId) {
-            SKILLS_ExecuteSkillDoFunc113c(m, pUnit, pGame, argSkillId, storedLvl, 1, 0, 0)
+            SKILLS_ExecuteSkillDoFunc113c(
+              m,
+              pUnit,
+              pGame,
+              argSkillId,
+              storedLvl,
+              1,
+              0,
+              0,
+              (wDoFuncIdx, sid, effLvl) =>
+                dispatchAuraPulseSrvDoFunc113c(m, pGame, pUnit, wDoFuncIdx, sid, effLvl),
+            )
             SKILLS_SetSkillDelayTimer113c(m, argSkillId, pGame, pUnit, storedLvl, 0)
             return
           }
@@ -2520,7 +2680,7 @@ export function ITEMS_GetScrollOrTomeSkillId113c(
 ): number {
   hitD2GameVa113c(0x6FCF1AA0)
   if (pItem === 0) {
-    throw new Error('ITEMS_GetScrollOrTomeSkillId113c: pItem == NULL (line 493)')
+    throw new D2CommonAssertError('0x6fd19ff9', 493)
   }
   const isScroll = ITEMS_CheckItemTypeIdMemPort113c(m, pItem, 0x16)
   if (isScroll === 0 && ITEMS_CheckItemTypeIdMemPort113c(m, pItem, 0x12) === 0) {
@@ -2572,14 +2732,14 @@ export function ITEMS_UpdateScrollOrTomeSkillCharges113c(
       learnSkillFromPointsOrScroll(m, skillId, pUnit)
       pSkill = SKILLS_GetSkillById113c(m, pUnit, skillId, -1)
       if (pSkill === 0) {
-        throw new Error('ITEMS_UpdateScrollOrTomeSkillCharges113c: pSkill == NULL after add (line 550)')
+        throw new D2CommonAssertError('0x6fd19ff9', 550)
       }
     } else {
       newCharges = (SKILLS_GetCharges113c(m, pSkill) + qty) | 0
     }
   } else {
     if (pSkill === 0) {
-      throw new Error('ITEMS_UpdateScrollOrTomeSkillCharges113c: pSkill == NULL on unequip (line 561)')
+      throw new D2CommonAssertError('0x6fd19ff9', 561)
     }
     newCharges = (SKILLS_GetCharges113c(m, pSkill) - qty) | 0
     if (newCharges < 0) newCharges = 0
@@ -2724,6 +2884,42 @@ export function ITEMS_DeactivateEquippedItemStats113c(
 }
 
 /**
+ * Exact `D2Common:0x6FD960B0` -> `0x6FD958C0(ecx = pGemsTxt, edx = nGemApplyType, eax = i)`
+ * loop for socketed gems (`q = 2`) and runes (`q = 5`), indexing the 3 modifiers of the
+ * host item's `gemApplyType` group (`0=weapon`, `1=helm/armor`, `2=shield`).
+ */
+function applySocketFillerQualityMods0x6FD960B0(
+  m: Memory113c,
+  nQuality: number,
+  pHostUnit: number,
+  pFillerItem: number,
+  pGemsTxt: number,
+  nGemApplyType: number,
+): void {
+  const item = pFillerItem >>> 0
+  const propsBase = pGemsTxt >>> 0
+  for (let i = 0; i < 3; i++) {
+    const pProp = DRLG_GetAutomapCoordSlotPtr113c(propsBase, nGemApplyType, i) >>> 0
+    if (pProp !== 0 && (m.u32(pProp) | 0) >= 0) {
+      ITEMMODS_ApplyItemProperty113c(
+        m,
+        item,
+        0x40,
+        0,
+        pProp,
+        nQuality | 0,
+        0,
+        propsBase,
+        i,
+        nGemApplyType,
+        0,
+        pHostUnit,
+      )
+    }
+  }
+}
+
+/**
  * Activates an equipped or socketed item's stats (gems `0x14`, runes `0x4A`, set bonuses,
  * scroll/tome charges, dual-wield weapon statlist activation, and unit anim mode refresh).
  *
@@ -2749,7 +2945,7 @@ export function ITEMS_ActivateEquippedItemStats113c(
     const pGemsTxt = DATATBLS_GetGemsTxtRecord113c(m, m.u32((pItemTxt + 0xf0) >>> 0) | 0)
     if (pGemsTxt === 0) return
     const gemApplyType = ITEMS_GetGemApplyTypeFromItem113c(m, pUnit)
-    ITEMS_ApplyItemQualityMods113c(m, 2, 0, pItem, pGemsTxt, gemApplyType, 0)
+    applySocketFillerQualityMods0x6FD960B0(m, 2, 0, pItem, pGemsTxt, gemApplyType)
   } else if (ITEMS_CheckItemTypeIdMemPort113c(m, pItem, 0x4a) !== 0) {
     if ((m.u32(pUnit >>> 0) | 0) !== 4) return
     const pItemTxt = DATATBLS_GetItemsTxtRecordMemPort113c(m, m.u32((pItem + 0x04) >>> 0) | 0)
@@ -2757,7 +2953,7 @@ export function ITEMS_ActivateEquippedItemStats113c(
     const pGemsTxt = DATATBLS_GetGemsTxtRecord113c(m, m.u32((pItemTxt + 0xf0) >>> 0) | 0)
     if (pGemsTxt === 0) return
     const gemApplyType = ITEMS_GetGemApplyTypeFromItem113c(m, pUnit)
-    ITEMS_ApplyItemQualityMods113c(m, 5, pUnit, pItem, pGemsTxt, gemApplyType, 0)
+    applySocketFillerQualityMods0x6FD960B0(m, 5, pUnit, pItem, pGemsTxt, gemApplyType)
   } else if (ITEMS_GetItemQuality113c(m, pItem) === 5) {
     ITEMMODS_UpdateSetItemEquipmentState113c(m, pUnit, pItem, 0, 0)
   }

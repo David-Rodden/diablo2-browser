@@ -33,6 +33,7 @@ describe('test characters', () => {
     ['TestHammerdin', 'magic caster Paladin'],
     ['TestBowazon', 'ranged Amazon'],
     ['TestFreshBarb', 'melee Barbarian'],
+    ['TestWowMage', 'fire caster Sorceress'],
   ])('%s loads in Single Player as a %s with all its gear', async (name, build) => {
     const adapter = await enter(name)
     const state = adapter.game.getPlayerState(adapter.playerUnitId)!

@@ -77,6 +77,50 @@ export interface MeshSkinImage {
   readonly bytes: Uint8Array
 }
 
+/** One texture layer an equipment option composites onto the paper-doll canvas. */
+export interface MeshSkinPaperdollLayer {
+  /** Index into {@link MeshSkinModel.images}. */
+  readonly image: number
+  readonly x: number
+  readonly y: number
+  readonly w: number
+  readonly h: number
+  /** Compositing order across all worn options (ascending). */
+  readonly order: number
+}
+
+export interface MeshSkinPaperdollOption {
+  readonly show: readonly number[]
+  readonly hide: readonly number[]
+  readonly layers: readonly MeshSkinPaperdollLayer[]
+}
+
+/**
+ * Equipment-driven appearance of a model: every slot has named options, each of which shows or
+ * hides geosets and adds texture layers on top of the canvas image.
+ */
+export interface MeshSkinPaperdoll {
+  /** Image that worn layers are composited onto (the body texture). */
+  readonly canvas: number
+  /** Geosets hidden unless a worn option shows them. */
+  readonly hidden: readonly number[]
+  readonly slots: Readonly<Record<string, Readonly<Record<string, MeshSkinPaperdollOption>>>>
+  readonly defaults: Readonly<Record<string, string>>
+}
+
+/** A resolved paper-doll state: which geosets are drawn and which layers dress the canvas. */
+export interface MeshSkinLook {
+  /** Stable identity of the look (slot=option pairs in slot order). */
+  readonly key: string
+  /** Identity of the composited canvas alone (looks that share it share one texture). */
+  readonly canvasKey: string
+  /** 1 per drawn geoset. */
+  readonly visible: Uint8Array
+  readonly layers: readonly MeshSkinPaperdollLayer[]
+  /** Geosets that emit a coloured glow (the item models of glowing slots). */
+  readonly glow: readonly { readonly geosets: readonly number[]; readonly color: readonly [number, number, number] }[]
+}
+
 export interface MeshSkinModel {
   readonly nodeCount: number
   readonly nodeNames: readonly string[]
@@ -95,6 +139,8 @@ export interface MeshSkinModel {
   readonly images: readonly MeshSkinImage[]
   readonly clips: Readonly<Record<string, MeshSkinClip>>
   readonly maxVertexCount: number
+  /** Equipment-driven appearance, or `null` for a model with one fixed look. */
+  readonly paperdoll: MeshSkinPaperdoll | null
 }
 
 interface RawNode {
@@ -415,6 +461,10 @@ export function parseMeshSkinModel(bytes: Uint8Array): MeshSkinModel {
   }
   if (Object.keys(clips).length === 0) throw new Error('Invalid mesh skin GLB: no animations')
 
+  const rootExtras = json.extras === undefined ? {} : asRecord(json.extras, 'extras')
+  const paperdoll =
+    rootExtras.paperdoll === undefined ? null : parsePaperdoll(rootExtras.paperdoll, geosets.length, images.length)
+
   return {
     nodeCount,
     nodeNames,
@@ -431,7 +481,108 @@ export function parseMeshSkinModel(bytes: Uint8Array): MeshSkinModel {
     images,
     clips,
     maxVertexCount,
+    paperdoll,
   }
+}
+
+function parsePaperdoll(raw: unknown, geosetCount: number, imageCount: number): MeshSkinPaperdoll {
+  const obj = asRecord(raw, 'extras.paperdoll')
+  const geosetList = (value: unknown, what: string): number[] =>
+    asArray(value ?? [], what).map((v) => {
+      const g = finiteNumber(v, what)
+      if (!Number.isInteger(g) || g < 0 || g >= geosetCount) {
+        throw new Error(`Invalid mesh skin GLB: ${what} references missing geoset ${String(g)}`)
+      }
+      return g
+    })
+  const imageIndex = (value: unknown, what: string): number => {
+    const i = finiteNumber(value, what)
+    if (!Number.isInteger(i) || i < 0 || i >= imageCount) {
+      throw new Error(`Invalid mesh skin GLB: ${what} references missing image ${String(i)}`)
+    }
+    return i
+  }
+  const slots: Record<string, Record<string, MeshSkinPaperdollOption>> = {}
+  const defaults: Record<string, string> = {}
+  const rawDefaults = asRecord(obj.defaults, 'paperdoll.defaults')
+  for (const [slot, rawOptions] of Object.entries(asRecord(obj.slots, 'paperdoll.slots'))) {
+    const options: Record<string, MeshSkinPaperdollOption> = {}
+    for (const [name, rawOption] of Object.entries(asRecord(rawOptions, `paperdoll.slots.${slot}`))) {
+      const what = `paperdoll.slots.${slot}.${name}`
+      const opt = asRecord(rawOption, what)
+      options[name] = {
+        show: geosetList(opt.show, `${what}.show`),
+        hide: geosetList(opt.hide, `${what}.hide`),
+        layers: asArray(opt.layers ?? [], `${what}.layers`).map((rawLayer) => {
+          const layer = asRecord(rawLayer, `${what}.layers[]`)
+          const rect = (['x', 'y', 'w', 'h'] as const).map((k) => finiteNumber(layer[k], `${what}.layers[].${k}`))
+          if (rect.some((v) => !Number.isInteger(v) || v < 0) || rect[2] === 0 || rect[3] === 0) {
+            throw new Error(`Invalid mesh skin GLB: ${what} has an invalid layer rectangle`)
+          }
+          return {
+            image: imageIndex(layer.image, `${what}.layers[].image`),
+            x: rect[0]!, y: rect[1]!, w: rect[2]!, h: rect[3]!,
+            order: finiteNumber(layer.order ?? 0, `${what}.layers[].order`),
+          }
+        }),
+      }
+    }
+    const def = rawDefaults[slot]
+    if (typeof def !== 'string' || !options[def]) {
+      throw new Error(`Invalid mesh skin GLB: paperdoll slot "${slot}" has no valid default option`)
+    }
+    slots[slot] = options
+    defaults[slot] = def
+  }
+  return {
+    canvas: imageIndex(obj.canvas, 'paperdoll.canvas'),
+    hidden: geosetList(obj.hidden, 'paperdoll.hidden'),
+    slots,
+    defaults,
+  }
+}
+
+/**
+ * Resolve the options worn per slot into a look. Unknown slots are ignored and a missing or unknown
+ * option falls back to the slot's default, so a look always describes a complete model.
+ *
+ * @param glowBySlot - glow colour per slot; the geosets shown by that slot's option emit it.
+ */
+export function resolveMeshSkinLook(
+  model: MeshSkinModel,
+  selection: Readonly<Record<string, string | undefined>>,
+  glowBySlot: Readonly<Record<string, readonly [number, number, number]>> = {},
+): MeshSkinLook | null {
+  const doll = model.paperdoll
+  if (doll === null) return null
+  const slotNames = Object.keys(doll.slots).sort()
+  const worn: MeshSkinPaperdollOption[] = []
+  const keyParts: string[] = []
+  const canvasParts: string[] = []
+  const glow: { geosets: readonly number[]; color: readonly [number, number, number] }[] = []
+  for (const slot of slotNames) {
+    const options = doll.slots[slot]!
+    const picked = selection[slot]
+    const name = picked !== undefined && options[picked] ? picked : doll.defaults[slot]!
+    const option = options[name]!
+    worn.push(option)
+    keyParts.push(`${slot}=${name}`)
+    if (option.layers.length > 0) canvasParts.push(`${slot}=${name}`)
+    const color = glowBySlot[slot]
+    if (color !== undefined && option.show.length > 0) {
+      glow.push({ geosets: option.show, color })
+      keyParts.push(`${slot}Glow=${color.join('/')}`)
+    }
+  }
+  const visible = new Uint8Array(model.geosets.length).fill(1)
+  for (const g of doll.hidden) visible[g] = 0
+  for (const option of worn) for (const g of option.hide) visible[g] = 0
+  for (const option of worn) for (const g of option.show) visible[g] = 1
+  const layers = worn
+    .flatMap((option, slotIndex) => option.layers.map((layer, i) => ({ layer, tie: slotIndex * 1024 + i })))
+    .sort((a, b) => a.layer.order - b.layer.order || a.tie - b.tie)
+    .map((e) => e.layer)
+  return { key: keyParts.join(','), canvasKey: canvasParts.join(','), visible, layers, glow }
 }
 
 // ============================================================================

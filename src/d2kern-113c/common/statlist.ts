@@ -1539,7 +1539,11 @@ export function STATLIST_AddStat113c(
   const key = statKey113c(statId, layer)
   const cur = readStatFromArray(m, pList + D2StatListStrc.pStat.off, key)
   const changed = STATLIST_SetStat113c(m, pList, statId, (cur + d) | 0, layer, registry)
-  if (changed !== 0 && m.get(pList, D2StatListStrc.eOwnerType) === 0) {
+  if (
+    changed !== 0 &&
+    (m.get(pList, D2StatListStrc.dwFlags) & STATLIST_FLAG_EXTENDED) !== 0 &&
+    m.get(pList, D2StatListStrc.eOwnerType) === 0
+  ) {
     STATLIST_RecordModStat113c(m, pList, key, registry)
   }
   return changed
@@ -3114,7 +3118,9 @@ function propagateDeltaMem113c(
 }
 
 function recordModStatMem113c(m: Memory113c, pListEx: number, dwKey: number): void {
-  if ((m.u32((pListEx + 0x10) >>> 0) | 0) >= 0) return
+  const s = pListEx >>> 0
+  hitD2CommonVa113c(0x6FD88550)
+  if (s === 0 || (m.u32((s + 0x10) >>> 0) | 0) >= 0) return
   const statId = (dwKey >> 16) & 0xffff
   if (statId === 6 || statId === 8 || statId === 10 || statId === 13 || statId === 14) return
   if ((statId | 0) < 0) return
@@ -3664,7 +3670,10 @@ export function STATLIST_RemoveItemDurabilityStatsModHandler113c(
               recordModStatMem113c(m, pStatList, statKey)
             }
             if (m.u32(u) === 0) {
-              recordModStatMem113c(m, m.u32((u + 0x5c) >>> 0), statKey)
+              const pTargetList = m.u32((u + 0x5c) >>> 0)
+              if (pTargetList !== 0 && (m.u32((pTargetList + 0x10) >>> 0) | 0) < 0) {
+                recordModStatMem113c(m, pTargetList, statKey)
+              }
             }
           }
         }
@@ -3975,8 +3984,11 @@ function setUnitStatMem113c(
   if (pList === 0) return
   const changed = STATLIST_SetBaseStatEx113c(m, pList, nStatId, nValue, nLayer, 0)
   if (changed !== 0 && m.u32(u) === 0) {
-    const dwKey = ((nStatId << 16) + (nLayer & 0xffff)) >>> 0
-    recordModStatMem113c(m, m.u32((u + 0x5c) >>> 0), dwKey)
+    const pTargetList = m.u32((u + 0x5c) >>> 0)
+    if (pTargetList !== 0 && (m.u32((pTargetList + 0x10) >>> 0) | 0) < 0) {
+      const dwKey = ((nStatId << 16) + (nLayer & 0xffff)) >>> 0
+      recordModStatMem113c(m, pTargetList, dwKey)
+    }
   }
 }
 

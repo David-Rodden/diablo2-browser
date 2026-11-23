@@ -8,8 +8,8 @@ execution across `runReplay113c('a1-bloodmoor-melee')`.
 
 | Module | DLL executed | TS executed (`dll ∩ ts`) | TS total hit | manifest unported | manifest gap bytes | runtime exec gap (`dll - ts`) | runtime gap bytes |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| D2Common | 572 | 572 / 572 | 679 | 0 | 0 | 0 | 0 |
-| D2Game | 473 | 473 / 473 | 545 | 0 | 0 | 0 | 0 |
+| D2Common | 572 | 572 / 572 | 687 | 0 | 0 | 0 | 0 |
+| D2Game | 473 | 473 / 473 | 546 | 0 | 0 | 0 | 0 |
 
 ## D2Common Manifest Unported (0)
 
