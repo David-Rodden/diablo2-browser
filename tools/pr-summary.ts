@@ -69,7 +69,7 @@ export function renderSummary({ overview, files, upstreamFiles }: SummaryInput):
   ].join('\n')
 }
 
-export const isGenerated = (body: string | null | undefined): boolean => !body?.trim() || body.includes(SUMMARY_FOOTER)
+export const isGenerated = (body: string | null | undefined): boolean => !body?.replace(/<!--[\s\S]*?-->/g, '').trim() || body.includes(SUMMARY_FOOTER)
 
 const git = (...args: string[]) => execFileSync('git', args, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 })
 

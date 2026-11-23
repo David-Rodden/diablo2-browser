@@ -21,6 +21,6 @@ describe('pr summary', () => {
   })
 
   it('only rewrites empty or previously generated bodies', () => {
-    expect([isGenerated(''), isGenerated(null), isGenerated(`old\n${SUMMARY_FOOTER}`), isGenerated('Written by hand.')]).toEqual([true, true, true, false])
+    expect([isGenerated(''), isGenerated(null), isGenerated('<!-- template -->\n'), isGenerated(`old\n${SUMMARY_FOOTER}`), isGenerated('Written by hand.')]).toEqual([true, true, true, true, false])
   })
 })
