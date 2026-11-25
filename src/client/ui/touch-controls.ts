@@ -71,6 +71,9 @@ export function readSafeAreaInsetsLogical(
     return { top: 0, right: 0, bottom: 0, left: 0 }
   }
   const style = window.getComputedStyle(document.documentElement)
+  if (!style || typeof style.getPropertyValue !== 'function') {
+    return { top: 0, right: 0, bottom: 0, left: 0 }
+  }
   const scaleX = logicalWidth / Math.max(1, window.innerWidth || logicalWidth)
   const scaleY = logicalHeight / Math.max(1, window.innerHeight || logicalHeight)
   const parsePx = (prop: string, scale: number): number => {

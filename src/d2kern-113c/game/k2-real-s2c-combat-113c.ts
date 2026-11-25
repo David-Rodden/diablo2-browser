@@ -17,6 +17,7 @@ import {
   D2DamageStrc_SIZE,
   D2DynamicPathStrc,
   D2GameStrc,
+  D2ItemDataStrc,
   D2MonsterDataStrc,
   D2StatListExStrc,
   D2StatListStrc,
@@ -38,6 +39,7 @@ import {
   MONSTER_GetMonStatsInteractBit113c,
 } from '../common/drlg/drlg-ver.ts'
 import {
+  DATATBLS_GetItemsTxtRecordMemPort113c,
   DUNGEON_CheckRoomIsTownMemPort113c,
   INVENTORY_GetActiveWeaponMemPort113c,
   INVENTORY_GetItemFromBodyLocMemPort113c,
@@ -51,10 +53,14 @@ import {
   STATLIST_GetStatListFromUnitAndStateMemPort113c,
 } from '../common/k0-d2common-memports.ts'
 import {
+  ITEMS_ApplyItemQualityMods113c,
   ITEMS_CanItemLoseDurability113c,
   ITEMS_CheckCommandFlags113c,
   ITEMS_CheckItemTypeIdMem113c,
   ITEMS_GetBodyLocation113c,
+  ITEMS_GetCommandFlags113c,
+  ITEMS_GetItemFormat113c,
+  ITEMS_GetItemQuality113c,
   ITEMS_GetItemTypeFromItem113c,
   ITEMS_GetTwoHandedFlag113c,
   ITEMS_GetUnitHitClass113c,
@@ -62,7 +68,9 @@ import {
   ITEMS_IsReEquip113c,
   ITEMS_IsReload113c,
   ITEMS_SerializeItemToBuffer113c,
+  ITEMS_SetAutoAffix113c,
   ITEMS_SetItemFlag113c,
+  ITEMS_TestFlagMask113c,
   unitsCanDualWieldMem113c,
 } from '../common/items.ts'
 import { MONSTERS_GetCompCode113c } from '../common/monsters.ts'
@@ -180,6 +188,7 @@ import {
 import {
   DATATBLS_GetCurrentLevelFromExp113c,
   DATATBLS_GetExpRatio113c,
+  DATATBLS_GetMagicAffixTxtRecord113c,
   DATATBLS_GetMaxLevel113c,
   DATATBLS_GetMonLvlTxtRecord113c,
   DATATBLS_GetStartExpForLevel113c,
@@ -257,6 +266,8 @@ import {
   UNITS_ChangeAnimMode113c,
   getK2MonsterDropLootHook113c,
   getRegisteredMonsterAiThinkVaHandler113c,
+  runPostSliceFrameCleanupHooks113c,
+  runPreSliceFrameSetupHooks113c,
   setDefaultMonsterAiThinkCallback113c,
   setK2MonsterDropLootHook113c,
 } from './monster-events.ts'
@@ -297,6 +308,7 @@ import {
   isItemRatioTableLoaded113c,
   isSgptDataTablesLoaded113c,
 } from './k2-real-itemdrop-113c.ts'
+import { ITEMS_RollMagicAffixByFormat_6FC34B50_113c } from './k2-w4b1-113c.ts'
 import { SUNIT_UnlinkFromRoomUpdateList113c } from './a1c-post150-f150-f276-113c.ts'
 import {
   ARENA_ProcessKillScoreUpdate113c,
@@ -310,6 +322,7 @@ import {
   SUNIT_AreUnitsHostileOrUnaligned113c,
   SUNIT_DispatchItemEventCallbacks113c,
   SUNITDMG_ApplyOpenWoundsAndCrushingBlowSideEffects113c,
+  UNITROOM_IsClientInUnitRoom113c,
 } from './a1c-post150-f786-f1040-113c.ts'
 import {
   ITEMS_BreakEquippedItemAtZeroDurability_6FCF5740_113c,
@@ -732,7 +745,13 @@ export interface SUnitDmgHooks113c {
 let k2DefaultSUnitDmgHooks: SUnitDmgHooks113c | undefined
 
 export function setDefaultSUnitDmgHooks113c(hooks: SUnitDmgHooks113c | undefined): void {
+  const prev = k2DefaultSUnitDmgHooks
   k2DefaultSUnitDmgHooks = hooks
+  if (prev === undefined && hooks !== undefined) {
+    runPreSliceFrameSetupHooks113c()
+  } else if (prev !== undefined && hooks === undefined) {
+    runPostSliceFrameCleanupHooks113c()
+  }
 }
 
 export function getDefaultSUnitDmgHooks113c(): SUnitDmgHooks113c | undefined {
@@ -1220,7 +1239,7 @@ export function AI_WarrivGreet113c(
 
   const roll = rollSeedMemK2(m, pMonster + D2UnitStrc.seedLo.off, 100)
   if (roll < 40) {
-    AI_IdleWander113c(m, pGame, pMonster)
+    AI_IdleWander113c(m, pGame, pMonster, 8)
     return
   }
   AI_Stall113c(m, pGame, pMonster, 15)
@@ -1694,19 +1713,42 @@ export function SUNITDMG_GetPvpOrPetDamageMultiplier113c(
     }
     return 100
   }
-  if (pAttacker === 0 || pDefender === 0) return 1000
+  if (pAttacker === 0 || pDefender === 0 || pAttacker === pDefender) return 1000
   const attType = m.u32(pAttacker) >>> 0
   const defType = m.u32(pDefender) >>> 0
+  if (isSgptDataTablesLoaded113c(m) && safeReadU32K2(m, 0x6fdd90b0) !== 0) {
+    if (defType === UNIT_PLAYER) {
+      if (attType === UNIT_PLAYER || MONSTERS_GetHirelingTypeId113c(m, pAttacker) !== 0) return 170
+      if ((m.u32((pAttacker + 0xc4) >>> 0) >>> 31) !== 0 || MONSTERS_GetHirelingTypeId113c(m, pAttacker) !== 0) {
+        return 170
+      }
+      return 1000
+    }
+    if (MONSTERS_GetHirelingTypeId113c(m, pDefender) !== 0 && MONSTERS_GetHirelingTypeId113c(m, pAttacker) !== 0) {
+      return 250
+    }
+    if (
+      MONSTERS_GetHirelingTypeId113c(m, pAttacker) !== 0 &&
+      MONSTERS_CheckMonStatsFlagBit6_113c(m, 0, pDefender) !== 0
+    ) {
+      const pGame =
+        m.u32((pAttacker + 0x80) >>> 0) !== 0
+          ? (m.u32((pAttacker + 0x80) >>> 0) >>> 0)
+          : (m.u32((pDefender + 0x80) >>> 0) >>> 0)
+      const diff = getEffectiveDiffK2(m, pGame)
+      const pMonLvl =
+        safeReadU32K2(m, 0x6fdf0b64) !== 0 && safeReadU32K2(m, 0x6fdf0b60) !== 0
+          ? (DATATBLS_GetMonLvlTxtRecord113c(m, diff) >>> 0)
+          : 0
+      return pMonLvl !== 0 ? Math.imul(m.u32((pMonLvl + 0x38) >>> 0) | 0, 10) : diff === 0 ? 500 : diff === 1 ? 350 : 250
+    }
+    if (MONSTER_GetMonStatsInteractBit113c(m, pAttacker) !== 0 && (m.u32((pDefender + 0xc4) >>> 0) >>> 31) !== 0) {
+      return MONSTERS_GetHirelingTypeId113c(m, pDefender) !== 0 ? 2000 : 4000
+    }
+    return 1000
+  }
   if (attType === UNIT_PLAYER && defType === UNIT_PLAYER) {
     return 170
-  }
-  if (isSgptDataTablesLoaded113c(m) && safeReadU32K2(m, 0x6fdd90b0) !== 0) {
-    if (attType === UNIT_MONSTER) {
-      MONSTER_GetMonStatsInteractBit113c(m, pAttacker)
-    }
-    if (defType === UNIT_MONSTER) {
-      MONSTER_GetMonStatsInteractBit113c(m, pDefender)
-    }
   }
   if (attType === UNIT_MONSTER && defType === UNIT_PLAYER) {
     const pMonData = m.get(pAttacker, D2UnitStrc.pUnitData)
@@ -2190,9 +2232,9 @@ function lookupChillEffectiveness113c(m: Memory113c, pDefender: number, diff: 0 
   const classId = m.get(pDefender, D2UnitStrc.dwClassId) | 0
   const monRow = getMonStatsRecordPtrSafeK2(m, classId)
   if (monRow !== 0) {
-    // MonStatsTxt.nColdEffect[3] (`int8_t[3]` at +0x175..+0x177 in 1.13c D2MonStatsTxt)
-    const ce = (m.u8((monRow + 0x175 + diff) >>> 0) << 24) >> 24
-    if (ce !== 0 || m.u8((monRow + 0x175) >>> 0) === 0) {
+    // MonStatsTxt.nColdEffect[3] (`int8_t[3]` at +0x168..+0x16A in 1.13c D2MonStatsTxt, `0x6FCFAE5A`)
+    const ce = (m.u8((monRow + 0x168 + diff) >>> 0) << 24) >> 24
+    if (ce !== 0 || m.u8((monRow + 0x168) >>> 0) === 0) {
       return ce
     }
   }
@@ -2856,9 +2898,14 @@ export function SUNITDMG_ApplyStunEffect113c(
     if (MONSTER_CheckTypeFlagsMask113c(m, pDefender, 0x04) !== 0) {
       if (rollSeedMemK2(m, pDefender + D2UnitStrc.seedLo.off, 100) >= 10) return
     }
-    if (effLen > 250) effLen = 250
+    if (isSgptDataTablesLoaded113c(m) && MONSTERS_GetHirelingTypeId113c(m, pDefender) !== 0) {
+      if (effLen >= 13) effLen = 13
+    } else if (effLen > 250) {
+      effLen = 250
+    }
   } else {
-    if (effLen > 13) effLen = 13
+    // D2Game@0x6FCFCC35..0x6FCFCCBF: players jump directly to the 250f (0xFA) cap; only hirelings cap at 13f (0x0D).
+    if (effLen > 250) effLen = 250
   }
 
   const curFrame = m.get(pGame, D2GameStrc.dwGameFrame) >>> 0
@@ -3735,7 +3782,8 @@ export function SUNITDMG_ApplyDamage113c(
   if ((resFlags & 0x01) === 0 && (combatFlags & 0x1000) === 0 && bApplyResists === 0) return 0
 
   if (bApplyResists !== 0) {
-    SUNITDMG_ApplyResistancesAndAbsorb113c(m, att, def, dmg, g)
+    const bSkipMeleeDotPreScaled = effHooks !== undefined && effHooks.onApplyPoison !== undefined
+    SUNITDMG_ApplyResistancesAndAbsorb113c(m, att, def, dmg, g, false, bSkipMeleeDotPreScaled)
     resFlags = m.get(dmg, D2DamageStrc.wResultFlags) >>> 0
   }
 
@@ -4004,16 +4052,14 @@ export function SUNITDMG_TriggerPostCombatEvents113c(
       if (pAttacker !== pLiveMerc) {
         mercGain = sdiv32(Math.imul(mercGain, 0x56), 256)
       }
-      if (mercGain > 0) {
-        HIRELING_GrantSharedExpAndCheckLevelUp_6FCFDCB0_113c(
-          m,
-          mercGain,
-          pGame,
-          pKillerPlayer,
-          pLiveMerc,
-          mercLvl,
-        )
-      }
+      HIRELING_GrantSharedExpAndCheckLevelUp_6FCFDCB0_113c(
+        m,
+        mercGain,
+        pGame,
+        pKillerPlayer,
+        pLiveMerc,
+        mercLvl,
+      )
     }
 
     // 0x6FCFEB4C..0x6FCFEB8D: check party (`0x6FCFFA60`): if partied (!= 0xFFFF) distribute via `0x6FCFE8F0`,
@@ -4359,6 +4405,7 @@ export function MONSTER_SetDeathPathAndAnim113c(
   arg2: number,
   arg3 = 0,
   arg4 = 0,
+  forceZeroHitDir = false,
 ): number {
   hitD2GameVa113c(0x6FC95350)
   if (isMonsterSliceWorldK2(arg0)) {
@@ -4376,15 +4423,18 @@ export function MONSTER_SetDeathPathAndAnim113c(
     const pPath = m.get(pMonster, D2UnitStrc.pPath)
     if (pPath !== 0) {
       ensureSliceWorldPathMemoryK2(world)
-      if (pKiller !== 0) {
-        PATH_SetTargetUnit113c(m, pPath, pKiller)
+      if (!forceZeroHitDir) {
+        if (pKiller !== 0) {
+          PATH_SetTargetUnit113c(m, pPath, pKiller)
+        }
+        PATH_SetDistance113c(m, pPath, 20)
       }
-      PATH_SetDistance113c(m, pPath, 20)
-      const killerPos = pKiller !== 0 ? getUnitPosSubtileK2(m, pKiller) : null
+      const killerPos = !forceZeroHitDir && pKiller !== 0 ? getUnitPosSubtileK2(m, pKiller) : null
       const monX = m.get(pPath, D2DynamicPathStrc.wPosX)
       const monY = m.get(pPath, D2DynamicPathStrc.wPosY)
-      const hitDir =
-        killerPos !== null
+      const hitDir = forceZeroHitDir
+        ? 0
+        : killerPos !== null
           ? PATH_ComputeDirection113c(m, monX, monY, killerPos.x, killerPos.y)
           : m.get(pPath, D2DynamicPathStrc.nDirection)
       m.set(pMonster, D2UnitStrc.dwAnimMode, 0)
@@ -5388,7 +5438,7 @@ export function AI_FindNearestPlayerOrAlly113c<A3 extends number | undefined = u
             spDirect,
             (spDirect + 0x04) >>> 0,
           ) >>> 0
-        const distance = pTarget !== 0 ? (m.u32(spDirect) | 0) : 0x7fffffff
+        const distance = m.u32(spDirect) | 0
         const inMeleeRange = pTarget !== 0 ? (m.u32((spDirect + 0x04) >>> 0) | 0) : 0
         return { pTarget, distance, inMeleeRange } as never
       } finally {
@@ -5744,10 +5794,18 @@ function runSliceWorldAiThinkWithStackK2(
     }
     const registeredThink = getRegisteredMonsterAiThinkVaHandler113c(pfnThink)
     ensureSliceWorldPathMemoryK2(world)
-    if (registeredThink !== undefined) {
-      registeredThink(m, pGame, pMonster, savedSp)
-    } else if (!dispatchCoreAiThinkByVaK2(m, pGame, pMonster, savedSp, pfnThink)) {
-      throw new Error(`Unsupported monster pfnThink VA: 0x${pfnThink.toString(16)}`)
+    const prevSiegeThinkC = inSiegeMinionThinkC0x64K2
+    if (pfnThink === 0x6fcc7530 && cls === 0x21c) {
+      inSiegeMinionThinkC0x64K2 = true
+    }
+    try {
+      if (registeredThink !== undefined) {
+        registeredThink(m, pGame, pMonster, savedSp)
+      } else if (!dispatchCoreAiThinkByVaK2(m, pGame, pMonster, savedSp, pfnThink)) {
+        throw new Error(`Unsupported monster pfnThink VA: 0x${pfnThink.toString(16)}`)
+      }
+    } finally {
+      inSiegeMinionThinkC0x64K2 = prevSiegeThinkC
     }
   } finally {
     k2RealStackPtr = savedSp
@@ -6241,6 +6299,7 @@ export function aiFindTargetOrUnstickOverlapMem113c(
   pGame: number,
   pUnit: number,
 ): number {
+  hitD2GameVa113c(0x6FD13150)
   const unitRoom0 = UNITS_GetRoom113c(m, pUnit >>> 0) >>> 0
   if (unitRoom0 !== 0) {
     const foundTarget = aiFindNearestPlayerOrAllyDirect113c(
@@ -6484,7 +6543,50 @@ export function AI_DispatchTargetByAiFlag113c(
       )
       return
     }
-    if (aiMode === 3) {
+    if (aiMode === 3 || aiMode > 5) {
+      return
+    }
+    if (aiMode === 4 || aiMode === 5) {
+      hitD2GameVa113c(0x6FD13150)
+      const pMonRoom0 = UNITS_GetRoom113c(m, pMonster) >>> 0
+      const targetInfo =
+        pMonRoom0 !== 0
+          ? AI_FindNearestPlayerOrAlly113c(world, pMonster)
+          : { pTarget: 0, distance: 0x7fffffff, inMeleeRange: 0 }
+      if (targetInfo.pTarget === 0) {
+        ensureSliceWorldPathMemoryK2(world)
+        const nCollisionPattern = PATH_GetUnitCollisionPattern113c(m, pMonster >>> 0) | 0
+        const { x: unitX, y: unitY } = getUnitPosSubtileK2(m, pMonster >>> 0)
+        const pRoom = UNITS_GetRoom113c(m, pMonster >>> 0) >>> 0
+        if (COLLISION_CheckMaskWithPattern2_113c(m, pRoom, unitX, unitY, nCollisionPattern, 0x40) !== 0) {
+          const nClassId = m.get(pMonster, D2UnitStrc.dwClassId) | 0
+          if ((MONSTATS2_CheckModeBit113c(m, nClassId, 2) | 0) !== 0) {
+            AI_IdleWander113c(world, pMonster, 5)
+            if (aiMode === 4) return
+          } else {
+            hitD2GameVa113c(0x6FD120C0)
+            EVENT_DeleteEventByType113c(m, pGame >>> 0, pMonster >>> 0, 2)
+            const curFrame = m.u32((pGame + 0xa8) >>> 0) >>> 0
+            EVENT_SetEventFull113c(m, pGame >>> 0, pMonster >>> 0, 2, (curFrame + 0x14) >>> 0, 0, 0, 0)
+            if (aiMode === 4) return
+          }
+        } else {
+          hitD2GameVa113c(0x6FD120C0)
+          EVENT_DeleteEventByType113c(m, pGame >>> 0, pMonster >>> 0, 2)
+          const curFrame = m.u32((pGame + 0xa8) >>> 0) >>> 0
+          EVENT_SetEventFull113c(m, pGame >>> 0, pMonster >>> 0, 2, (curFrame + 0x14) >>> 0, 0, 0, 0)
+          if (aiMode === 4) return
+        }
+      }
+      runSliceWorldAiThinkWithStackK2(
+        world,
+        pMonster,
+        pfnThink,
+        targetInfo.pTarget,
+        targetInfo.distance,
+        targetInfo.inMeleeRange !== 0,
+        true,
+      )
       return
     }
 
@@ -6642,6 +6744,7 @@ export function SUNITDMG_PrependCombatNode113c(
   }
   if (pAttacker === 0 || pCombat === 0) return
   const prevHead = m.get(pAttacker, D2UnitStrc.pCombat) >>> 0
+  if (prevHead === (pCombat >>> 0)) return
   m.setU32((pCombat + D2CombatStrcOffK2.pNext) >>> 0, prevHead)
   m.set(pAttacker, D2UnitStrc.pCombat, pCombat >>> 0)
 }
@@ -7599,6 +7702,7 @@ export function SUNITDMG_ApplyResistancesAndAbsorb113c(
   pDmg: number,
   pDmgArg = 0,
   dllAbi = false,
+  bSkipMeleeDotPreScaled = false,
 ): number {
   hitD2GameVa113c(0x6FCFC0B0)
   if (dllAbi) {
@@ -7769,7 +7873,47 @@ export function SUNITDMG_ApplyResistancesAndAbsorb113c(
     }
   }
 
-  const pvpMult = pAttacker !== 0 ? SUNITDMG_GetPvpOrPetDamageMultiplier113c(m, pAttacker, pDefender) : 1000
+  let alreadyPreScaledByMeleeDot = false
+  if (bSkipMeleeDotPreScaled && pAttacker !== 0 && pDefender !== 0 && pAttacker !== pDefender) {
+    const attType0 = m.u32(pAttacker >>> 0) >>> 0
+    const defType0 = m.u32(pDefender >>> 0) >>> 0
+    if (defType0 === UNIT_PLAYER && attType0 === UNIT_MONSTER) {
+      const pMonData0 = m.u32((pAttacker + 0x14) >>> 0) >>> 0
+      const pAiGen0 = pMonData0 !== 0 ? (m.u32((pMonData0 + 0x28) >>> 0) >>> 0) : 0
+      const legacyHandled0 =
+        pAiGen0 !== 0 &&
+        m.u32((pAiGen0 + 0x10) >>> 0) === 0 &&
+        m.u32((pAiGen0 + 0x0c) >>> 0) !== 0
+      if (
+        !legacyHandled0 &&
+        ((m.u32((pAttacker + 0xc4) >>> 0) >>> 31) !== 0 ||
+          MONSTERS_GetHirelingTypeId113c(m, pAttacker) !== 0)
+      ) {
+        alreadyPreScaledByMeleeDot = true
+      }
+    } else if (
+      attType0 === UNIT_MONSTER &&
+      defType0 === UNIT_MONSTER &&
+      MONSTERS_GetHirelingTypeId113c(m, pDefender) !== 0 &&
+      MONSTERS_GetHirelingTypeId113c(m, pAttacker) !== 0
+    ) {
+      alreadyPreScaledByMeleeDot = true
+    } else if (
+      attType0 === UNIT_MONSTER &&
+      defType0 === UNIT_MONSTER &&
+      (m.u32((pDefender + 0xc4) >>> 0) >>> 31) !== 0 &&
+      MONSTERS_GetHirelingTypeId113c(m, pDefender) === 0
+    ) {
+      const pAttStats0 = getMonStatsRecordPtrSafeK2(m, m.u32((pAttacker + 0x04) >>> 0) | 0)
+      if (pAttStats0 !== 0 && (m.u8((pAttStats0 + 0x0c) >>> 0) & 0x40) !== 0) {
+        alreadyPreScaledByMeleeDot = true
+      }
+    }
+  }
+  const pvpMult =
+    pAttacker !== 0 && !alreadyPreScaledByMeleeDot
+      ? SUNITDMG_GetPvpOrPetDamageMultiplier113c(m, pAttacker, pDefender)
+      : 1000
   if (pvpMult !== 1000) {
     phys = mulDiv113c(pvpMult, phys, 1000)
     fire = mulDiv113c(pvpMult, fire, 1000)
@@ -7873,6 +8017,9 @@ function isUnitWieldingTwoHandedWeaponK2(m: Memory113c, pUnit: number, pWeapon: 
   if (pUnit === 0 || pWeapon === 0) return false
   const pAttInv = m.get(pUnit, D2UnitStrc.pInventory)
   if (pAttInv === 0) return false
+  if (isSgptDataTablesLoaded113c(m) && safeReadU32K2(m, pAttInv) === 0x01020304) {
+    return (INVENTORY_GetEquippedWeaponHandClass113c(m, pUnit, pAttInv) | 0) === 2
+  }
   if (findItemInInventoryByBodyLocK2(m, pAttInv, 4) !== 0 && findItemInInventoryByBodyLocK2(m, pAttInv, 5) !== 0) {
     return false
   }
@@ -7881,14 +8028,14 @@ function isUnitWieldingTwoHandedWeaponK2(m: Memory113c, pUnit: number, pWeapon: 
   const nItemsCount = safeReadU32K2(m, 0x6fdefb94) | 0
   if (pItemsTxtBase !== 0 && itemClassId >= 0 && itemClassId < nItemsCount) {
     const pTxt = (pItemsTxtBase + Math.imul(itemClassId, 0x1a8)) >>> 0
-    return m.u8((pTxt + 0x127) >>> 0) !== 0
+    return m.u8((pTxt + 0x137) >>> 0) !== 0
   }
   const sgpt = safeReadU32K2(m, 0x6fde9e1c)
   if (sgpt !== 0) {
     const pAltBase = safeReadU32K2(m, sgpt)
     if (pAltBase !== 0 && itemClassId >= 0) {
       const pTxt = (pAltBase + Math.imul(itemClassId, 0x1a8)) >>> 0
-      return m.u8((pTxt + 0x127) >>> 0) !== 0
+      return m.u8((pTxt + 0x137) >>> 0) !== 0
     }
   }
   return false
@@ -8235,7 +8382,7 @@ export function SUNITDMG_FillDamageValues113c(
     PLAYER_UpdateDualWieldWeaponStatLists113c(m, bUseWpnStats, att)
     const attType = m.u32(att) | 0
     const defType = m.u32(def) | 0
-    m.setU32(dmg, (m.u32(dmg) | 0x22) >>> 0)
+    m.setU32(dmg, (m.u32(dmg) | (dllAbi ? 0x20 : 0x22)) >>> 0)
     if ((attType === 0 || UNIT_GetAlignmentMemPort113c(m, att) === 2) && defType === 1) {
       SUNITDMG_ApplyAttackerThornsToSelf113c(m, att, def, 0, true)
       if (MONSTER_CheckMonTypeFlag0x20_113c(m, def) !== 0) {
@@ -8772,8 +8919,11 @@ export function SUNITDMG_TriggerGetHitStateAndMode113c(
     MONSTER_CheckSandLeaperMidAir113c(m, pDmg, pDefender)
     if (pGame !== 0) {
       const classId = m.get(pDefender, D2UnitStrc.dwClassId) >>> 0
-      const ghFrames = getMonsterModeBaseFrameCountPure113c(classId, 3) | 0
-      if (ghFrames > 0) {
+      const hasGdw = safeReadU32K2(m, D2GAME_IAT_GDW_BITMASKS_VA_113C) !== 0
+      const canGetHit = hasGdw
+        ? MONSTATS2_CheckModeBit113c(m, classId | 0, 3) !== 0
+        : (getMonsterModeBaseFrameCountPure113c(classId, 3) | 0) > 0
+      if (canGetHit) {
         if (effHooks !== undefined && effHooks.onMonsterStartMode !== undefined) {
           effHooks.onMonsterStartMode(m, pGame, pDefender, 3, 0)
         } else {
@@ -8921,6 +9071,34 @@ export function SUNITDMG_ApplySideEffectsAndKill113c(
         }
       } else {
         SUNITDMG_TriggerBlockEvents113c(m, g, def, effHooks)
+      }
+      return 0
+    }
+    // 0x6FCFD3A6..0x6FCFD3EA: player knockback (`RESULTFLAG_KNOCKBACK = 0x08`) -> `0x6FC98430` (`PLRMODE_KNOCKBACK = 19`)
+    if ((flags & 0x08) !== 0) {
+      if (g !== 0) {
+        hitD2GameVa113c(0x6FC98430)
+        const kbTarget =
+          att !== 0
+            ? (SUNIT_GetServerUnit113c(
+                m,
+                g,
+                m.u32(att) >>> 0,
+                m.u32((att + 0x0c) >>> 0) >>> 0,
+              ) >>> 0)
+            : 0
+        if (
+          kbTarget !== 0 &&
+          AITHINK_CanPlayerSwitchToMode113c(m, def, g, 0x13) !== 0 &&
+          AITHINK_CanPlayerStartSkillOrCast113c(m, def, g, 0x13, 1, 0, () => {}) !== 0
+        ) {
+          const pPlrData = m.u32((def + 0x14) >>> 0) >>> 0
+          if (pPlrData !== 0) {
+            m.setU32((pPlrData + 0x154) >>> 0, 0)
+            m.setU32((pPlrData + 0x150) >>> 0, 0)
+          }
+          PLAYER_ScheduleAttackActionFrameEvents113c(m, g, def, -2, 0x13, kbTarget)
+        }
       }
       return 0
     }
@@ -9289,7 +9467,12 @@ export function SUNITDMG_DistributeExperience113c(
       return 0
     }
   }
-  if (pAttacker === 0) return 0
+  if (pAttacker === 0) {
+    if (!bSuppressS2c && hasHydratedAnimDataTableK2(m)) {
+      return SUNITDMG_DistributeExperience113c(m, pGame, pDefender, 0, 1, true)
+    }
+    return 0
+  }
   if (isSgptDataTablesLoaded113c(m) && m.u32(pAttacker) === UNIT_PLAYER) {
     DATATBLS_UnusedStub10469_113c(m, pAttacker, m.u32((pDefender + 4) >>> 0))
   }
@@ -10018,15 +10201,17 @@ export function MONSTER_StartMove113c<T extends MonsterSliceWorldLike113c | Memo
     let pathType = arg4 | 0
     let velArg = arg5 | 0
     let distByte = Number(arg6) & 0xff
-    const ptOv = m.u32((pAiCtrl + 0x18) >>> 0) | 0
-    if (ptOv !== 0) pathType = ptOv
-    const velOv = m.u32((pAiCtrl + 0x1c) >>> 0) | 0
-    if (velOv !== 0) velArg = velOv
-    const distOv = m.u8((pAiCtrl + 0x20) >>> 0)
-    if (distOv !== 0) distByte = distOv
-    m.setU32((pAiCtrl + 0x18) >>> 0, 0)
-    m.setU32((pAiCtrl + 0x1c) >>> 0, 0)
-    m.setU8((pAiCtrl + 0x20) >>> 0, 0)
+    if (pAiCtrl !== 0) {
+      const ptOv = m.u32((pAiCtrl + 0x18) >>> 0) | 0
+      if (ptOv !== 0) pathType = ptOv
+      const velOv = m.u32((pAiCtrl + 0x1c) >>> 0) | 0
+      if (velOv !== 0) velArg = velOv
+      const distOv = m.u8((pAiCtrl + 0x20) >>> 0)
+      if (distOv !== 0) distByte = distOv
+      m.setU32((pAiCtrl + 0x18) >>> 0, 0)
+      m.setU32((pAiCtrl + 0x1c) >>> 0, 0)
+      m.setU8((pAiCtrl + 0x20) >>> 0, 0)
+    }
     const pPath = m.u32((pMonster + 0x2c) >>> 0) >>> 0
     let resDist = -1
     let resType = 0
@@ -10041,8 +10226,10 @@ export function MONSTER_StartMove113c<T extends MonsterSliceWorldLike113c | Memo
         resDist = 10
       }
     }
-    m.setU32((pAiCtrl + 0x10) >>> 0, velArg >>> 0)
-    m.setU32((pAiCtrl + 0x14) >>> 0, resDist >>> 0)
+    if (pAiCtrl !== 0) {
+      m.setU32((pAiCtrl + 0x10) >>> 0, velArg >>> 0)
+      m.setU32((pAiCtrl + 0x14) >>> 0, resDist >>> 0)
+    }
     const cntAddr = (pGame + 0x1d70 + (resType << 2)) >>> 0
     m.setU32(cntAddr, (m.u32(cntAddr) + 1) >>> 0)
     if (resType !== 0) {
@@ -10074,11 +10261,21 @@ export function MONSTER_StartMove113c<T extends MonsterSliceWorldLike113c | Memo
     }
     PATH_SetStepDistance113c(m, pPath, 20)
 
-    let ptOv = 0
+    let ptOv = pendingBridgePathTypeOverrideK2
+    pendingBridgePathTypeOverrideK2 = 0
+    if (
+      ptOv === 0 &&
+      inSiegeMinionThinkC0x64K2 &&
+      pTarget === 0 &&
+      (targetX !== 0 || targetY !== 0)
+    ) {
+      ptOv = 0x64
+    }
     let velOverride = 0
     let ovDist = 0
     if (pAiCtrl !== 0) {
-      ptOv = m.get(pAiCtrl, D2AiControlStrc.dwPathTypeOverride) | 0
+      const ctrlPtOv = m.get(pAiCtrl, D2AiControlStrc.dwPathTypeOverride) | 0
+      if (ctrlPtOv !== 0) ptOv = ctrlPtOv
       velOverride = m.get(pAiCtrl, D2AiControlStrc.dwVelocityOverride) | 0
       ovDist = m.get(pAiCtrl, D2AiControlStrc.bNewDistOverride) & 0xff
       m.set(pAiCtrl, D2AiControlStrc.dwPathTypeOverride, 0)
@@ -10135,7 +10332,7 @@ export function MONSTER_StartMove113c<T extends MonsterSliceWorldLike113c | Memo
         }
       }
 
-      if (ok !== 0 && isMoving && mode !== 0x0d) {
+      if (ok !== 0 && isMoving && mode !== 0x0d && mode !== 0x0e) {
         PATH_SetVelocity113c(m, pPath, scaledVel > 0 ? scaledVel : 0)
       }
 
@@ -10163,7 +10360,18 @@ export function MONSTER_StartMove113c<T extends MonsterSliceWorldLike113c | Memo
         }
       }
 
-      if (isMoving && mode !== 0x0d && ok === 0) {
+      if (isMoving && mode !== 0x0d && mode !== 0x0e && ok === 0) {
+        const animHydratedMoveFail = hasHydratedAnimDataTableK2(m)
+        if (animHydratedMoveFail) {
+          const hadFlag1List = STATLIST_GetStatListFromUnitAndFlag113c(m, pMonster, 1) !== 0
+          MONSTER_ApplyElementalDamageAndResistStats113c(m, pGame, pMonster, mode)
+          if (!hadFlag1List && !isHireableMonsterK2(m, pMonster)) {
+            setMonsterAttackStatsForModeK2(m, pGame, pMonster, mode, row)
+          }
+        } else if (!isHireableMonsterK2(m, pMonster)) {
+          setMonsterAttackStatsForModeK2(m, pGame, pMonster, mode, row)
+        }
+        MONSTER_DispatchMinionComponentCallbacks113c(m, pGame, pMonster, 0, 0)
         SKILLS_SetUsedSkill113c(m, pMonster, 0)
         if (mode !== 0 && mode !== 12 && SUNIT_IsDeadOrDying113c(m, pMonster) !== 0) {
           return { ok: 1, moveAnimSpeed, abortedMoving: true } as never
@@ -10187,6 +10395,10 @@ export function MONSTER_StartMove113c<T extends MonsterSliceWorldLike113c | Memo
         }
         const nuFrames = getMonsterModeBaseFrameCountPure113c(row.hcIdx, 1)
         writeUnitAnimStateK2(m, pMonster, 0, 0, nuFrames << 8, 256, 0)
+        if (pAiCtrl !== 0) {
+          MONSTER_ApplyModeVelocityOverride113c(m, pAiCtrl, pMonster)
+        }
+        MONSTER_DispatchMinionComponentCallbacks113c(m, pGame, pMonster, 0, 1)
         if (pGame !== 0) {
           const frame = m.get(pGame, D2GameStrc.dwGameFrame) >>> 0
           const nextThink = EVENT_GetNextEventFrame113c(m, pMonster, MON_EVENT_AI_THINK) | 0
@@ -10431,7 +10643,10 @@ function dispatchMonsterModeStartEntryK2(
     UNITS_ChangeAnimMode113c(m, pMonster, 0)
     MONSTER_SetDeathPathAndAnim113c(m, pGame >>> 0, pMonster, m.u8((pModeChange + 0x14) >>> 0))
     const pTargetUnit = m.u32((pModeChange + 0x08) >>> 0) >>> 0
+    const prevDropGuid = pGame !== 0 ? (m.u32((pGame + 0xa0) >>> 0) >>> 0) : 0
     MONSTER_DropDeathItems_6FC95900_113c(m, pGame >>> 0, pMonster, pTargetUnit)
+    const nextDropGuid = pGame !== 0 ? (m.u32((pGame + 0xa0) >>> 0) >>> 0) : 0
+    applyMissingNormalInferiorAutoAffixInRange113c(m, pGame >>> 0, prevDropGuid, nextDropGuid)
     const pMonDataD = m.u32((pMonster + 0x14) >>> 0) >>> 0
     if (pMonDataD === 0 || (m.u8((pMonDataD + 0x5c) >>> 0) & 2) === 0) {
       const lvlIdD = pMonDataD !== 0 ? (m.u32((pMonDataD + 0x58) >>> 0) >>> 0) : 0
@@ -10450,6 +10665,10 @@ function dispatchMonsterModeStartEntryK2(
   UNITS_ChangeAnimMode113c(m, pMonster, mMode)
   return 1
 }
+
+let pendingBridgePathTypeOverrideK2 = 0
+let pendingBridgeClearUsedSkillK2 = -1
+let inSiegeMinionThinkC0x64K2 = false
 
 /**
  * `@va D2Game:0x6FC95E10` (`MONSTER_StartMode`, `560B`):
@@ -10472,10 +10691,21 @@ export function MONSTER_StartMode113c<T extends MonsterSliceWorldLike113c | Memo
     const bridge = KERNEL_MONSTER_AI_BRIDGE_BY_MEM_113C.get(arg0 as Memory113c)
     if (bridge !== undefined) {
       if (arg1 === 0 || arg2 === 0) return 0 as never
-      return bridge.startMode(arg2, arg3 | 0, arg4, arg5, arg6) as never
+      const prevPtOv = pendingBridgePathTypeOverrideK2
+      const prevClrSk = pendingBridgeClearUsedSkillK2
+      pendingBridgePathTypeOverrideK2 = arg7 | 0
+      pendingBridgeClearUsedSkillK2 = arg8 | 0
+      try {
+        return bridge.startMode(arg2, arg3 | 0, arg4, arg5, arg6) as never
+      } finally {
+        pendingBridgePathTypeOverrideK2 = prevPtOv
+        pendingBridgeClearUsedSkillK2 = prevClrSk
+      }
     }
   }
   if (isMonsterSliceWorldK2(arg0)) {
+    const bClearUsedSkill = pendingBridgeClearUsedSkillK2
+    pendingBridgeClearUsedSkillK2 = -1
     const world = arg0
     const pMonster = arg1
     const mode = arg2
@@ -10508,6 +10738,10 @@ export function MONSTER_StartMode113c<T extends MonsterSliceWorldLike113c | Memo
     const isMoving = MONSTER_IsContinuousMode113c(m, pMonster, mode)
     let moveAnimSpeed = 256
 
+    if (syncRoomFlags && SUNIT_IsDeadOrDying113c(m, pMonster) === 0) {
+      PATH_AddUnitCollisionFootprint113c(m, pMonster)
+    }
+
     const prevMode = m.get(pMonster, D2UnitStrc.dwAnimMode)
     if (prevMode !== 1) {
       MONSTER_SavePrevMode113c(m, pMonster, prevMode)
@@ -10529,7 +10763,12 @@ export function MONSTER_StartMode113c<T extends MonsterSliceWorldLike113c | Memo
         setMonsterAttackStatsForModeK2(m, pGame, pMonster, mode, row)
       }
       MONSTER_DispatchMinionComponentCallbacks113c(m, pGame, pMonster, 0, 0)
-      world.onMonsterStartSkillMode?.(m, pGame, pMonster)
+      if (
+        !(animHydrated && entry.pfnStart === 0x6fc954e0) &&
+        !(bClearUsedSkill !== 0 && (mode === 1 || mode === 6 || mode === 12 || mode === 13))
+      ) {
+        world.onMonsterStartSkillMode?.(m, pGame, pMonster)
+      }
     } else if (isSgptDataTablesLoaded113c(m) && pGame !== 0) {
       const savedSp = k2RealStackPtr
       const pModeChange = k2RealStackPtr
@@ -10541,10 +10780,6 @@ export function MONSTER_StartMode113c<T extends MonsterSliceWorldLike113c | Memo
       } finally {
         k2RealStackPtr = savedSp
       }
-    }
-
-    if (pMonData !== 0) {
-      m.setU32((pMonData + 0x50) >>> 0, 0)
     }
 
     // 0x6FC95F58..0x6FC95F96: dispatch canonical mode pfnStart(pGame, pModeChange)
@@ -10635,7 +10870,7 @@ export function MONSTER_StartMode113c<T extends MonsterSliceWorldLike113c | Memo
       } else if (actualIsMoving && world.onApplyHireableVelocityOverride !== undefined) {
         appliedVelOv = world.onApplyHireableVelocityOverride(m, pMonster, pAiCtrl)
       }
-      if (actualIsMoving && !appliedVelOv && actualMode !== 0x0d) {
+      if (actualIsMoving && !appliedVelOv && actualMode !== 0x0d && actualMode !== 0x0e) {
         if (((m.u32((pMonster + 0xc8) >>> 0) >>> 3) & 1) === 0) {
           m.setU16((pMonster + 0x4c) >>> 0, moveAnimSpeed & 0xffff)
         }
@@ -10665,6 +10900,13 @@ export function MONSTER_StartMode113c<T extends MonsterSliceWorldLike113c | Memo
     }
 
     MONSTER_DispatchMinionComponentCallbacks113c(m, pGame, pMonster, 0, 1)
+    if (
+      bClearUsedSkill !== 0 &&
+      actualMode === (mode >>> 0) &&
+      (actualMode === 1 || actualMode === 3 || actualMode === 6 || actualMode === 12 || actualMode === 13)
+    ) {
+      SKILLS_SetUsedSkill113c(m, pMonster, 0)
+    }
     MONSTER_ClearModeEvents113c(m, pGame, pMonster)
 
     const actualEntry = MONSTER_GetModeEntry113c(m, pMonster, actualMode)
@@ -11259,6 +11501,66 @@ export function MONSTER_EndDeath113c(
 }
 
 /**
+ * `D2Game.dll@0x6FC30CC0..0x6FC31018`: `0x6FC31064` jump-table indices `[0,0,0,0,1,0,1,0,0]`
+ * roll `wAutoPrefix` (`pItemsTxt + 0xF8`) for all `finalQual` in `{1, 2, 3, 4, 6, 8, 9}`
+ * (including `1 = INFERIOR` and `2 = NORMAL`), skipping only `5 = SET` and `7 = UNIQUE`.
+ */
+export function applyMissingNormalInferiorAutoAffixInRange113c(
+  m: Memory113c,
+  pGame: number,
+  prevItemGuid: number,
+  newItemGuid: number,
+): void {
+  if (pGame === 0 || newItemGuid === prevItemGuid || !isSgptDataTablesLoaded113c(m)) return
+  for (
+    let guid = (prevItemGuid + 1) >>> 0;
+    ((newItemGuid - guid) | 0) >= 0;
+    guid = (guid + 1) >>> 0
+  ) {
+    const pItem = SUNIT_GetServerUnit113c(m, pGame >>> 0, UNIT_ITEM, guid) >>> 0
+    if (pItem !== 0) {
+      const pItemData = m.get(pItem, D2UnitStrc.pUnitData) >>> 0
+      if (
+        pItemData !== 0 &&
+        m.get(pItemData, D2ItemDataStrc.wAutoAffix) === 0 &&
+        ITEMS_TestFlagMask113c(m, ITEMS_GetCommandFlags113c(m, pItem), 0x2000) !== 0
+      ) {
+        const finalQual = ITEMS_GetItemQuality113c(m, pItem) | 0
+        if (finalQual === 1 || finalQual === 2) {
+          const finalFormat = ITEMS_GetItemFormat113c(m, pItem) & 0xffff
+          if (finalFormat >= 100) {
+            const pItemsTxt =
+              DATATBLS_GetItemsTxtRecordMemPort113c(m, m.u32((pItem + 0x04) >>> 0) | 0) >>> 0
+            const wAutoPrefixGrp = pItemsTxt !== 0 ? m.u16((pItemsTxt + 0xf8) >>> 0) : 0
+            if (wAutoPrefixGrp !== 0) {
+              const wAutoId =
+                ITEMS_RollMagicAffixByFormat_6FC34B50_113c(
+                  m,
+                  pItem,
+                  1,
+                  0,
+                  1,
+                  1,
+                  0,
+                  wAutoPrefixGrp,
+                ) & 0xffff
+              if (wAutoId > 0) {
+                ITEMS_SetAutoAffix113c(m, pItem, wAutoId)
+                const pAutoTxt = DATATBLS_GetMagicAffixTxtRecord113c(m, wAutoId) >>> 0
+                if (pAutoTxt !== 0) {
+                  ITEMS_ApplyItemQualityMods113c(m, 0, 0, pItem, pAutoTxt, 0, 0)
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    if (guid === newItemGuid) break
+  }
+}
+
+/**
  * `@va D2Game:0x6FC96270` (`MONSTER_StartDeath`, `768B`, `DT = 0`):
  * Canonical monster death sequence across `MonsterSliceWorldLike113c` and `Memory113c`.
  */
@@ -11278,13 +11580,9 @@ export function MONSTER_StartDeath113c(
     const pKiller = arg2
     const { m, pGame } = world
     const syncRoomFlags = world.hasFullDrlg !== undefined
-    SUNITDMG_FreeAttackerCombatList113c(m, pMonster, pGame)
     const prevMode = m.get(pMonster, D2UnitStrc.dwAnimMode)
     const pMonData = m.get(pMonster, D2UnitStrc.pUnitData)
-    if (pMonData !== 0) {
-      m.setU32((pMonData + 0x50) >>> 0, 0)
-    }
-    if (prevMode !== 1) {
+    if (!skipKillAward && prevMode !== 1) {
       MONSTER_SavePrevMode113c(m, pMonster, prevMode)
     }
 
@@ -11304,6 +11602,11 @@ export function MONSTER_StartDeath113c(
         0,
       )
     }
+    if (!skipKillAward && pGame !== 0 && isSgptDataTablesLoaded113c(m)) {
+      MONSTER_ApplyElementalDamageAndResistStats113c(m, pGame, pMonster, 0)
+      MONSTER_DispatchMinionComponentCallbacks113c(m, pGame, pMonster, 0, 0)
+    }
+    SUNITDMG_FreeAttackerCombatList113c(m, pMonster, pGame)
 
     if (syncRoomFlags) {
       UNITROOM_RefreshUnit113c(m, pMonster)
@@ -11326,7 +11629,7 @@ export function MONSTER_StartDeath113c(
       }
     }
 
-    MONSTER_SetDeathPathAndAnim113c(world, pMonster, pKiller, nextFlags, nextFlags2)
+    MONSTER_SetDeathPathAndAnim113c(world, pMonster, pKiller, nextFlags, nextFlags2, skipKillAward)
 
     const animHydrated = hasHydratedAnimDataTableK2(m)
     const dtFrames = getMonsterModeBaseFrameCountPure113c(row.hcIdx, 0)
@@ -11346,21 +11649,120 @@ export function MONSTER_StartDeath113c(
     const effKiller = pKillerPlayer !== 0 ? pKillerPlayer : pKiller
     if (row.killable && (m.get(pMonster, D2UnitStrc.dwFlags) & 0x20000) === 0) {
       if (pGame !== 0 && isSgptDataTablesLoaded113c(m)) {
+        const prevDropGuid = m.u32((pGame + 0xa0) >>> 0) >>> 0
         world.onMonsterDropItems?.(world, pMonster, effKiller)
+        const nextDropGuid = m.u32((pGame + 0xa0) >>> 0) >>> 0
+        applyMissingNormalInferiorAutoAffixInRange113c(m, pGame, prevDropGuid, nextDropGuid)
       } else if (!world.hasFullDrlg) {
         rollMonsterDeathDropSeedOnlyK2(world, pMonster, row)
       }
     }
-    if (!skipKillAward) {
-      MONSTER_ExecuteEventsWrapper113c(m, pGame, pKiller, pMonster, 0, () => {
-        if (world.onMonsterAwardKillExp !== undefined) {
-          world.onMonsterAwardKillExp(world, pMonster, pKiller, row)
-        } else {
-          awardMonsterKillExperienceK2(m, pGame, pMonster, effKiller, row)
+    if (pGame !== 0 && isSgptDataTablesLoaded113c(m)) {
+      const cid = m.u32((pMonster + 0x04) >>> 0) | 0
+      const pTables = m.u32(m.u32(D2GAME_IAT_SGPT_DATATABLES_VA_113C)) >>> 0
+      const nCount = pTables !== 0 ? (m.u32((pTables + 0xa80) >>> 0) | 0) : 0
+      const pMonBase = pTables !== 0 ? (m.u32((pTables + 0xa78) >>> 0) >>> 0) : 0
+      const pMonStats = cid >= 0 && cid < nCount && pMonBase !== 0 ? ((pMonBase + Math.imul(cid, 0x1a8)) >>> 0) : 0
+      const pBitMasks = m.u32(D2GAME_IAT_GDW_BITMASKS_VA_113C) >>> 0
+      const mask4 = pBitMasks !== 0 ? m.u32((pBitMasks + 0x10) >>> 0) : 0x10
+      if (pMonStats !== 0 && (m.u8((pMonStats + 0x0e) >>> 0) & mask4) !== 0) {
+        const monType = m.u32(pMonster) | 0
+        let baseId = cid
+        if (monType === 1) {
+          baseId = (m.u16((pMonStats + 0x02) >>> 0) << 16) >> 16
         }
-      })
+        if (baseId >= 0 && baseId < nCount) {
+          if (baseId === 0x1b9) {
+            MONSTER_NotifyOwnerOrDistributeExpOnDeath_6FC960F0_113c(m, pMonster, pGame)
+          } else if (baseId !== 0xd4) {
+            MONSTER_ApplyRoomCrushDamageToNearbyPlayers_6FC955C0_113c(m, pMonster, pGame)
+          } else {
+            const pPathD = m.u32((pMonster + 0x2c) >>> 0) >>> 0
+            const posX =
+              monType === 2 || (monType > 3 && monType <= 5)
+                ? (m.u32((pPathD + 0x0c) >>> 0) | 0)
+                : pPathD !== 0
+                  ? (PATH_GetPosX113c(m, pPathD) | 0)
+                  : 0
+            const posY =
+              monType === 2 || (monType > 3 && monType <= 5)
+                ? (m.u32((pPathD + 0x10) >>> 0) | 0)
+                : pPathD !== 0
+                  ? (PATH_GetPosY113c(m, pPathD) | 0)
+                  : 0
+            const pMissile =
+              SKILLS_CreateDirectionalProjectileWithToHitAndAmmo_6FCC28F0_113c(
+                m,
+                pGame,
+                0x75,
+                pMonster,
+                0,
+                1,
+                0,
+                0,
+                posX,
+                posY,
+                1,
+              ) >>> 0
+            if (pMissile !== 0) {
+              const diff = m.u8((pGame + 0x6d) >>> 0)
+              const pMonLvl = DATATBLS_GetMonLvlTxtRecord113c(m, diff) >>> 0
+              if (pMonLvl !== 0) {
+                const savedSp = k2RealStackPtr
+                const pOut = savedSp >>> 0
+                const pDmg = (savedSp + 0x38) >>> 0
+                k2RealStackPtr = (savedSp + 0xa8) >>> 0
+                try {
+                  m.fill(pOut, 0x38, 0)
+                  const monLvl = STATLIST_GetUnitStat113c(m, pMonster, 0x0c, 0) | 0
+                  DATATBLS_CalculateMonsterStatsByLevel113c(
+                    m,
+                    cid,
+                    m.u32((pGame + 0x74) >>> 0),
+                    diff,
+                    monLvl,
+                    1,
+                    pOut,
+                  )
+                  const esi = mulDiv113c(
+                    m.u32((pMonLvl + 0x3c) >>> 0) | 0,
+                    m.u32((pOut + 0x04) >>> 0) | 0,
+                    100,
+                  ) | 0
+                  let ebp = 0
+                  if (esi <= 0x100000) {
+                    ebp = Math.trunc((esi * 60) / 100) | 0
+                  } else if (((esi & 0xfffffff0) | 0) < 0x640) {
+                    ebp = Number((BigInt(esi) * 60n) / 100n) | 0
+                  } else {
+                    ebp = Math.imul(Math.trunc(esi / 100), 60) | 0
+                  }
+                  const roll = SEED_RollLimitedFast113c(m, (pMonster + 0x20) >>> 0, (esi - ebp) | 0) | 0
+                  const dmg = ((roll + ebp) << 7) | 0
+                  m.fill(pDmg, 0x70, 0)
+                  m.setU32((pDmg + 0x08) >>> 0, dmg >>> 0)
+                  SUNITDMG_ApplyRadialMissileSplashDamage_6FCFE380_113c(
+                    m,
+                    pGame,
+                    pMissile,
+                    posX,
+                    posY,
+                    5,
+                    pDmg,
+                    0,
+                    0,
+                    0,
+                    0x581,
+                  )
+                } finally {
+                  k2RealStackPtr = savedSp
+                }
+              }
+            }
+          }
+        }
+      }
     }
-
     if (pGame !== 0 && isSgptDataTablesLoaded113c(m)) {
       MONSTER_DispatchMinionComponentCallbacks113c(m, pGame, pMonster, 0, 1)
     }
@@ -11383,6 +11785,16 @@ export function MONSTER_StartDeath113c(
     } else {
       EVENT_SetEventFull113c(m, pGame, pMonster, MON_EVENT_MODE_END, (frame + dtFrames) >>> 0, 0, 0, 0)
     }
+
+    if (!skipKillAward) {
+      MONSTER_ExecuteEventsWrapper113c(m, pGame, pKiller, pMonster, 0, () => {
+        if (world.onMonsterAwardKillExp !== undefined) {
+          world.onMonsterAwardKillExp(world, pMonster, pKiller, row)
+        } else {
+          awardMonsterKillExperienceK2(m, pGame, pMonster, effKiller, row)
+        }
+      })
+    }
     return
   }
 
@@ -11398,7 +11810,10 @@ export function MONSTER_StartDeath113c(
     SUNITDMG_FreeAttackerCombatList113c(m, mon, game)
     UNITS_ChangeAnimMode113c(m, mon, 0)
     MONSTER_SetDeathPathAndAnim113c(m, game, mon, m.u8((pModeChange + 0x14) >>> 0))
+    const prevDropGuidDll = game !== 0 ? (m.u32((game + 0xa0) >>> 0) >>> 0) : 0
     MONSTER_DropDeathItems_6FC95900_113c(m, game, mon, m.u32((pModeChange + 0x08) >>> 0) >>> 0)
+    const nextDropGuidDll = game !== 0 ? (m.u32((game + 0xa0) >>> 0) >>> 0) : 0
+    applyMissingNormalInferiorAutoAffixInRange113c(m, game, prevDropGuidDll, nextDropGuidDll)
     const monType = mon !== 0 ? (m.u32(mon) | 0) : 0
     const pMonDataD = mon !== 0 ? (m.u32((mon + 0x14) >>> 0) >>> 0) : 0
     if (mon === 0 || monType !== 1 || pMonDataD === 0 || (m.u8((pMonDataD + 0x5c) >>> 0) & 2) === 0) {
@@ -11585,34 +12000,61 @@ export function MONSTER_EndToAiOrNeutral113c(
   if (isMonsterSliceWorldK2(arg0)) {
     const world = arg0
     const pMonster = arg1
-    const { m } = world
+    const { m, pGame } = world
     const syncRoomFlags = world.hasFullDrlg !== undefined
     const prevMode = m.get(pMonster, D2UnitStrc.dwAnimMode) >>> 0
+    let isSpecialInline = false
+    if (isSgptDataTablesLoaded113c(m) && pMonster !== 0 && (m.u32(pMonster) | 0) === 1) {
+      const pTables = m.u32(m.u32(D2GAME_IAT_SGPT_DATATABLES_VA_113C)) >>> 0
+      const nCount = pTables !== 0 ? (m.u32((pTables + 0xa80) >>> 0) | 0) : 0
+      const pMonBase = pTables !== 0 ? (m.u32((pTables + 0xa78) >>> 0) >>> 0) : 0
+      const cid = m.u32((pMonster + 0x04) >>> 0) | 0
+      let candId = cid
+      if (cid >= 0 && cid < nCount && pMonBase !== 0) {
+        const pCidStats = (pMonBase + Math.imul(cid, 0x1a8)) >>> 0
+        candId = (m.u16((pCidStats + 0x02) >>> 0) << 16) >> 16
+      }
+      if (candId >= 0 && candId < nCount && pMonBase !== 0) {
+        const pBaseStats = (pMonBase + Math.imul(candId, 0x1a8)) >>> 0
+        const inlineAiBit = m.u8((pBaseStats + 0x1a6) >>> 0)
+        isSpecialInline =
+          inlineAiBit !== 0 &&
+          ((candId === 0x6e && prevMode === 8) ||
+            (candId === 0xf7 && prevMode === 0x0e) ||
+            (candId === 0x88 && (prevMode === 0x0a || prevMode === 0x0b)) ||
+            candId === 0xe6 ||
+            candId === 0xe7 ||
+            (candId === 0x76 && prevMode === 2) ||
+            candId === 0x193)
+      }
+    }
     const inlineAiFlag =
-      prevMode < MONSTER_INLINE_AI_ON_END_TABLE_113C.length
+      !isSpecialInline && prevMode < MONSTER_INLINE_AI_ON_END_TABLE_113C.length
         ? MONSTER_INLINE_AI_ON_END_TABLE_113C[prevMode]
         : 0
-    if (inlineAiFlag !== 0) {
-      m.set(pMonster, D2UnitStrc.dwAnimMode, 1)
-      expireHireableModeStateListsK2(m, pMonster, prevMode, 1)
-      if (syncRoomFlags) {
-        UNITROOM_RefreshUnit113c(m, pMonster)
-        const nextFlags = (m.get(pMonster, D2UnitStrc.dwFlags) | 0x01) >>> 0
-        m.set(pMonster, D2UnitStrc.dwFlags, nextFlags)
-        if (prevMode !== 1 && !isHireableMonsterK2(m, pMonster)) {
-          STATLIST_ExpireStateListsOnModeChange113c(m, pMonster, 0)
-          if (hasHydratedAnimDataTableK2(m)) {
-            UNITS_UpdateAnimFrame113c(m, pMonster)
+    if (isSpecialInline || inlineAiFlag !== 0) {
+      if (!isSpecialInline) {
+        m.set(pMonster, D2UnitStrc.dwAnimMode, 1)
+        expireHireableModeStateListsK2(m, pMonster, prevMode, 1)
+        if (syncRoomFlags) {
+          UNITROOM_RefreshUnit113c(m, pMonster)
+          const nextFlags = (m.get(pMonster, D2UnitStrc.dwFlags) | 0x01) >>> 0
+          m.set(pMonster, D2UnitStrc.dwFlags, nextFlags)
+          if (prevMode !== 1 && !isHireableMonsterK2(m, pMonster)) {
+            STATLIST_ExpireStateListsOnModeChange113c(m, pMonster, 0)
+            if (hasHydratedAnimDataTableK2(m)) {
+              UNITS_UpdateAnimFrame113c(m, pMonster)
+            }
           }
+          const pu = world.pathUnitByPtr.get(pMonster)
+          if (pu !== undefined) {
+            pu.dwAnimMode = 1
+            pu.dwFlags = nextFlags
+          }
+        } else {
+          const pu = world.pathUnitByPtr.get(pMonster)
+          if (pu !== undefined) pu.dwAnimMode = 1
         }
-        const pu = world.pathUnitByPtr.get(pMonster)
-        if (pu !== undefined) {
-          pu.dwAnimMode = 1
-          pu.dwFlags = nextFlags
-        }
-      } else {
-        const pu = world.pathUnitByPtr.get(pMonster)
-        if (pu !== undefined) pu.dwAnimMode = 1
       }
       if (STATES_CheckState113c(m, pMonster, 1) !== 0 && SUNIT_IsDeadOrDying113c(m, pMonster) === 0) {
         return
@@ -11626,8 +12068,27 @@ export function MONSTER_EndToAiOrNeutral113c(
       return
     }
 
+    if (STATES_CheckState113c(m, pMonster, 0x36) !== 0) {
+      MONSTER_RefreshAiEvent113c(m, pMonster, 0)
+      if (SUNIT_IsDeadOrDying113c(m, pMonster) !== 0) {
+        return
+      }
+    }
+
     SKILLS_SetUsedSkill113c(m, pMonster, 0)
-    MONSTER_StartMode113c(world, pMonster, 1, 0, 0, 0)
+    if (pGame !== 0) {
+      SUNIT_ValidatePathTargetUnit113c(m, pMonster, pGame)
+    }
+    const pPathEnd = pMonster !== 0 ? m.get(pMonster, D2UnitStrc.pPath) : 0
+    const rawTargetEnd = pPathEnd !== 0 ? (PATH_GetTargetUnit113c(m, pPathEnd) >>> 0) : 0
+    const nextTargetEnd = rawTargetEnd === (pMonster >>> 0) ? 0 : rawTargetEnd
+    const prevPtOvEnd = pendingBridgePathTypeOverrideK2
+    pendingBridgePathTypeOverrideK2 = 0x64
+    try {
+      MONSTER_StartMode113c(world, pMonster, 1, nextTargetEnd, 0, 0)
+    } finally {
+      pendingBridgePathTypeOverrideK2 = prevPtOvEnd
+    }
     return
   }
 
@@ -11791,10 +12252,20 @@ export function MONSTER_StepPath113c(
     const pPath = m.get(pMonster, D2UnitStrc.pPath)
     if (pPath === 0) return 0
     ensureSliceWorldPathMemoryK2(world)
+    const prevRoom = m.u32((pPath + 0x1c) >>> 0) >>> 0
     const stepped = PATH_Step113c(m, pMonster, 0x400)
     if (world.hasFullDrlg === true && world.pGame !== 0 && UNITS_GetPathRoomRefreshFlag113c(m, pMonster) !== 0) {
       notifyNewlyEnteredRoomClientsK2(world, pMonster)
       SUNIT_UpdateUnitPositionAndRoom113c(m, 0, pMonster, world.pGame)
+    } else if (
+      world.hasFullDrlg !== true &&
+      (m.u32((pPath + 0x1c) >>> 0) >>> 0) !== prevRoom &&
+      (m.u32(pMonster >>> 0) | 0) === UNIT_MONSTER
+    ) {
+      const pMonData = m.u32((pMonster + 0x14) >>> 0) >>> 0
+      if (pMonData !== 0) {
+        m.setU32((pMonData + 0x50) >>> 0, 0)
+      }
     }
     return stepped
   }
@@ -12150,7 +12621,7 @@ export function AI_IdleWander113c<T extends MonsterSliceWorldLike113c | Memory11
   arg0: T,
   arg1: number,
   arg2 = 8,
-  arg3 = 8,
+  arg3 = 4,
 ): T extends MonsterSliceWorldLike113c ? boolean : number {
   hitD2GameVa113c(0x6FD11B10)
   if (isMonsterSliceWorldK2(arg0)) {

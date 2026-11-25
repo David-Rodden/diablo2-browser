@@ -471,7 +471,7 @@ describe('Character Skins Engine, KelThuzad Morph Override, & .d2skin.zip Pipeli
 
     await host.setEnabled('character-skins', true)
     expect(skinService.getConfig().enabled).toBe(true)
-    expect(skinService.getSelectedSkinId('ne')).toBe('ne-kelthuzad')
+    expect(skinService.getSelectedSkinId('ne')).toBe('ne-wow-undead')
     expect(skinService.getConfig().morphPolicy).toBe('keep-skin')
 
     await skinService.ensureCharacterSkinArt(renderer, 'ne-kelthuzad')

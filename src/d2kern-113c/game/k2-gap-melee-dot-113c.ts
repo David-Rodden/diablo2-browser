@@ -33,6 +33,7 @@ import { D2CommonAssertError } from '../common/inline-helpers.ts'
 import {
   DATATBLS_GetItemsTxtRecordMemPort113c,
   DUNGEON_CheckRoomIsTownMemPort113c,
+  SKILLS_SetUsedSkillMemPort113c,
   STATLIST_GetStatListFromUnitAndStateMemPort113c,
 } from '../common/k0-d2common-memports.ts'
 import {
@@ -54,6 +55,7 @@ import {
   MONSTERS_GetHirelingTypeId113c,
 } from '../common/missile.ts'
 import {
+  PATH_AddUnitCollisionFootprint113c,
   PATH_Compute113c,
   PATH_GetOrCheckLastCollisionMask113c,
   PATH_GetPosX113c,
@@ -979,6 +981,16 @@ function buildMeleeDotCombatHooks(hooks?: K2GapMeleeDotHooks113c): SUnitDmgHooks
     },
     onMonsterStartMode: (mem, pg, def, mode, pTarget) => {
       if (hasHydratedAnimDataTableK2E_113c(mem)) {
+        const isMon = def !== 0 && (mem.u32(def >>> 0) | 0) === 1
+        if (isMon && SUNIT_IsDeadOrDying113c(mem, def) === 0) {
+          const r0 = UNITS_GetRoom113c(mem, def) >>> 0
+          if (r0 !== 0 && mem.u32((r0 + 0x20) >>> 0) !== 0) {
+            PATH_AddUnitCollisionFootprint113c(mem, def)
+          }
+        }
+        const md0 = isMon ? (mem.u32((def + 0x14) >>> 0) >>> 0) : 0
+        const coord0 = md0 !== 0 ? (mem.u32((md0 + 0x50) >>> 0) >>> 0) : 0
+        const rm0 = coord0 !== 0 ? (UNITS_GetRoom113c(mem, def) >>> 0) : 0
         MONSTER_StartMode113c(
           mem,
           pg,
@@ -988,6 +1000,15 @@ function buildMeleeDotCombatHooks(hooks?: K2GapMeleeDotHooks113c): SUnitDmgHooks
           0,
           0,
         )
+        if (coord0 !== 0 && rm0 !== 0 && (UNITS_GetRoom113c(mem, def) >>> 0) === rm0) {
+          const md1 = mem.u32((def + 0x14) >>> 0) >>> 0
+          if (md1 !== 0 && mem.u32((md1 + 0x50) >>> 0) === 0) {
+            mem.setU32((md1 + 0x50) >>> 0, coord0)
+          }
+        }
+        if (def !== 0 && (mem.u32((def + 0x10) >>> 0) | 0) === (mode | 0)) {
+          SKILLS_SetUsedSkillMemPort113c(mem, def, 0)
+        }
         return
       }
       if (mode === 3) {
@@ -1004,6 +1025,80 @@ function buildMeleeDotCombatHooks(hooks?: K2GapMeleeDotHooks113c): SUnitDmgHooks
   }
 }
 
+function scaleDmgValue0x6FCFC1BA(val: number, scale: number): number {
+  const ecx = val | 0
+  const esi = scale | 0
+  if (ecx > 0x100000) {
+    if ((ecx & 0xfffffff0) < 0x640) {
+      return Number((BigInt(ecx) * BigInt(esi)) / 100n) | 0
+    }
+    return Math.imul(divBy100Magic113c(ecx), esi)
+  }
+  if (esi > 0x10000) {
+    if ((esi & 0xfffffff0) < 0x640) {
+      return Number((BigInt(ecx) * BigInt(esi)) / 100n) | 0
+    }
+    return Math.imul(divBy100Magic113c(esi), ecx)
+  }
+  return divBy100Magic113c(Math.imul(ecx, esi))
+}
+
+const PVP_PET_SCALED_DMG_OFFSETS_6FD22AB0: readonly number[] = [
+  0x08, 0x10, 0x1c, 0x24, 0x20, 0x28, 0x38, 0x3c, 0x40,
+]
+
+function applyMissingPetOrBossDamageMult0x6FCFAC10(
+  m: Memory113c,
+  pAttacker: number,
+  pDefender: number,
+  pDamage: number,
+): void {
+  const att = pAttacker >>> 0
+  const def = pDefender >>> 0
+  const dmg = pDamage >>> 0
+  if (att === 0 || def === 0 || dmg === 0 || att === def) return
+  const attType = m.u32(att) >>> 0
+  const defType = m.u32(def) >>> 0
+  let mult = 100
+  if (defType === 0 && attType === 1) {
+    const pMonData = m.u32((att + 0x14) >>> 0) >>> 0
+    const pAiGen = pMonData !== 0 ? (m.u32((pMonData + 0x28) >>> 0) >>> 0) : 0
+    const legacyHandled =
+      pAiGen !== 0 && m.u32((pAiGen + 0x10) >>> 0) === 0 && m.u32((pAiGen + 0x0c) >>> 0) !== 0
+    if (
+      !legacyHandled &&
+      ((m.u32((att + 0xc4) >>> 0) >>> 31) !== 0 || MONSTERS_GetHirelingTypeId113c(m, att) !== 0)
+    ) {
+      mult = 0x11
+    }
+  } else if (
+    attType === 1 &&
+    defType === 1 &&
+    MONSTERS_GetHirelingTypeId113c(m, def) !== 0 &&
+    MONSTERS_GetHirelingTypeId113c(m, att) !== 0
+  ) {
+    mult = 0x19
+  } else if (
+    attType === 1 &&
+    defType === 1 &&
+    (m.u32((def + 0xc4) >>> 0) >>> 31) !== 0 &&
+    MONSTERS_GetHirelingTypeId113c(m, def) === 0
+  ) {
+    const pAttStats = MONSTATS_GetRecordPtr113c(m, m.u32((att + 0x04) >>> 0) | 0) >>> 0
+    if (pAttStats !== 0 && (m.u8((pAttStats + 0x0c) >>> 0) & 0x40) !== 0) {
+      mult = 400
+    }
+  }
+  if (mult === 100) return
+  for (const off of PVP_PET_SCALED_DMG_OFFSETS_6FD22AB0) {
+    const ptr = (dmg + off) >>> 0
+    const cur = m.u32(ptr) | 0
+    if (cur > 0) {
+      m.setU32(ptr, scaleDmgValue0x6FCFC1BA(cur, mult) >>> 0)
+    }
+  }
+}
+
 /**
  * Exact internal port of `0x6FCFE0C0` (`eax = pDefender`, `[esp+4] = pGame`, `[esp+8] = pAttacker`, `[esp+0xC] = bApplyResists`, `[esp+0x10] = pDamage`),
  * delegating directly to canonical `SUNITDMG_ApplyDamage113c` in `./k2-real-s2c-combat-113c.ts`.
@@ -1017,6 +1112,9 @@ function applyDamage0x6FCFE0C0(
   pDamage: number,
   hooks?: K2GapMeleeDotHooks113c,
 ): void {
+  if (bApplyResists !== 0) {
+    applyMissingPetOrBossDamageMult0x6FCFAC10(m, pAttacker, pDefender, pDamage)
+  }
   const effHooks = resolveMeleeDotHooks113c(hooks)
   if (effHooks !== undefined && effHooks.applyDamage !== undefined) {
     effHooks.applyDamage(m, pGame, pAttacker, pDefender, bApplyResists, pDamage)

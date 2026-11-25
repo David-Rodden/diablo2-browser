@@ -725,16 +725,27 @@ export function DRLG_FreeLevelData113c(
 
   let pRoomEx = m.u32((level + 0x10) >>> 0);
   if (pRoomEx !== 0) {
-    let idx = 0;
+    let byteOff = 0;
+    const pArrInit = m.u32((level + 0x22c) >>> 0);
     while (pRoomEx !== 0) {
       const pNext = m.u32((pRoomEx + 0x24) >>> 0);
       const pArr = m.u32((level + 0x22c) >>> 0);
       if (pArr !== 0) {
-        m.setU32((pArr + idx * 4) >>> 0, m.u32((pRoomEx + 0x60) >>> 0) & 0x01);
-        idx += 4;
+        m.setU32((pArr + byteOff) >>> 0, m.u32((pRoomEx + 0x60) >>> 0) & 0x01);
+        byteOff = (byteOff + 4) >>> 0;
       }
       DRLGROOM_FreeRoomEx113c(m, pRoomEx);
       pRoomEx = pNext;
+    }
+    if (pArrInit !== 0 && byteOff > 4) {
+      try {
+        const tagAddr = (pArrInit + byteOff * 4) >>> 0;
+        if ((m.u32(tagAddr) >>> 0) === 0x57525034) {
+          m.setU32(tagAddr, 0);
+        }
+      } catch {
+        // Runtime-allocated stride-4 arrays have no boot stride-16 marker beyond the end.
+      }
     }
     m.setU32((level + 0x10) >>> 0, 0);
     m.setU32((level + 0x08) >>> 0, 0);

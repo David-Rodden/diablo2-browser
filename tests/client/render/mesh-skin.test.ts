@@ -11,17 +11,21 @@ import {
   resolveMeshSkinOneShotTimeMs,
   sampleMeshSkinClip,
   shortestDir64Delta,
+  skinMeshSkinAttachment,
   skinMeshSkinGeoset,
+  type MeshSkinGeoset,
 } from '../../../src/common/units/mesh-skin-model.ts'
 import { MESH_SKIN_BLEND_MS, MeshSkinAnimator } from '../../../src/client/render/mesh-skin-animator.ts'
 import { compositeMeshSkinCanvasPixels } from '../../../src/client/render/mesh-skin-renderer.ts'
 import { getEmbeddedDropTables } from '../../../src/common/items/embedded-drop-tables.ts'
 import {
   MESH_PAPERDOLL_GLOW_RGB,
+  applyMeshPaperdollUniqueLooks,
   decodeMeshPaperdollSelection,
   encodeMeshPaperdollSelection,
   meshPaperdollGlowBySlot,
   meshPaperdollGlowForQuality,
+  meshPaperdollUniqueWeapons,
   resolveMeshPaperdollKeyFromSlots,
   resolveMeshPaperdollSelection,
 } from '../../../src/common/units/mesh-skin-paperdoll.ts'
@@ -688,8 +692,15 @@ describe('Mesh skin paper-doll', () => {
       ...NONE, weapon: 'staff', helm: 'cap', armor: 'breast3',
     })
     expect(resolveMeshPaperdollSelection({ helm: 'zzz', armor: '', hand1: 'nope' })).toEqual(NONE)
-    // Dual wielding is not modelled: the first hand's weapon is the one shown.
-    expect(resolveMeshPaperdollSelection({ hand1: 'ssd', hand2: 'hax' }).weapon).toBe('sword')
+    // Dual wielding: the first hand's weapon is the main weapon, the second one the off-hand `w-<family>`.
+    expect(resolveMeshPaperdollSelection({ hand1: 'ssd', hand1Quality: 4, hand2: 'hax', hand2Quality: 7 })).toEqual({
+      ...NONE, weapon: 'sword', weaponGlow: 'magic', offhand: 'w-axe', offhandGlow: 'unique',
+    })
+    expect(resolveMeshPaperdollSelection({ hand1: 'ktr', hand2: 'ktr' })).toMatchObject({ weapon: 'claw', offhand: 'w-claw' })
+    // A Barbarian holds a two-handed sword in one hand whenever the other hand is occupied.
+    expect(resolveMeshPaperdollSelection({ hand1: 'clm' }).weapon).toBe('sword2h')
+    expect(resolveMeshPaperdollSelection({ hand1: 'clm', hand2: 'tow' })).toMatchObject({ weapon: 'sword2h1', offhand: 'tower' })
+    expect(resolveMeshPaperdollSelection({ hand1: 'clm', hand2: '2hs' })).toMatchObject({ weapon: 'sword2h1', offhand: 'w-sword2h' })
     expect(resolveMeshPaperdollSelection({ hand1: 'buc', hand2: 'hax' })).toMatchObject({ weapon: 'axe', offhand: 'buckler' })
 
     expect([1, 2, 3, 4, 5, 6, 7, 8, 9, undefined].map(meshPaperdollGlowForQuality)).toEqual([
@@ -698,8 +709,52 @@ describe('Mesh skin paper-doll', () => {
     expect(
       resolveMeshPaperdollSelection({ hand1: 'tow', hand1Quality: 7, hand2: 'mac', hand2Quality: 6 }),
     ).toMatchObject({ weapon: 'mace', weaponGlow: 'rare', offhand: 'tower', offhandGlow: 'unique' })
+    // Unique weapons carry their `UniqueItems.txt` row id; other qualities and non-weapons do not.
+    const windforce = resolveMeshPaperdollSelection({ hand1: '6lw', hand1Quality: 7, hand1Unique: 266 })
+    expect(windforce).toEqual({ ...NONE, weapon: 'bow', weaponGlow: 'unique', weaponUnique: 266 })
+    expect(resolveMeshPaperdollSelection({ hand1: '6lw', hand1Quality: 6, hand1Unique: 266 }).weaponUnique).toBeUndefined()
+    expect(resolveMeshPaperdollSelection({ hand1: '6lw', hand1Quality: 7, hand1Unique: 0xfff }).weaponUnique).toBeUndefined()
+    expect(resolveMeshPaperdollSelection({ hand1: 'tow', hand1Quality: 7, hand1Unique: 5 })).toMatchObject({ offhand: 'tower', offhandGlow: 'unique' })
+    expect(resolveMeshPaperdollSelection({ hand1: 'tow', hand1Quality: 7, hand1Unique: 5 }).offhandUnique).toBeUndefined()
+    const dual = resolveMeshPaperdollSelection({ hand1: '7wa', hand1Quality: 7, hand1Unique: 314, hand2: '7cr', hand2Quality: 7, hand2Unique: 259 })
+    expect(dual).toMatchObject({ weapon: 'axe', weaponUnique: 314, offhand: 'w-sword', offhandUnique: 259 })
+    const dualKey = encodeMeshPaperdollSelection(dual)
+    expect(dualKey).toBe('armor=none,helm=none,offhand=w-sword,weapon=axe,offhandGlow=unique,weaponGlow=unique,offhandUnique=259,weaponUnique=314')
+    // A hand whose weapon pack model is attached takes its family model and glow off; the other keeps both.
+    const decodedDual = decodeMeshPaperdollSelection(dualKey)
+    expect(meshPaperdollUniqueWeapons(decodedDual)).toEqual({ weapon: 314, offhand: 259 })
+    const all = applyMeshPaperdollUniqueLooks(decodedDual, { weapon: true, offhand: true })
+    expect(all).toMatchObject({ weapon: 'none', offhand: 'none' })
+    expect(all.weaponGlow).toBeUndefined()
+    expect(all.offhandGlow).toBeUndefined()
+    const onlyWeapon = applyMeshPaperdollUniqueLooks(decodedDual, { weapon: true, offhand: false })
+    expect(onlyWeapon).toMatchObject({ weapon: 'none', offhand: 'w-sword', offhandGlow: 'unique' })
+    expect(applyMeshPaperdollUniqueLooks(decodedDual, { weapon: false, offhand: false })).toBe(decodedDual)
+    // A unique shield never asks for a pack model, and a malformed id is ignored.
+    expect(meshPaperdollUniqueWeapons({ offhand: 'tower', offhandUnique: '5', weaponUnique: 'x' })).toEqual({ weapon: null, offhand: null })
+    expect(resolveMeshPaperdollKeyFromSlots((l) => (l === 4 ? '6lw' : undefined), 0, () => 7, () => 266)).toContain('weaponUnique=266')
     // Quality of an item that is not shown is ignored.
     expect(resolveMeshPaperdollSelection({ hand1: 'qui', hand1Quality: 7 })).toEqual(NONE)
+  })
+
+  it('skins a rigid attachment onto one joint, optionally mirrored across its XZ plane', () => {
+    const geo = {
+      positions: new Float32Array([1, 2, 3]),
+      normals: new Float32Array([0, 1, 0]),
+      uvs: new Float32Array([0.25, 0.75]),
+    } as unknown as MeshSkinGeoset
+    // Joint 1: rotate 90 degrees about Z (x -> y, y -> -x), then translate by (10, 20, 30).
+    const joints = new Float32Array(24)
+    joints.set([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0], 0)
+    joints.set([0, -1, 0, 10, 1, 0, 0, 20, 0, 0, 1, 30], 12)
+    const point = { joint: 1, offset: [100, 200, 300] as const }
+    const out = new Float32Array(8)
+    skinMeshSkinAttachment(geo, joints, point, false, out)
+    // (1, 2, 3) + offset = (101, 202, 303) -> (-202 + 10, 101 + 20, 303 + 30); normal (0, 1, 0) -> (-1, 0, 0).
+    expect([...out]).toEqual([-192, 121, 333, -1, 0, 0, 0.25, 0.75])
+    skinMeshSkinAttachment(geo, joints, point, true, out)
+    // Mirrored: (1, -2, 3) + offset = (101, 198, 303); normal (0, -1, 0) -> (1, 0, 0).
+    expect([...out]).toEqual([-188, 121, 333, 1, 0, 0, 0.25, 0.75])
   })
 
   it('encodes selections, honours the active weapon set and picks weapon clip variants', () => {
@@ -744,6 +799,22 @@ describe('Mesh skin paper-doll', () => {
     expect(glowing.canvasKey).toBe(plain.canvasKey)
     // An empty slot has nothing to glow.
     expect(resolveMeshSkinLook(model, {}, { weapon: [0.2, 0.4, 1] })!.glow).toEqual([])
+  })
+
+  it('accepts shape-shift models keyed by morph token and rejects unknown tokens', () => {
+    const base = meshManifest()
+    const heroMesh = base.mesh as Record<string, unknown>
+    const clip = { anim: 'nu', loop: false, durationMs: 1000 }
+    const morphMesh = { ...heroMesh, clips: { nu: clip, wl: clip, a1: clip, gh: clip, dt: clip } }
+    const ok = validateCharacterSkinManifest({ ...base, morphs: { '40': { mesh: morphMesh, shadowScale: 1.2 }, VA: { mesh: morphMesh } } })
+    expect(Object.keys(ok.morphs ?? {}).sort()).toEqual(['40', 'va'])
+    expect(ok.morphs?.['40']?.shadowScale).toBe(1.2)
+    expect(ok.morphs?.va?.mesh.clips.a1).toMatchObject({ anim: 'nu' })
+    expect(validateCharacterSkinManifest(base).morphs).toBeUndefined()
+    expect(() => validateCharacterSkinManifest({ ...base, morphs: { zz: { mesh: morphMesh } } })).toThrow(/morphs key/)
+    // A morph model needs the core clips, like a minion.
+    expect(() => validateCharacterSkinManifest({ ...base, morphs: { '40': { mesh: heroMesh } } })).toThrow(/missing required clip "gh"/)
+    expect(() => validateCharacterSkinManifest({ ...base, morphs: { '40': { mesh: morphMesh, shadowScale: 9 } } })).toThrow(/shadowScale/)
   })
 
   it('accepts weapon-specific clip keys in mesh manifests and rejects malformed ones', () => {

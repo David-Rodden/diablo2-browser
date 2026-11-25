@@ -106,6 +106,21 @@ export interface MeshSkinPaperdoll {
   readonly hidden: readonly number[]
   readonly slots: Readonly<Record<string, Readonly<Record<string, MeshSkinPaperdollOption>>>>
   readonly defaults: Readonly<Record<string, string>>
+  /** Where weapons of a shared weapon pack attach, or `null` when the model takes none. */
+  readonly attachments: MeshSkinAttachments | null
+}
+
+/** One hand of a model: the joint an attached weapon follows and its offset in bind space. */
+export interface MeshSkinAttachPoint {
+  readonly joint: number
+  readonly offset: readonly [number, number, number]
+}
+
+export interface MeshSkinAttachments {
+  /** Id of the weapon pack (a directory next to the skins) whose models fit these points. */
+  readonly pack: string
+  readonly right: MeshSkinAttachPoint
+  readonly left: MeshSkinAttachPoint
 }
 
 /** A resolved paper-doll state: which geosets are drawn and which layers dress the canvas. */
@@ -463,7 +478,9 @@ export function parseMeshSkinModel(bytes: Uint8Array): MeshSkinModel {
 
   const rootExtras = json.extras === undefined ? {} : asRecord(json.extras, 'extras')
   const paperdoll =
-    rootExtras.paperdoll === undefined ? null : parsePaperdoll(rootExtras.paperdoll, geosets.length, images.length)
+    rootExtras.paperdoll === undefined
+      ? null
+      : parsePaperdoll(rootExtras.paperdoll, geosets.length, images.length, nodeCount)
 
   return {
     nodeCount,
@@ -485,7 +502,7 @@ export function parseMeshSkinModel(bytes: Uint8Array): MeshSkinModel {
   }
 }
 
-function parsePaperdoll(raw: unknown, geosetCount: number, imageCount: number): MeshSkinPaperdoll {
+function parsePaperdoll(raw: unknown, geosetCount: number, imageCount: number, nodeCount: number): MeshSkinPaperdoll {
   const obj = asRecord(raw, 'extras.paperdoll')
   const geosetList = (value: unknown, what: string): number[] =>
     asArray(value ?? [], what).map((v) => {
@@ -534,11 +551,32 @@ function parsePaperdoll(raw: unknown, geosetCount: number, imageCount: number): 
     slots[slot] = options
     defaults[slot] = def
   }
+  let attachments: MeshSkinAttachments | null = null
+  if (obj.attachments !== undefined) {
+    const rawAtt = asRecord(obj.attachments, 'paperdoll.attachments')
+    const pack = rawAtt.pack
+    if (typeof pack !== 'string' || !/^[a-z0-9][a-z0-9-]{0,47}$/.test(pack)) {
+      throw new Error('Invalid mesh skin GLB: paperdoll.attachments.pack')
+    }
+    const point = (hand: 'right' | 'left'): MeshSkinAttachPoint => {
+      const what = `paperdoll.attachments.${hand}`
+      const rawPoint = asRecord(rawAtt[hand], what)
+      const joint = finiteNumber(rawPoint.joint, `${what}.joint`)
+      if (!Number.isInteger(joint) || joint < 0 || joint >= nodeCount) {
+        throw new Error(`Invalid mesh skin GLB: ${what} references missing joint ${String(joint)}`)
+      }
+      const offset = asArray(rawPoint.offset, `${what}.offset`).map((v) => finiteNumber(v, `${what}.offset`))
+      if (offset.length !== 3) throw new Error(`Invalid mesh skin GLB: ${what}.offset must have 3 numbers`)
+      return { joint, offset: [offset[0]!, offset[1]!, offset[2]!] }
+    }
+    attachments = { pack, right: point('right'), left: point('left') }
+  }
   return {
     canvas: imageIndex(obj.canvas, 'paperdoll.canvas'),
     hidden: geosetList(obj.hidden, 'paperdoll.hidden'),
     slots,
     defaults,
+    attachments,
   }
 }
 
@@ -834,6 +872,44 @@ export function skinMeshSkinGeoset(geoset: MeshSkinGeoset, jointMatrices: Float3
     const inv = len > 1e-8 ? 1 / len : 0
     const o = v * 8
     out[o] = ox; out[o + 1] = oy; out[o + 2] = oz
+    out[o + 3] = onx * inv; out[o + 4] = ony * inv; out[o + 5] = onz * inv
+    out[o + 6] = uvs[v * 2]!; out[o + 7] = uvs[v * 2 + 1]!
+  }
+}
+
+/**
+ * Skin a rigid attachment (a weapon model in its own space) onto one joint of another model:
+ * `joint * (position [mirrored across the XZ plane] + offset)`, written like {@link skinMeshSkinGeoset}.
+ *
+ * @param jointMatrices - skinning matrices of the model that holds the attachment.
+ */
+export function skinMeshSkinAttachment(
+  geoset: MeshSkinGeoset,
+  jointMatrices: Float32Array,
+  point: MeshSkinAttachPoint,
+  mirror: boolean,
+  out: Float32Array,
+): void {
+  const { positions, normals, uvs } = geoset
+  const count = positions.length / 3
+  const m = point.joint * 12
+  const m0 = jointMatrices[m]!, m1 = jointMatrices[m + 1]!, m2 = jointMatrices[m + 2]!, m3 = jointMatrices[m + 3]!
+  const m4 = jointMatrices[m + 4]!, m5 = jointMatrices[m + 5]!, m6 = jointMatrices[m + 6]!, m7 = jointMatrices[m + 7]!
+  const m8 = jointMatrices[m + 8]!, m9 = jointMatrices[m + 9]!, m10 = jointMatrices[m + 10]!, m11 = jointMatrices[m + 11]!
+  const ySign = mirror ? -1 : 1
+  const [ox, oy, oz] = point.offset
+  for (let v = 0; v < count; v += 1) {
+    const px = positions[v * 3]! + ox, py = positions[v * 3 + 1]! * ySign + oy, pz = positions[v * 3 + 2]! + oz
+    const nx = normals[v * 3]!, ny = normals[v * 3 + 1]! * ySign, nz = normals[v * 3 + 2]!
+    const onx = m0 * nx + m1 * ny + m2 * nz
+    const ony = m4 * nx + m5 * ny + m6 * nz
+    const onz = m8 * nx + m9 * ny + m10 * nz
+    const len = Math.hypot(onx, ony, onz)
+    const inv = len > 1e-8 ? 1 / len : 0
+    const o = v * 8
+    out[o] = m0 * px + m1 * py + m2 * pz + m3
+    out[o + 1] = m4 * px + m5 * py + m6 * pz + m7
+    out[o + 2] = m8 * px + m9 * py + m10 * pz + m11
     out[o + 3] = onx * inv; out[o + 4] = ony * inv; out[o + 5] = onz * inv
     out[o + 6] = uvs[v * 2]!; out[o + 7] = uvs[v * 2 + 1]!
   }

@@ -299,7 +299,10 @@ import {
   SKILLS_FreeOrDistributeExpForLinkedMonster_6FCC2EE0_113c,
   SKILLS_GetUnitTargetOrFirstPathCoords_6FCBFA30_113c,
 } from './k2-w4b6-113c'
-import { MONAI_CheckLineOfWalkFreeCoordsBetweenUnits_6FCD0E90_113c } from './k2-w4b7-113c'
+import {
+  MONAI_CheckLineOfWalkFreeCoordsBetweenUnits_6FCD0E90_113c,
+  MONAI_ForEachUnitInNonTownAdjacentRoomsWithPlayer_6FCD0CE0_113c,
+} from './k2-w4b7-113c'
 import { NET_SendPacket9D_ItemAction05WithNodePage_6FCAC810_113c } from './k2-w5b2-113c'
 import { MONAI_FindTargetOrNearestBlockingObstacle_6FCD1BC0_113c } from './k2-w5b3-113c'
 import { NPC_DeductPlayerGoldAndStash_6FCDCC60_113c } from './k2-w5b4-113c'
@@ -2911,7 +2914,16 @@ export function AI_Think_BurrowingScarabOrFrog_6FCA9C30_113c(
   w32(m, pScanCtx + 0x00, 0)
   w32(m, pScanCtx + 0x04, 0x79)
   w32(m, pScanCtx + 0x08, i16(m, pMonStatsTxt + u8(m, pGame + 0x6d) * 2 + 0x62) >>> 0)
-  AITARGET_ScanUnitsByModeTable113c(m, 1, pScanCtx, pGame, pUnit, 0x6fc9b860)
+  hitD2GameVa113c(0x6FCD17B0)
+  MONAI_ForEachUnitInNonTownAdjacentRoomsWithPlayer_6FCD0CE0_113c(
+    m,
+    pUnit,
+    0x6fc9b860,
+    pGame,
+    pScanCtx,
+    (mem, _pg, orig, cand, ctx) =>
+      AI_ScanCallbackNearestLowLifeUnit_6FC9B860_113c(mem, orig, cand, ctx),
+  )
 
   if (nState > 1) {
     if (
@@ -3120,25 +3132,13 @@ export function PLAYER_ChangeLevelOrActTransition_6FCBE170_113c(
   const nFromLevel = pRoom !== 0 ? DUNGEON_GetLevelIdFromRoom113c(m, pRoom) : 0
   if (nTargetAct !== u8(m, pClient + 0x1ac)) {
     NPCS_OnPlayerLevelChange113c(m, pGame, nFromLevel, pPlayerUnit, nTargetLevelId)
-    const needScratchArena = pGame !== 0 && u32(m, pGame + 0x1d28) === 0
-    if (needScratchArena) {
-      const pTmpArena = (K2_W12B1_SCRATCH_BASE + 0x440) >>> 0
-      m.fill(pTmpArena, 0x10, 0)
-      w32(m, pGame + 0x1d28, pTmpArena)
-    }
-    try {
-      ACT_WarpClientPlayerToActTown_6FCBDF40_113c(
-        m,
-        pGame,
-        pClient,
-        nTargetLevelId,
-        bAllowCollisionFallback,
-      )
-    } finally {
-      if (needScratchArena) {
-        w32(m, pGame + 0x1d28, 0)
-      }
-    }
+    ACT_WarpClientPlayerToActTown_6FCBDF40_113c(
+      m,
+      pGame,
+      pClient,
+      nTargetLevelId,
+      bAllowCollisionFallback,
+    )
     return
   }
   const pOutX = (K2_W12B1_SCRATCH_BASE + 0x428) >>> 0

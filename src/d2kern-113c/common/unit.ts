@@ -3168,8 +3168,9 @@ function withUnitStackScratch113c(m: Memory113c): Memory113c {
     const u = p >>> 0
     return u >= UNIT_STACK_SCRATCH_BASE && u < UNIT_STACK_SCRATCH_BASE + UNIT_STACK_SCRATCH_SIZE
   }
-  const wrapped: Memory113c & { __hasUnitScratch: boolean } = {
+  const wrapped: Memory113c & { __hasUnitScratch: boolean; inner: Memory113c } = {
     __hasUnitScratch: true,
+    inner: m,
     alloc: (size) => m.alloc(size),
     u8: (p) => (isScratch(p) ? _unitScratchDv.getUint8((p >>> 0) - UNIT_STACK_SCRATCH_BASE) : m.u8(p)),
     u16: (p) =>

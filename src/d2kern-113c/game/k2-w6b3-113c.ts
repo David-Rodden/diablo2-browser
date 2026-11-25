@@ -458,12 +458,31 @@ function aiIdleWander6FD11B10(
   if (hooks !== undefined && hooks.world !== undefined) {
     return AI_IdleWander113c(hooks.world, pUnit >>> 0, range | 0) ? 1 : 0
   }
-  hitD2GameVa113c(0x6FD11B10)
-  const ok = AI_WalkWanderAroundSelf_6FD129B0_113c(m, range | 0, pGame >>> 0, pUnit >>> 0, hooks) | 0
-  if (ok === 0) {
-    aiStall6FD122C0(m, pGame >>> 0, pUnit >>> 0, 10, hooks)
+  if (
+    (hooks === undefined || hooks.onMonsterStartMode === undefined) &&
+    m.u32(D2GAME_IAT_SGPT_DATATABLES_VA_113C) === 0x6fde9e1c
+  ) {
+    return AI_IdleWander113c(m, pGame >>> 0, pUnit >>> 0, range | 0) | 0
   }
-  return ok
+  hitD2GameVa113c(0x6FD11B10)
+  const u = pUnit >>> 0
+  const x = getUnitXInline113c(m, u)
+  const y = getUnitYInline113c(m, u)
+  const pSeed = (u + 0x20) >>> 0
+  const bl = range & 0xff
+  const axisRoll = stepSeed64At113c(m, pSeed)
+  let dx: number
+  let dy: number
+  if ((axisRoll & 1) !== 0) {
+    dy = SEED_RollLimitedFast113c(m, pSeed, bl) | 0
+    dx = bl
+  } else {
+    dx = SEED_RollLimitedFast113c(m, pSeed, bl) | 0
+    dy = bl
+  }
+  if ((stepSeed64At113c(m, pSeed) & 1) !== 0) dx = (-dx) | 0
+  if ((stepSeed64At113c(m, pSeed) & 1) !== 0) dy = (-dy) | 0
+  return aiApproachTarget6FD12540(m, pGame >>> 0, u, 0, 2, (x + dx) | 0, (y + dy) | 0, 1, 0, hooks) | 0
 }
 
 function aiApproachTarget6FD12540(
@@ -5086,7 +5105,7 @@ export function AI_ThinkBladeCreeper_6FCC6B70_113c(
       const pMissile =
         SKILLS_CreateProjectileAtTargetWithin100_6FCC0000_113c(
           m,
-          u,
+          pLeader,
           game,
           skill0,
           slvl,

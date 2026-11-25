@@ -17,7 +17,10 @@ import {
   meshSkinBillboardBasis,
   meshSkinCameraRotation,
   resolveMeshSkinLook,
+  skinMeshSkinAttachment,
   skinMeshSkinGeoset,
+  type MeshSkinAttachPoint,
+  type MeshSkinGeoset,
   type MeshSkinLook,
   type MeshSkinModel,
   type MeshSkinPose,
@@ -66,7 +69,26 @@ export interface MeshSkinGpuModel {
   readonly retained: ReadonlyMap<number, RetainedImage>
   /** Composited canvas textures by {@link MeshSkinLook.canvasKey}. */
   readonly canvasTextures: Map<string, WebGLTexture>
+  /** Second set of vertex buffers, made when the model is first drawn as a mirrored attachment. */
+  mirrorGeosets: GpuGeoset[] | null
   disposed: boolean
+}
+
+/** A rigid model (a weapon) drawn on one joint of the model being rendered. */
+export interface MeshSkinAttachment {
+  readonly gpu: MeshSkinGpuModel
+  readonly point: MeshSkinAttachPoint
+  /** Mirror the model across its XZ plane (a right-hand weapon held in the left hand). */
+  readonly mirror: boolean
+}
+
+/** One geoset to draw this impostor: a geoset of the model itself or of an attachment. */
+interface DrawItem {
+  readonly geo: MeshSkinGeoset
+  readonly buf: GpuGeoset
+  readonly textures: readonly WebGLTexture[]
+  /** Geoset index in the model being rendered, or `-1` for an attachment's geoset. */
+  readonly g: number
 }
 
 function createScratchCanvas(width: number, height: number): HTMLCanvasElement | OffscreenCanvas {
@@ -460,25 +482,7 @@ export class MeshSkinRenderer {
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT)
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT)
       }
-      for (const geo of model.geosets) {
-        const vao = gl.createVertexArray()
-        const vbo = gl.createBuffer()
-        const ibo = gl.createBuffer()
-        if (vao === null || vbo === null || ibo === null) throw new Error('Mesh skin renderer: buffer allocation failed')
-        geosets.push({ vao, vbo, ibo, indexCount: geo.indices.length })
-        gl.bindVertexArray(vao)
-        gl.bindBuffer(gl.ARRAY_BUFFER, vbo)
-        gl.bufferData(gl.ARRAY_BUFFER, (geo.positions.length / 3) * 8 * 4, gl.DYNAMIC_DRAW)
-        gl.enableVertexAttribArray(0)
-        gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 32, 0)
-        gl.enableVertexAttribArray(1)
-        gl.vertexAttribPointer(1, 3, gl.FLOAT, false, 32, 12)
-        gl.enableVertexAttribArray(2)
-        gl.vertexAttribPointer(2, 2, gl.FLOAT, false, 32, 24)
-        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ibo)
-        gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, geo.indices, gl.STATIC_DRAW)
-      }
-      gl.bindVertexArray(null)
+      this.createGeosetBuffers(model, geosets)
     } catch (err) {
       gl.bindVertexArray(null)
       for (const tex of textures) gl.deleteTexture(tex)
@@ -498,10 +502,38 @@ export class MeshSkinRenderer {
       defaultLook: resolveMeshSkinLook(model, {}),
       retained,
       canvasTextures: new Map(),
+      mirrorGeosets: null,
       disposed: false,
     }
     this.models.add(gpu)
     return gpu
+  }
+
+  /** Vertex and index buffers for every geoset of `model`, appended to `out` as they are made. */
+  private createGeosetBuffers(model: MeshSkinModel, out: GpuGeoset[]): void {
+    const gl = this.renderer.gl
+    try {
+      for (const geo of model.geosets) {
+        const vao = gl.createVertexArray()
+        const vbo = gl.createBuffer()
+        const ibo = gl.createBuffer()
+        if (vao === null || vbo === null || ibo === null) throw new Error('Mesh skin renderer: buffer allocation failed')
+        out.push({ vao, vbo, ibo, indexCount: geo.indices.length })
+        gl.bindVertexArray(vao)
+        gl.bindBuffer(gl.ARRAY_BUFFER, vbo)
+        gl.bufferData(gl.ARRAY_BUFFER, (geo.positions.length / 3) * 8 * 4, gl.DYNAMIC_DRAW)
+        gl.enableVertexAttribArray(0)
+        gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 32, 0)
+        gl.enableVertexAttribArray(1)
+        gl.vertexAttribPointer(1, 3, gl.FLOAT, false, 32, 12)
+        gl.enableVertexAttribArray(2)
+        gl.vertexAttribPointer(2, 2, gl.FLOAT, false, 32, 24)
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ibo)
+        gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, geo.indices, gl.STATIC_DRAW)
+      }
+    } finally {
+      gl.bindVertexArray(null)
+    }
   }
 
   disposeModel(gpu: MeshSkinGpuModel): void {
@@ -513,11 +545,12 @@ export class MeshSkinRenderer {
     for (const tex of gpu.textures) gl.deleteTexture(tex)
     for (const tex of gpu.canvasTextures.values()) gl.deleteTexture(tex)
     gpu.canvasTextures.clear()
-    for (const g of gpu.geosets) {
+    for (const g of [...gpu.geosets, ...(gpu.mirrorGeosets ?? [])]) {
       gl.deleteVertexArray(g.vao)
       gl.deleteBuffer(g.vbo)
       gl.deleteBuffer(g.ibo)
     }
+    gpu.mirrorGeosets = null
   }
 
   /**
@@ -643,6 +676,7 @@ export class MeshSkinRenderer {
    *
    * @param pxPerUnit - scene pixels per model unit.
    * @param look - paper-doll state to wear; `null` wears the model's default look.
+   * @param attachments - rigid models drawn on joints of `gpu` (weapons of a shared pack).
    * @returns the impostor frames, or `null` when the atlas is full or the context is lost.
    */
   drawImpostor(
@@ -652,6 +686,7 @@ export class MeshSkinRenderer {
     pxPerUnit: number,
     box: MeshSkinBox,
     look: MeshSkinLook | null = null,
+    attachments: readonly MeshSkinAttachment[] = [],
   ): MeshSkinImpostor | null {
     if (this.disposed || gpu.disposed || this.renderer.isDisposed) return null
     const gl = this.renderer.gl
@@ -688,8 +723,29 @@ export class MeshSkinRenderer {
     meshSkinCameraRotation(dir64, this.rot)
     meshSkinBillboardBasis(this.rot, this.basis)
     computeMeshSkinJointMatrices(model, pose, this.basis, gpu.globals, gpu.joints)
-    if (this.skinScratch.length < model.maxVertexCount * 8) {
-      this.skinScratch = new Float32Array(model.maxVertexCount * 8)
+    // A mirrored attachment gets its own vertex buffers, so one model can sit in both hands.
+    const attached = attachments.filter((a) => !a.gpu.disposed && a.point.joint < model.nodeCount)
+    let maxVertexCount = model.maxVertexCount
+    for (const a of attached) {
+      maxVertexCount = Math.max(maxVertexCount, a.gpu.model.maxVertexCount)
+      if (a.mirror && a.gpu.mirrorGeosets === null) {
+        const made: GpuGeoset[] = []
+        this.renderer.flush()
+        try {
+          this.createGeosetBuffers(a.gpu.model, made)
+        } catch (err) {
+          for (const g of made) {
+            gl.deleteVertexArray(g.vao)
+            gl.deleteBuffer(g.vbo)
+            gl.deleteBuffer(g.ibo)
+          }
+          throw err
+        }
+        a.gpu.mirrorGeosets = made
+      }
+    }
+    if (this.skinScratch.length < maxVertexCount * 8) {
+      this.skinScratch = new Float32Array(maxVertexCount * 8)
     }
 
     const rot = this.rot
@@ -711,6 +767,7 @@ export class MeshSkinRenderer {
 
       // Skin and upload every visible geoset once; all passes reuse the uploaded vertices.
       const visible: number[] = []
+      const items: DrawItem[] = []
       for (let g = 0; g < model.geosets.length; g += 1) {
         if (!(pose.geosetAlpha[g]! > 0.02)) continue
         if (worn !== null && worn.visible[g] !== 1) continue
@@ -720,31 +777,42 @@ export class MeshSkinRenderer {
         gl.bindBuffer(gl.ARRAY_BUFFER, gpu.geosets[g]!.vbo)
         gl.bufferSubData(gl.ARRAY_BUFFER, 0, this.skinScratch, 0, floats)
         visible.push(g)
+        items.push({ geo, buf: gpu.geosets[g]!, textures: gpu.textures, g })
+      }
+      for (const a of attached) {
+        const buffers = a.mirror ? a.gpu.mirrorGeosets! : a.gpu.geosets
+        a.gpu.model.geosets.forEach((geo, i) => {
+          skinMeshSkinAttachment(geo, gpu.joints, a.point, a.mirror, this.skinScratch)
+          gl.bindBuffer(gl.ARRAY_BUFFER, buffers[i]!.vbo)
+          gl.bufferSubData(gl.ARRAY_BUFFER, 0, this.skinScratch, 0, (geo.positions.length / 3) * 8)
+          items.push({ geo, buf: buffers[i]!, textures: a.gpu.textures, g: -1 })
+        })
       }
 
       const drawPass = (pass: 0 | 1 | 2): boolean => {
         let drew = false
         for (let layerIndex = 0; layerIndex < 8; layerIndex += 1) {
           let anyLayer = false
-          for (const g of visible) {
-            const geo = model.geosets[g]!
+          for (const { geo, buf, textures, g } of items) {
             const layer = geo.layers[layerIndex]
             if (!layer) continue
             anyLayer = true
             const layerPass = layer.filterMode <= 1 ? 0 : layer.filterMode === 2 ? 1 : 2
             if (layerPass !== pass) continue
-            const alpha = pose.geosetAlpha[g]! * pose.layerAlpha[layer.slot]!
+            // Attachments are not animated: their geosets and layers are always fully opaque.
+            const own = g >= 0
+            const alpha = own ? pose.geosetAlpha[g]! * pose.layerAlpha[layer.slot]! : geo.alpha * layer.alpha
             if (!(alpha > 0.02)) continue
             gl.uniform4f(
               u.u_color!,
-              layer.color[0] * pose.geosetColor[g * 3]!,
-              layer.color[1] * pose.geosetColor[g * 3 + 1]!,
-              layer.color[2] * pose.geosetColor[g * 3 + 2]!,
+              layer.color[0] * (own ? pose.geosetColor[g * 3]! : geo.color[0]),
+              layer.color[1] * (own ? pose.geosetColor[g * 3 + 1]! : geo.color[1]),
+              layer.color[2] * (own ? pose.geosetColor[g * 3 + 2]! : geo.color[2]),
               alpha,
             )
             gl.uniform1i(u.u_mode!, layer.filterMode)
             gl.uniform1f(u.u_unshaded!, layer.unshaded ? 1 : 0)
-            if (layer.texAnim >= 0) {
+            if (own && layer.texAnim >= 0) {
               gl.uniform2f(u.u_uvOffset!, pose.texOffset[layer.texAnim * 2]!, pose.texOffset[layer.texAnim * 2 + 1]!)
             } else {
               gl.uniform2f(u.u_uvOffset!, 0, 0)
@@ -753,12 +821,12 @@ export class MeshSkinRenderer {
               gl.TEXTURE_2D,
               layer.image < 0
                 ? targets.whiteTexture
-                : canvasTexture !== null && layer.image === canvasImage
+                : own && canvasTexture !== null && layer.image === canvasImage
                   ? canvasTexture
-                  : gpu.textures[layer.image]!,
+                  : textures[layer.image]!,
             )
-            gl.bindVertexArray(gpu.geosets[g]!.vao)
-            gl.drawElements(gl.TRIANGLES, gpu.geosets[g]!.indexCount, gl.UNSIGNED_SHORT, 0)
+            gl.bindVertexArray(buf.vao)
+            gl.drawElements(gl.TRIANGLES, buf.indexCount, gl.UNSIGNED_SHORT, 0)
             drew = true
           }
           if (!anyLayer) break

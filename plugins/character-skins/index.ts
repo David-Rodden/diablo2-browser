@@ -30,13 +30,13 @@ const BUILTIN_CLASS_SKINS: readonly {
   readonly skinId: string
   readonly otherSkinIds: readonly string[]
 }[] = [
-  { cls: 'ne', settingKey: 'neSkin', skinId: 'ne-kelthuzad', otherSkinIds: [] },
-  { cls: 'so', settingKey: 'soSkin', skinId: 'so-jaina', otherSkinIds: ['so-wow-human-mage'] },
-  { cls: 'am', settingKey: 'amSkin', skinId: 'am-sylvanas', otherSkinIds: [] },
-  { cls: 'pa', settingKey: 'paSkin', skinId: 'pa-arthas', otherSkinIds: [] },
-  { cls: 'ba', settingKey: 'baSkin', skinId: 'ba-grom', otherSkinIds: [] },
-  { cls: 'dz', settingKey: 'dzSkin', skinId: 'dz-malfurion', otherSkinIds: [] },
-  { cls: 'ai', settingKey: 'aiSkin', skinId: 'ai-maiev', otherSkinIds: [] },
+  { cls: 'ne', settingKey: 'neSkin', skinId: 'ne-wow-undead', otherSkinIds: ['ne-kelthuzad'] },
+  { cls: 'so', settingKey: 'soSkin', skinId: 'so-wow-human-mage', otherSkinIds: ['so-jaina'] },
+  { cls: 'am', settingKey: 'amSkin', skinId: 'am-wow-bloodelf', otherSkinIds: ['am-sylvanas'] },
+  { cls: 'pa', settingKey: 'paSkin', skinId: 'pa-wow-dwarf', otherSkinIds: ['pa-arthas'] },
+  { cls: 'ba', settingKey: 'baSkin', skinId: 'ba-wow-orc', otherSkinIds: ['ba-grom'] },
+  { cls: 'dz', settingKey: 'dzSkin', skinId: 'dz-wow-nightelf', otherSkinIds: ['dz-malfurion'] },
+  { cls: 'ai', settingKey: 'aiSkin', skinId: 'ai-wow-draenei', otherSkinIds: ['ai-maiev'] },
 ]
 
 const isBuiltinSkinOf = (entry: (typeof BUILTIN_CLASS_SKINS)[number], id: string): boolean =>
@@ -62,8 +62,12 @@ export function createCharacterSkinsPlugin(): D2WebPlugin {
           zh: '死灵法师外观',
           en: 'Necromancer Skin',
         },
-        default: 'ne-kelthuzad',
+        default: 'ne-wow-undead',
         options: [
+          {
+            value: 'ne-wow-undead',
+            label: { zh: '亡灵死灵法师（随装备换装）', en: 'Undead Necromancer (follows equipment)' },
+          },
           {
             value: 'ne-kelthuzad',
             label: { zh: '巫妖克尔苏加德（含天灾军团召唤物）', en: "Kel'Thuzad + Scourge Summons" },
@@ -81,15 +85,15 @@ export function createCharacterSkinsPlugin(): D2WebPlugin {
           zh: '法师外观',
           en: 'Sorceress Skin',
         },
-        default: 'so-jaina',
+        default: 'so-wow-human-mage',
         options: [
-          {
-            value: 'so-jaina',
-            label: { zh: '吉安娜·普罗德摩尔', en: 'Jaina Proudmoore' },
-          },
           {
             value: 'so-wow-human-mage',
             label: { zh: '人类女法师（随装备换装）', en: 'Human Mage (follows equipment)' },
+          },
+          {
+            value: 'so-jaina',
+            label: { zh: '吉安娜·普罗德摩尔', en: 'Jaina Proudmoore' },
           },
           {
             value: 'none',
@@ -104,8 +108,12 @@ export function createCharacterSkinsPlugin(): D2WebPlugin {
           zh: '亚马逊外观',
           en: 'Amazon Skin',
         },
-        default: 'am-sylvanas',
+        default: 'am-wow-bloodelf',
         options: [
+          {
+            value: 'am-wow-bloodelf',
+            label: { zh: '血精灵游侠（随装备换装）', en: 'Blood Elf Ranger (follows equipment)' },
+          },
           {
             value: 'am-sylvanas',
             label: { zh: '黑暗游侠希尔瓦娜斯', en: 'Sylvanas (Dark Ranger)' },
@@ -123,8 +131,12 @@ export function createCharacterSkinsPlugin(): D2WebPlugin {
           zh: '圣骑士外观',
           en: 'Paladin Skin',
         },
-        default: 'pa-arthas',
+        default: 'pa-wow-dwarf',
         options: [
+          {
+            value: 'pa-wow-dwarf',
+            label: { zh: '矮人圣骑士（随装备换装）', en: 'Dwarf Paladin (follows equipment)' },
+          },
           {
             value: 'pa-arthas',
             label: { zh: '阿尔萨斯王子', en: 'Arthas (Paladin)' },
@@ -142,8 +154,12 @@ export function createCharacterSkinsPlugin(): D2WebPlugin {
           zh: '野蛮人外观',
           en: 'Barbarian Skin',
         },
-        default: 'ba-grom',
+        default: 'ba-wow-orc',
         options: [
+          {
+            value: 'ba-wow-orc',
+            label: { zh: '兽人战士（随装备换装，可双持）', en: 'Orc Warrior (follows equipment, dual wield)' },
+          },
           {
             value: 'ba-grom',
             label: { zh: '格罗姆·地狱咆哮', en: 'Grom Hellscream' },
@@ -161,8 +177,12 @@ export function createCharacterSkinsPlugin(): D2WebPlugin {
           zh: '德鲁伊外观',
           en: 'Druid Skin',
         },
-        default: 'dz-malfurion',
+        default: 'dz-wow-nightelf',
         options: [
+          {
+            value: 'dz-wow-nightelf',
+            label: { zh: '暗夜精灵德鲁伊（随装备换装，变身狼人 / 熊人）', en: 'Night Elf Druid (follows equipment, worgen / furbolg forms)' },
+          },
           {
             value: 'dz-malfurion',
             label: { zh: '玛法里奥·怒风', en: 'Malfurion Stormrage' },
@@ -180,8 +200,12 @@ export function createCharacterSkinsPlugin(): D2WebPlugin {
           zh: '刺客外观',
           en: 'Assassin Skin',
         },
-        default: 'ai-maiev',
+        default: 'ai-wow-draenei',
         options: [
+          {
+            value: 'ai-wow-draenei',
+            label: { zh: '德莱尼刺客（随装备换装，可双持）', en: 'Draenei Assassin (follows equipment, dual wield)' },
+          },
           {
             value: 'ai-maiev',
             label: { zh: '守望者玛维', en: 'Maiev Shadowsong (Warden)' },

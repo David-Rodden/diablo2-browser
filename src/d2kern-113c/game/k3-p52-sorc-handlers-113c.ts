@@ -48,6 +48,8 @@ import {
   SKILLS_StartUsedSkill113c,
   SrvDoFunc_001_Attack113c,
 } from './a1c-post150-f786-f1040-113c.ts'
+import { flushPendingSavedObjectInitModes113c } from './objects-populate-113c.ts'
+import { runPostActRoomsUpdateHooks113c } from './monster-events.ts'
 import { SUNITDMG_FreeAttackerCombatList113c } from './ai-fallen-113c.ts'
 import {
   C2S_Packet0C_RightSkillOnLocation113c,
@@ -371,6 +373,7 @@ import {
   MONAI_StationaryMeleeWithin25ThinkA_6FCC8270_113c,
   SKILLS_AuraDo_TickBladeShieldRadialDamage_6FCB35F0_113c,
   SKILLS_CreateDirectionalProjectileWithToHitAndAmmo_6FCC28F0_113c,
+  SKILLS_CreateProjectileAtOffsetWithAmmoCheck_6FCC1880_113c,
   SKILLS_SrvDo_ApplyChargeScaledRadialSkillDamage_6FCB2CF0_113c,
   SKILLS_SrvDo_DragonClawDualStrike_6FCB3270_113c,
   SKILLS_SrvDo_DragonTailFireSplash_6FCB3110_113c,
@@ -1070,6 +1073,53 @@ function dispatchSkillSrvDoByIdxK3_113c(
   if (doIdx === 151) {
     return SKILLS_SrvDo042_SpawnSrvMissileWithDeltaAndRange_6FC63610_113c(sm, pGame, pUnit, skId, effLvl)
   }
+  if (doIdx === 144) {
+    let maxMonIdBefore = 0
+    if (pGame !== 0) {
+      for (let b = 0; b < 128; b++) {
+        let pm = m.u32((pGame + 0x1320 + (b << 2)) >>> 0) >>> 0
+        while (pm !== 0) {
+          const gid = m.u32((pm + 0x0c) >>> 0) >>> 0
+          if (gid > maxMonIdBefore) maxMonIdBefore = gid
+          pm = m.u32((pm + 0xe4) >>> 0) >>> 0
+        }
+      }
+    }
+    const rc = dispatchSummonOrCurseDoFuncK3_113c(m, pGame, pUnit, doIdx, skId, effLvl)
+    if (rc !== 0 && pGame !== 0) {
+      let maxMonIdAfter = maxMonIdBefore
+      for (let b = 0; b < 128; b++) {
+        let pm = m.u32((pGame + 0x1320 + (b << 2)) >>> 0) >>> 0
+        while (pm !== 0) {
+          const gid = m.u32((pm + 0x0c) >>> 0) >>> 0
+          if (gid > maxMonIdAfter) maxMonIdAfter = gid
+          pm = m.u32((pm + 0xe4) >>> 0) >>> 0
+        }
+      }
+      for (let gid = (maxMonIdBefore + 1) >>> 0; gid <= maxMonIdAfter; gid = (gid + 1) >>> 0) {
+        let pm = m.u32((pGame + 0x1320 + ((gid & 0x7f) << 2)) >>> 0) >>> 0
+        while (pm !== 0 && (m.u32((pm + 0x0c) >>> 0) >>> 0) !== gid) {
+          pm = m.u32((pm + 0xe4) >>> 0) >>> 0
+        }
+        if (pm !== 0 && (m.u32((pm + 0x10) >>> 0) | 0) !== 1) {
+          let hasModeEnd = false
+          let pe = m.u32((pm + 0xdc) >>> 0) >>> 0
+          while (pe !== 0) {
+            if (m.u8(pe) === 1) {
+              hasModeEnd = true
+              break
+            }
+            pe = m.u32((pe + 0x24) >>> 0) >>> 0
+          }
+          if (!hasModeEnd) {
+            MONSTER_ClearModeEvents113c(m, pGame, pm)
+            PLAYER_ScheduleModeAnimEventsK3_113c(m, pGame, pm)
+          }
+        }
+      }
+    }
+    return rc
+  }
   if (
     doIdx === 15 ||
     doIdx === 16 ||
@@ -1082,8 +1132,7 @@ function dispatchSkillSrvDoByIdxK3_113c(
     doIdx === 60 ||
     doIdx === 114 ||
     doIdx === 115 ||
-    doIdx === 119 ||
-    doIdx === 144
+    doIdx === 119
   ) {
     return dispatchSummonOrCurseDoFuncK3_113c(m, pGame, pUnit, doIdx, skId, effLvl)
   }
@@ -1361,20 +1410,34 @@ export function SKILLS_DoUsedSkillActionK3_113c(
         MISSILES_GetTxtRecordFast113c(m, wSrvMissile) !== 0
       ) {
         m.setU32((pUnit + 0xc4) >>> 0, (m.u32((pUnit + 0xc4) >>> 0) | 0x40) >>> 0)
-        const pMis =
-          SKILLS_CreateDirectionalProjectileWithToHitAndAmmo_6FCC28F0_113c(
-            m as SparseMemory113c,
-            pGame >>> 0,
-            wSrvMissile,
-            pUnit >>> 0,
-            nSkillId,
-            effLevel,
-            0,
-            0,
-            0,
-            0,
-            0,
-          ) >>> 0
+        const isLob = (m.u8((pSkillsTxt + 0x04) >>> 0) & 0x02) !== 0
+        const pMis = isLob
+          ? (SKILLS_CreateProjectileAtOffsetWithAmmoCheck_6FCC1880_113c(
+              m as SparseMemory113c,
+              0,
+              pUnit >>> 0,
+              pGame >>> 0,
+              wSrvMissile,
+              nSkillId,
+              effLevel,
+              0,
+              0,
+              0,
+              0,
+            ) >>> 0)
+          : (SKILLS_CreateDirectionalProjectileWithToHitAndAmmo_6FCC28F0_113c(
+              m as SparseMemory113c,
+              pGame >>> 0,
+              wSrvMissile,
+              pUnit >>> 0,
+              nSkillId,
+              effLevel,
+              0,
+              0,
+              0,
+              0,
+              0,
+            ) >>> 0)
         if (pMis !== 0) {
           MONUMOD_DispatchOnKillEvent5_113c(m, pMis, pUnit, pGame)
         }
@@ -1468,6 +1531,12 @@ export function PLAYER_IsNonMeleeSequenceSkillK3_113c(m: Memory113c, pPlayer: nu
 export function MISSILE_BuildK3Hooks113c(
   onKillUnit: (m: Memory113c, pGame: number, pDefender: number, pAttacker: number) => void,
 ): K2GapMeleeDotHooks113c {
+  if (typeof flushPendingSavedObjectInitModes113c === 'function') {
+    flushPendingSavedObjectInitModes113c()
+  }
+  if (typeof runPostActRoomsUpdateHooks113c === 'function') {
+    runPostActRoomsUpdateHooks113c()
+  }
   const radialCombatHooks: SUnitDmgHooks113c = {
     suppressDirectS2c: true,
     onKillUnit(m, pGame, pDefender, pAttacker) {

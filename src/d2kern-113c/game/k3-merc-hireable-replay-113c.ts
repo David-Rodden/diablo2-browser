@@ -13,7 +13,10 @@ import { UNITS_GetPlayerData113c } from '../common/composit.ts'
 import { MONSTER_GetMissileIdForAnimMode113c } from '../common/drlg/drlg-ver.ts'
 import { imul32 } from '../common/int-math.ts'
 import { SKILLS_GetUsedSkillMemPort113c } from '../common/k0-d2common-memports.ts'
-import { PATH_GetTargetUnit113c } from '../common/path.ts'
+import {
+  PATH_GetNumberOfPathPoints113c,
+  PATH_GetTargetUnit113c,
+} from '../common/path.ts'
 import {
   SKILLS_AllocSkillList113c,
   SKILLS_GetSkillById113c,
@@ -81,6 +84,7 @@ import {
   syncActRoomsAndUnitsIntoWorld113c,
 } from './replay-kernel-113c.ts'
 import type { MonStatsRow113c } from './tables-bootstrap-113c.ts'
+import { PLAYER_SetNeutralOrTownNeutralMode113c } from './town-runtime-gap-113c.ts'
 
 export const VA_AI_HIREABLE_113C = 0x6fc3dd40
 
@@ -413,6 +417,18 @@ export function recordPlayerWalkBreadcrumbK3_113c(
 ): void {
   if (pGame === 0 || pPlayer === 0) return
   PLAYER_StepModeWalkOrRun113c(m, pGame, pPlayer, true)
+  // D2Game@0x6FC99DEA..0x6FC99DF9: when a `PLRMODE_KNOCKBACK (0x13)` path finishes with no queued
+  // interact (`pPlayerData+0x150 == 0`), `0x6FC99B90` resets to neutral (`0x6FC982F0`) BEFORE
+  // returning `2` to `0x6FC99A10` so `0x6FC99850` sees `mode == 1` rather than re-entering `mode == 4`.
+  if (m.u32((pPlayer + 0x10) >>> 0) === 0x13) {
+    const pPath = m.u32((pPlayer + 0x2c) >>> 0) >>> 0
+    if (pPath !== 0 && PATH_GetNumberOfPathPoints113c(m, pPath) === 0) {
+      const pPlrData = m.u32((pPlayer + 0x14) >>> 0) >>> 0
+      if (pPlrData === 0 || m.u32((pPlrData + 0x150) >>> 0) === 0) {
+        PLAYER_SetNeutralOrTownNeutralMode113c(m, pGame, pPlayer, 1, 0, 0)
+      }
+    }
+  }
 }
 
 /**
@@ -532,55 +548,49 @@ export function stepMonsterAttackOrSkillActionK3_113c(
   const { m, pGame } = world
   const pUsedSkill = SKILLS_GetUsedSkillMemPort113c(m, pMonster) >>> 0
   if (pUsedSkill !== 0) {
-    if (arg14 === 1 || arg14 === 2) {
-      bindK2KernelGlobals113c(m)
-      MONSTER_AdvanceAttackOrSkillStep113c(m, pGame, pMonster, world, {
-        onSkillDoStep(mem, pUnit, pg) {
-          SKILLS_DoUsedSkillActionK3_113c(mem, pUnit, pg, hooks)
-          return 1
-        },
-      })
-      syncActRoomsAndUnitsIntoWorld113c(world)
-    }
+    bindK2KernelGlobals113c(m)
+    MONSTER_AdvanceAttackOrSkillStep113c(m, pGame, pMonster, world, {
+      onSkillDoStep(mem, pUnit, pg) {
+        SKILLS_DoUsedSkillActionK3_113c(mem, pUnit, pg, hooks)
+        return 1
+      },
+    })
+    syncActRoomsAndUnitsIntoWorld113c(world)
     return
   }
 
   const modeMissileId = MONSTER_GetMissileIdForAnimMode113c(m, pMonster, 0) | 0
   if (modeMissileId >= 0) {
-    if (arg14 === 1 || arg14 === 2) {
-      bindK2KernelGlobals113c(m)
-      MONSTER_AdvanceAttackOrSkillStep113c(m, pGame, pMonster, world, {
-        onSpawnModeMissile(mem, pg, mid, pUnit, _pTarget, lvl) {
-          SUNIT_ValidatePathTargetUnit113c(mem, pUnit, pg)
-          return SKILLS_CreateDirectionalProjectileWithToHitAndAmmo_6FCC28F0_113c(
-            mem,
-            pg,
-            mid,
-            pUnit,
-            0,
-            lvl | 0,
-            0,
-            0,
-            0,
-            0,
-            1,
-          )
-        },
-      })
-      syncActRoomsAndUnitsIntoWorld113c(world)
-    }
+    bindK2KernelGlobals113c(m)
+    MONSTER_AdvanceAttackOrSkillStep113c(m, pGame, pMonster, world, {
+      onSpawnModeMissile(mem, pg, mid, pUnit, _pTarget, lvl) {
+        SUNIT_ValidatePathTargetUnit113c(mem, pUnit, pg)
+        return SKILLS_CreateDirectionalProjectileWithToHitAndAmmo_6FCC28F0_113c(
+          mem,
+          pg,
+          mid,
+          pUnit,
+          0,
+          lvl | 0,
+          0,
+          0,
+          0,
+          0,
+          1,
+        )
+      },
+    })
+    syncActRoomsAndUnitsIntoWorld113c(world)
     return
   }
 
-  if (arg14 === 1) {
-    if (isSgptDataTablesReadyForMonsterStep(m)) {
-      MONSTER_AdvanceAttackOrSkillStep113c(m, pGame, pMonster, world)
-    } else {
-      const pPath = m.get(pMonster, D2UnitStrc.pPath)
-      const pDef = pPath !== 0 ? PATH_GetTargetUnit113c(m, pPath) : 0
-      if (pDef !== 0 && pDef !== pMonster && SUNIT_IsDeadOrDying113c(m, pDef) === 0) {
-        SUNITDMG_ExecuteMissileOrMeleeDmg113c(world, pMonster, pDef)
-      }
+  if (isSgptDataTablesReadyForMonsterStep(m)) {
+    MONSTER_AdvanceAttackOrSkillStep113c(m, pGame, pMonster, world)
+  } else if (arg14 === 1) {
+    const pPath = m.get(pMonster, D2UnitStrc.pPath)
+    const pDef = pPath !== 0 ? PATH_GetTargetUnit113c(m, pPath) : 0
+    if (pDef !== 0 && pDef !== pMonster && SUNIT_IsDeadOrDying113c(m, pDef) === 0) {
+      SUNITDMG_ExecuteMissileOrMeleeDmg113c(world, pMonster, pDef)
     }
   }
 }

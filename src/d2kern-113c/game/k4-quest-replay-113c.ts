@@ -10,6 +10,10 @@
  *    NPC interaction heads (+0x30), and DRLG preset MapAI waypoint chains (+0x38)
  */
 import { UNITS_GetPlayerData113c } from '../common/composit.ts'
+import {
+  DUNGEON_GetLevelIdFromRoom113c,
+  DUNGEON_GetRoomCoordinates113c,
+} from '../common/dungeon.ts'
 import { D2COMMON_SGPT_DATATABLES_VA_113C, D2CommonAssertError } from '../common/inline-helpers.ts'
 import { imul32, mulDiv113c, sdiv32 } from '../common/int-math.ts'
 import {
@@ -36,6 +40,7 @@ import {
   SKILLS_GetSkillById113c,
 } from '../common/skills.ts'
 import {
+  STATES_ToggleGfxStateFlag113c,
   STATLIST_GetUnitStat113c,
   STATLIST_SetUnitStat113c,
 } from '../common/statlist.ts'
@@ -54,7 +59,10 @@ import {
   D2MonsterDataStrc,
   D2UnitStrc,
 } from '../mem/layout.generated.ts'
-import { DATATBLS_GetHirelingTxtRecordFromClassId113c } from '../tables/monster-tbls-113c.ts'
+import {
+  DATATBLS_GetHirelingTxtRecordFromClassId113c,
+  DATATBLS_GetHirelingTxtRecordFromIdAndLevel113c,
+} from '../tables/monster-tbls-113c.ts'
 import type { Memory113c, SparseMemory113c } from '../mem/sparse-memory.ts'
 import { seedNext, type D2SeedStrc } from '../prng.ts'
 import {
@@ -65,7 +73,10 @@ import {
 } from '../tables/datatbls-113c.ts'
 import { DATATBLS_GetItemDataTables113c } from '../tables/item-tbls-113c.ts'
 import { hitD2GameVa113c } from '../va-trace-113c.ts'
-import { registerK4QuestCallbackDispatcher113c } from './a1c-post150-f150-f276-113c.ts'
+import {
+  QUESTS_GuidListRemove113c,
+  registerK4QuestCallbackDispatcher113c,
+} from './a1c-post150-f150-f276-113c.ts'
 import { D2GAME_ARENA_FindPlayerSlotByUnit113c } from './boot-init-gap-b-113c.ts'
 import {
   SUNIT_GetServerUnit113c,
@@ -73,8 +84,20 @@ import {
 } from './game-strc.ts'
 import { bindK2KernelGlobals113c } from './k2-d2tv-evaluators-113c.ts'
 import { PLAYER_GetQuestRecordForDifficulty_6FC21020_113c } from './k2-laneH-0x6fc2-w1-113c.ts'
-import { AI_InitClearFreezeAndStall_6FC36060_113c } from './k2-laneI-0x6fc3-w1-113c.ts'
-import { QUESTS_GetQuestData_6FC53F30_113c } from './k2-laneJ-0x6fc4-w1-113c.ts'
+import {
+  AI_InitClearFreezeAndStall_6FC36060_113c,
+  MONUMOD_ApplyBossLevelAndExpBonus_6FC41E80_113c,
+  MONUMOD_ApplyExtraFastVelocity_6FC42880_113c,
+} from './k2-laneI-0x6fc3-w1-113c.ts'
+import {
+  MONUMOD_InitUMod41ScheduleEvent7_6FC469F0_113c,
+  QUESTS_AttachQuestToUnit_6FC53F80_113c,
+  QUESTS_GetQuestData_6FC53F30_113c,
+} from './k2-laneJ-0x6fc4-w1-113c.ts'
+import {
+  MONUMOD_MarkBossAndIncrementUniqueCount113c,
+  MONUMOD_RollBossOrMinionNameSeed113c,
+} from './k2-items-tc-w1-113c.ts'
 import {
   ACT5Q0_StatusFilter_6FC76EA0_113c,
   ACT5Q1_ActiveFilter_6FC76D80_113c,
@@ -101,7 +124,10 @@ import {
   ACT1Q6_InitQuestData_6FC88060_113c,
   ACT2Q3_InitQuestData_6FCE7480_113c,
   ACT5Q4_InitQuestData_6FC7D5C0_113c,
+  MONSTER_AssignAuraEnchantedSkill_6FC44CD0_113c,
+  MONSTER_AssignTeleportSkill_6FC441B0_113c,
   PACKETS_SrvMercItemAction_6FCF0BC0_113c,
+  QUESTS_OnBossMonsterSpawnedCheckAct3GoldenBird_6FC56140_113c,
 } from './k2-w10b1-113c.ts'
 import {
   ACT5Q5_InitQuestData_6FC7FB50_113c,
@@ -193,7 +219,14 @@ import {
   NET_SendPacket15B_TransactionResult_6FCAAC90_113c,
 } from './k2-w2b3-113c.ts'
 import { SUNITPROXY_GetPlayerNodeItemInNpcSlot_6FCAFAA0_113c } from './k2-w2b4-113c.ts'
-import { MONAI_TransferItemCellStatFromItemToUnit_6FCCCA20_113c } from './k2-w2b5-113c.ts'
+import {
+  MONAI_CountSameClassAliveMonstersInRangeCallback_6FCD0DB0_113c,
+  MONAI_FindClosestClosedDoorCallback_6FCD0DF0_113c,
+  MONAI_MatchImpregnatableMonsterWithin25Callback_6FCC4180_113c,
+  MONAI_MatchNearbyWorldstoneObject233Callback_6FCC39E0_113c,
+  MONAI_TrackPackCorpseInRangeCallback_6FCD12B0_113c,
+  MONAI_TransferItemCellStatFromItemToUnit_6FCCCA20_113c,
+} from './k2-w2b5-113c.ts'
 import {
   ACT2Q4_StatusFilter_6FCE1970_113c,
   ACT2Q5_StatusFilter_6FCE1960_113c,
@@ -221,6 +254,14 @@ import {
   PACKET_Recv12_ClearGfxState0C_6FCEB590_113c,
   PACKET_Recv3F_PlayVoicePhrase_6FCEBD50_113c,
 } from './k2-w2b8-113c.ts'
+import {
+  ITEMS_SaveItemToNodeAndFree_6FC403D0_113c,
+  MONUMOD_ApplyExtraHealthBonus_6FC42FA0_113c,
+  MONUMOD_ApplyFanaticOrPossessedStats_6FC42DA0_113c,
+  MONUMOD_ApplyGhostlyStats_6FC42D00_113c,
+  MONUMOD_ApplyResistanceBonus_6FC41BE0_113c,
+  MONUMOD_ApplyStrongToHitAndDamageBonus_6FC42BC0_113c,
+} from './k2-w3b2-113c.ts'
 import {
   QUESTS_AllocAndInitGameQuests_6FC548A0_113c,
   QUESTS_AttachUnitToQuest_6FC55890_113c,
@@ -270,10 +311,30 @@ import {
   ACT1_InitCainIntroQuestDescriptor_6FC82FA0_113c,
   ACT5Q4_AdvanceObjectToMonsterSpawn_6FC7C480_113c,
 } from './k2-w4b3-113c.ts'
-import { AI_SubmergedOrStuckTransition_6FC9D550_113c } from './k2-w3b8-113c.ts'
+import {
+  AI_ScanCallbackFetishMinions_6FC9BB90_113c,
+  AI_ScanCallbackHostileTargetsMetrics_6FC9CF10_113c,
+  AI_ScanCallbackLowestLifeBaseIdEBOrEE_6FC9BC70_113c,
+  AI_ScanCallbackNearestBaseId136_6FC9BA40_113c,
+  AI_ScanCallbackNearestLowLifeUnit_6FC9B860_113c,
+  AI_ScanCallbackNearestSelectableCorpse_6FC9BB00_113c,
+  AI_ScanCallbackResurrectOrHealTarget_6FC9B8E0_113c,
+  AI_SubmergedOrStuckTransition_6FC9D550_113c,
+} from './k2-w3b8-113c.ts'
 import { AI_ThinkWakeOrUnburrowSkill_6FC9CE40_113c } from './k2-w4b4-113c.ts'
 import {
+  MONUMOD_ApplyChampionBerserkerStats_6FC437C0_113c,
+  MONUMOD_ApplyChampionFanaticStats_6FC43810_113c,
+  MONUMOD_ApplyChampionGhostlyStats_6FC43850_113c,
+  MONUMOD_ApplyColdDamageAndLengthStats_6FC42490_113c,
+  MONUMOD_ApplyColdEnchantedStats_6FC42320_113c,
+  MONUMOD_ApplyFireEnchantedStats_6FC42740_113c,
+  MONUMOD_ApplyLightningEnchantedStats_6FC42600_113c,
+  MONUMOD_ApplyPoisonEnchantedStats_6FC421D0_113c,
+} from './k2-w4b1-113c.ts'
+import {
   ITEMS_SendUseScrollOrTomePacket3F_6FCCCFD0_113c,
+  MONAI_FindNearestFriendlyMonsterCallback_6FCD14B0_113c,
   MONAI_UnburrowThink_6FCC59B0_113c,
 } from './k2-w4b7-113c.ts'
 import {
@@ -287,6 +348,7 @@ import {
   ACT4Q2_HasHadrielQuestIndicator_6FCD8B90_113c,
   ACT4Q2_InitHadrielNpcDialog_6FCD8C00_113c,
   ACT4Q2_InitHellforgeNpcDialog_6FCD8CE0_113c,
+  ACT4Q2_SyncPlayerQuest1BState_6FCD8E80_113c,
   ACT4Q2_SyncQuestDataFromPlayerInventoryAndFlags_6FCD9830_113c,
   ACT4Q3_InitNpcDialog_6FCD9070_113c,
   ACT4Q3_SyncQuestDataFromPlayerFlags_6FCD8F20_113c,
@@ -330,6 +392,7 @@ import {
   ACT2Q4_Callback_NpcActivateDialog_6FCE4EA0_113c,
   ACT2Q7_Callback_NpcActivateGuardDialog_6FCE4900_113c,
   ACT2Q7_Callback_ScrollMessageSetState_6FCE4A40_113c,
+  MONREG_UpdateMonsterRegionTransferCounts_6FCEA410_113c,
   PACKET_Srv2F_NpcQuestMessage_6FCEC9D0_113c,
   PACKET_Srv3B_ClearNpcIntroFlag_6FCEB4A0_113c,
   PACKET_Srv3C_SetSkillHotkey_6FCEBC70_113c,
@@ -347,6 +410,7 @@ import {
 import {
   PACKET_C2S14_SetUnitOverheadChat_6FCF00A0_113c,
   PACKET_C2S59_MoveTownNpcToCoords_6FCEFF30_113c,
+  SUNIT_FindFirstLivingPlayerOrMonsterMatching_6FCFFCC0_113c,
 } from './k2-w5b7-113c.ts'
 import {
   ACT3Q0_AddHratliIntroDialogNodes_6FD054C0_113c,
@@ -443,6 +507,7 @@ import {
   C2S_Packet63_ShiftMoveInventoryItemToBelt_6FCF0950_113c,
 } from './k2-w6b6-113c.ts'
 import { PACKET_ProcessChatOrWhisperMessage_6FCEDBB0_113c } from './k2-w6b7-113c.ts'
+import { QUESTS_Act2RadamentSetStateAndDebugPrint_6FC55EB0_113c } from './k2-w7b1-113c.ts'
 import { ACT1Q4_SpawnTristramPortalAtCairnStones_6FC87A90_113c } from './k2-w7b2-113c.ts'
 import {
   ACT2Q5_OnScrollMessage_6FCE67C0_113c,
@@ -514,8 +579,17 @@ import {
 } from './k2-w9b2-113c.ts'
 import {
   MON_EVENT_AI_THINK,
+  registerAiTargetModeCallback113c,
   registerMonsterAiThinkVaHandler113c,
+  registerPostActRoomsUpdateHook113c,
+  registerPostSliceFrameCleanupHook113c,
+  registerPreSliceFrameSetupHook113c,
 } from './monster-events.ts'
+import {
+  clearPendingSavedObjectInitModes113c,
+  flushPendingSavedObjectInitModes113c,
+} from './objects-populate-113c.ts'
+import { SUNIT_SetMonsterAlignmentState113c } from './regpop-spawn-113c.ts'
 import { registerK4ReplayKernelBridge113c } from './replay-kernel-113c.ts'
 import { EVENT_DeleteEventByArg14_113c } from './timer-wheel.ts'
 import {
@@ -1197,9 +1271,47 @@ export function dispatchK4QuestCallback113c(
       ACT3Q2_OnGidbinnPickedUp_6FD07770_113c(sm, pQuest, pArg)
       return true
 
+    // cbIdx 0x03: LevelChanged (+0xAC) override for ACT4Q2 (0x6FCDA1E0)
+    case 0x6fcda1e0:
+    case 0x6fcda1e1:
+      runAct4Q2LevelChanged6FCDA1E0_113c(sm, pQuest, pArg)
+      return true
+
     default:
       return false
   }
+}
+
+function runAct4Q2LevelChanged6FCDA1E0_113c(
+  m: SparseMemory113c,
+  pQuest: number,
+  pArg: number,
+): void {
+  hitD2GameVa113c(0x6FCDA1E0)
+  if (pQuest === 0 || pArg === 0) return
+  if ((m.u32((pArg + 0x14) >>> 0) | 0) !== 0x67) return
+  if (m.u16((pQuest + 0x9c) >>> 0) > 0) {
+    const pUnit = m.u32((pArg + 0x0c) >>> 0) >>> 0
+    const dwGuid = pUnit !== 0 ? (m.u32((pUnit + 0x0c) >>> 0) >>> 0) : 0xffffffff
+    QUESTS_GuidListRemove113c(m, (pQuest + 0x1c) >>> 0, dwGuid)
+  }
+  if (m.u8((pQuest + 0x0c) >>> 0) !== 2) return
+  const pUnit = m.u32((pArg + 0x0c) >>> 0) >>> 0
+  const pGame = m.u32(pArg >>> 0) >>> 0
+  const pPlayerData = UNITS_GetPlayerData113c(m, pUnit) >>> 0
+  const diffIdx = m.u8((pGame + 0x6d) >>> 0)
+  const pQuestFlags = m.u32((pPlayerData + diffIdx * 4 + 0x10) >>> 0) >>> 0
+  const questId = m.u32((pQuest + 0xe0) >>> 0) | 0
+  if (DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, questId, 0) === 1) return
+  if (DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, questId, 1) === 1) return
+  QUESTS_Act2RadamentSetStateAndDebugPrint_6FC55EB0_113c(m, pQuest, 3)
+  SUNIT_FindFirstLivingPlayerOrMonsterMatching_6FCFFCC0_113c(
+    m,
+    m.u32((pQuest + 0x04) >>> 0) >>> 0,
+    ACT4Q2_SyncPlayerQuest1BState_6FCD8E80_113c,
+    0,
+    0,
+  )
 }
 
 /**
@@ -1296,6 +1408,7 @@ export function hydrateK4QuestAndNpcState113c(
   saveBytes?: Uint8Array,
 ): void {
   if (pGame === 0) return
+  bindK4SliceFrameTrackingContext113c(m, pGame)
   if (!isByteAddrLoaded113c(m, 0x7f9c4ff0)) {
     m.setU32(0x7f9c4ff0, 0)
   }
@@ -1625,13 +1738,34 @@ export function hydrateK4QuestAndNpcState113c(
               const rawNameOff = m.u32((pPetNode + 0x08) >>> 0) & 0xffff
               const rawSeed = m.u32((pPetNode + 0x0c) >>> 0) >>> 0
               const bExp = m.u32((pGame + 0x70) >>> 0) | 0
-              const pHireRec =
-                DATATBLS_GetHirelingTxtRecordFromClassId113c(
-                  m,
-                  bExp,
-                  m.u32((pMercUnit + 0x04) >>> 0) | 0,
-                  0,
-                ) >>> 0
+              const mercClassId = m.u32((pMercUnit + 0x04) >>> 0) | 0
+              const curMercType = m.u32((pPetNode + 0x10) >>> 0) >>> 0
+              const mercLvl = STATLIST_GetUnitStat113c(m, pMercUnit, 12, 0) | 0
+              let pHireRec = 0
+              if (curMercType < 0x100) {
+                const pCurRec =
+                  DATATBLS_GetHirelingTxtRecordFromIdAndLevel113c(
+                    m,
+                    bExp,
+                    curMercType,
+                    mercLvl,
+                  ) >>> 0
+                if (
+                  pCurRec !== 0 &&
+                  (m.get(pCurRec, D2HirelingTxt.dwClass) | 0) === mercClassId
+                ) {
+                  pHireRec = pCurRec
+                }
+              }
+              if (pHireRec === 0) {
+                pHireRec =
+                  DATATBLS_GetHirelingTxtRecordFromClassId113c(
+                    m,
+                    bExp,
+                    mercClassId,
+                    0,
+                  ) >>> 0
+              }
               let wNameId = rawNameOff
               if (pHireRec !== 0) {
                 const wNameFirst = m.get(pHireRec, D2HirelingTxt.wNameFirst) & 0xffff
@@ -2056,6 +2190,16 @@ export function hydrateK4QuestAndNpcState113c(
           QUESTS_AttachUnitToQuest_6FC55890_113c(sm, pQItem, (bQuest - 1) | 0, pGame >>> 0)
         }
       }
+    }
+  }
+  const activeQuestCtrl = m.u32((pGame + 0x10f4) >>> 0) >>> 0
+  if (activeQuestCtrl !== 0 && isByteAddrLoaded113c(m, activeQuestCtrl)) {
+    let pQ = m.u32(activeQuestCtrl) >>> 0
+    while (pQ !== 0 && isByteAddrLoaded113c(m, pQ)) {
+      if ((m.u32((pQ + 0xac) >>> 0) >>> 0) === 0x6fcda1e0) {
+        m.setU32((pQ + 0xac) >>> 0, 0x6fcda1e1)
+      }
+      pQ = m.u32((pQ + 0xf4) >>> 0) >>> 0
     }
   }
 
@@ -2667,7 +2811,9 @@ export function tryApplyQuestAndNpcC2SPacketK4_113c(
         }
       }
     }
-    C2S_HandlePacket38_NpcMenuRequest_6FCEFB30_113c(sm, pGame, pPlayer, pPkt, nLen)
+    withTmpArenaIfMissingK4_113c(m, pGame, () => {
+      C2S_HandlePacket38_NpcMenuRequest_6FCEFB30_113c(sm, pGame, pPlayer, pPkt, nLen)
+    })
     if (pPlrInv38 !== 0 && (nMenuOpt38 === 1 || nMenuOpt38 === 2)) {
       if (m.u32((pPlrInv38 + 0x30) >>> 0) >>> 0 !== savedLastNode38) {
         m.setU32((pPlrInv38 + 0x2c) >>> 0, savedFirstNode38)
@@ -2728,7 +2874,9 @@ export function tryApplyQuestAndNpcC2SPacketK4_113c(
   } else if (op === 0x48) {
     PACKET_Srv48_ClearPlayerIntro_6FCEB4E0_113c(m, pGame, pPlayer, pPkt, nLen)
   } else if (op === 0x49) {
-    C2S_Packet49_WaypointInteract_6FCF0D30_113c(sm, pGame, pPlayer, pPkt, nLen)
+    withTmpArenaIfMissingK4_113c(m, pGame, () => {
+      C2S_Packet49_WaypointInteract_6FCF0D30_113c(sm, pGame, pPlayer, pPkt, nLen)
+    })
   } else if (op === 0x4b) {
     PACKET_C2S4B_RequestUnitRefresh113c(m, pGame, pPlayer, pPkt, nLen)
   } else if (op === 0x4c) {
@@ -2772,6 +2920,23 @@ export function tryApplyQuestAndNpcC2SPacketK4_113c(
   return true
 }
 
+const K4_TMP_ARENA_SCRATCH_VA_113C = 0x7e1ff000
+
+function withTmpArenaIfMissingK4_113c<T>(m: Memory113c, pGame: number, fn: () => T): T {
+  const needTmpArena = pGame !== 0 && m.u32((pGame + 0x1d28) >>> 0) === 0
+  if (needTmpArena) {
+    m.fill(K4_TMP_ARENA_SCRATCH_VA_113C, 0x10, 0)
+    m.setU32((pGame + 0x1d28) >>> 0, K4_TMP_ARENA_SCRATCH_VA_113C)
+  }
+  try {
+    return fn()
+  } finally {
+    if (needTmpArena) {
+      m.setU32((pGame + 0x1d28) >>> 0, 0)
+    }
+  }
+}
+
 export function executeQueuedPlayerEntityInteractK4_113c(
   m: Memory113c,
   pGame: number,
@@ -2780,14 +2945,16 @@ export function executeQueuedPlayerEntityInteractK4_113c(
   targetType: number,
   targetId: number,
 ): void {
-  C2S_ExecuteEntityInteractionOrRunToTarget_6FCF01D0_113c(
-    m as SparseMemory113c,
-    targetType >>> 0,
-    pGame >>> 0,
-    (interactAction | 0) === -2 ? 1 : 0,
-    pPlayer >>> 0,
-    targetId >>> 0,
-  )
+  withTmpArenaIfMissingK4_113c(m, pGame, () => {
+    C2S_ExecuteEntityInteractionOrRunToTarget_6FCF01D0_113c(
+      m as SparseMemory113c,
+      targetType >>> 0,
+      pGame >>> 0,
+      (interactAction | 0) === -2 ? 1 : 0,
+      pPlayer >>> 0,
+      targetId >>> 0,
+    )
+  })
   if (pPlayer !== 0 && m.u32(pPlayer >>> 0) === 0) {
     const pPd = m.u32((pPlayer + 0x14) >>> 0) >>> 0
     if (pPd !== 0) {
@@ -3038,6 +3205,315 @@ function registerK4MonsterAltThinkHandlers113c(): void {
   registerMonsterAiThinkVaHandler113c(0x6fcd78a0, (m, pGame, pUnit, pAiParam) =>
     AIBAAL_ReinitAiThinkAndRestoreCmd10_6FCD78A0_113c(m as SparseMemory113c, pGame, pUnit, pAiParam),
   )
+  registerAiTargetModeCallback113c(3, (m, pGame, pOrigin, pCand, pCtx) =>
+    MONAI_FindNearestFriendlyMonsterCallback_6FCD14B0_113c(
+      m as SparseMemory113c,
+      pGame,
+      pOrigin,
+      pCand,
+      pCtx,
+    ),
+  )
+  registerAiTargetModeCallback113c(0x6fcc39e0, (m, pGame, pOrigin, pCand, pCtx) =>
+    MONAI_MatchNearbyWorldstoneObject233Callback_6FCC39E0_113c(m, pGame, pOrigin, pCand, pCtx),
+  )
+  registerAiTargetModeCallback113c(0x6fcc4180, (m, pGame, pOrigin, pCand, pCtx) =>
+    MONAI_MatchImpregnatableMonsterWithin25Callback_6FCC4180_113c(m, pGame, pOrigin, pCand, pCtx),
+  )
+  registerAiTargetModeCallback113c(0x6fcd0db0, (m, pGame, pOrigin, pCand, pCtx) =>
+    MONAI_CountSameClassAliveMonstersInRangeCallback_6FCD0DB0_113c(m, pGame, pOrigin, pCand, pCtx),
+  )
+  registerAiTargetModeCallback113c(0x6fcd0df0, (m, pGame, pOrigin, pCand, pCtx) =>
+    MONAI_FindClosestClosedDoorCallback_6FCD0DF0_113c(m, pGame, pOrigin, pCand, pCtx),
+  )
+  registerAiTargetModeCallback113c(0x6fcd12b0, (m, pGame, pOrigin, pCand, pCtx) =>
+    MONAI_TrackPackCorpseInRangeCallback_6FCD12B0_113c(m, pGame, pOrigin, pCand, pCtx),
+  )
+  registerAiTargetModeCallback113c(0x6fc9b860, (m, _pGame, pOrigin, pCand, pCtx) =>
+    AI_ScanCallbackNearestLowLifeUnit_6FC9B860_113c(m as SparseMemory113c, pOrigin, pCand, pCtx),
+  )
+  registerAiTargetModeCallback113c(0x6fc9b8e0, (m, _pGame, pOrigin, pCand, pCtx) =>
+    AI_ScanCallbackResurrectOrHealTarget_6FC9B8E0_113c(m as SparseMemory113c, pOrigin, pCand, pCtx),
+  )
+  registerAiTargetModeCallback113c(0x6fc9ba40, (m, _pGame, pOrigin, pCand, pCtx) =>
+    AI_ScanCallbackNearestBaseId136_6FC9BA40_113c(m as SparseMemory113c, pOrigin, pCand, pCtx),
+  )
+  registerAiTargetModeCallback113c(0x6fc9bb00, (m, _pGame, pOrigin, pCand, pCtx) =>
+    AI_ScanCallbackNearestSelectableCorpse_6FC9BB00_113c(m as SparseMemory113c, pOrigin, pCand, pCtx),
+  )
+  registerAiTargetModeCallback113c(0x6fc9bb90, (m, _pGame, pOrigin, pCand, pCtx) =>
+    AI_ScanCallbackFetishMinions_6FC9BB90_113c(m as SparseMemory113c, pOrigin, pCand, pCtx),
+  )
+  registerAiTargetModeCallback113c(0x6fc9bc70, (m, _pGame, pOrigin, pCand, pCtx) =>
+    AI_ScanCallbackLowestLifeBaseIdEBOrEE_6FC9BC70_113c(m as SparseMemory113c, pOrigin, pCand, pCtx),
+  )
+  registerAiTargetModeCallback113c(0x6fc9cf10, (m, pGame, pOrigin, pCand, pCtx) =>
+    AI_ScanCallbackHostileTargetsMetrics_6FC9CF10_113c(
+      m as SparseMemory113c,
+      pGame,
+      pOrigin,
+      pCand,
+      pCtx,
+    ),
+  )
+}
+
+interface K4SavedRoomUnitSpec113c {
+  readonly actIdx: number
+  readonly roomX: number
+  readonly roomY: number
+  readonly unitType: number
+  readonly classId: number
+  readonly posX: number
+  readonly posY: number
+}
+
+let k4TrackedMem: Memory113c | null = null
+let k4TrackedGame = 0
+const k4QuestTimerDirtyUnits: Array<{ readonly m: Memory113c; readonly pUnit: number }> = []
+const k4PreDeactivateItemsByGuid = new Map<
+  number,
+  { readonly pItem: number; readonly origFlags: number }
+>()
+let k4SavedRoomUnitSpecs: K4SavedRoomUnitSpec113c[] = []
+
+function bindK4SliceFrameTrackingContext113c(m: Memory113c, pGame: number): void {
+  k4TrackedMem = m
+  k4TrackedGame = pGame >>> 0
+  k4QuestTimerDirtyUnits.length = 0
+  k4PreDeactivateItemsByGuid.clear()
+  k4SavedRoomUnitSpecs = []
+  clearPendingSavedObjectInitModes113c()
+}
+
+function collectRoomUpdateDirtyUnits113c(m: Memory113c, pGame: number): Set<number> {
+  const out = new Set<number>()
+  for (let actIdx = 0; actIdx < 5; actIdx++) {
+    const pAct = m.u32((pGame + 0xbc + actIdx * 4) >>> 0) >>> 0
+    if (pAct === 0 || !isByteAddrLoaded113c(m, pAct)) continue
+    let pRoom = m.u32((pAct + 0x10) >>> 0) >>> 0
+    while (pRoom !== 0 && isByteAddrLoaded113c(m, pRoom)) {
+      let uUpd = m.u32((pRoom + 0x1c) >>> 0) >>> 0
+      while (uUpd !== 0 && isByteAddrLoaded113c(m, uUpd)) {
+        if ((m.u32((uUpd + 0xc4) >>> 0) & 0x01) !== 0) {
+          out.add(uUpd >>> 0)
+        }
+        uUpd = m.u32((uUpd + 0xe0) >>> 0) >>> 0
+      }
+      pRoom = m.u32((pRoom + 0x7c) >>> 0) >>> 0
+    }
+  }
+  return out
+}
+
+function flushK4ConsumedRoomRestores113c(m: Memory113c, pGame: number): void {
+  if (k4SavedRoomUnitSpecs.length > 0) {
+    const stillSaved = new Set<string>()
+    for (let actIdx = 0; actIdx < 5; actIdx++) {
+      let rn = m.u32((pGame + 0xd8 + actIdx * 4) >>> 0) >>> 0
+      while (rn !== 0 && isByteAddrLoaded113c(m, rn)) {
+        if (m.u32((rn + 0x10) >>> 0) !== 0) {
+          stillSaved.add(`${actIdx}:${m.u32(rn) | 0}:${m.u32((rn + 0x04) >>> 0) | 0}`)
+        }
+        rn = m.u32((rn + 0x14) >>> 0) >>> 0
+      }
+    }
+    const remainingUnits: K4SavedRoomUnitSpec113c[] = []
+    const pCoordScratch = K4_QUEST_ARG_SCRATCH_VA
+    for (let i = 0; i < k4SavedRoomUnitSpecs.length; i++) {
+      const spec = k4SavedRoomUnitSpecs[i]!
+      if (stillSaved.has(`${spec.actIdx}:${spec.roomX}:${spec.roomY}`)) {
+        remainingUnits.push(spec)
+        continue
+      }
+      const pAct = m.u32((pGame + 0xbc + spec.actIdx * 4) >>> 0) >>> 0
+      if (pAct === 0 || !isByteAddrLoaded113c(m, pAct)) continue
+      let pRoom = m.u32((pAct + 0x10) >>> 0) >>> 0
+      while (pRoom !== 0 && isByteAddrLoaded113c(m, pRoom)) {
+        DUNGEON_GetRoomCoordinates113c(m, pRoom, pCoordScratch)
+        if (
+          (m.u32(pCoordScratch) | 0) === spec.roomX &&
+          (m.u32((pCoordScratch + 4) >>> 0) | 0) === spec.roomY
+        ) {
+          let pUnit = m.u32((pRoom + 0x74) >>> 0) >>> 0
+          while (pUnit !== 0 && isByteAddrLoaded113c(m, pUnit)) {
+            if (
+              (m.u32(pUnit) >>> 0) === spec.unitType &&
+              (m.u32((pUnit + 0x04) >>> 0) | 0) === spec.classId
+            ) {
+              const pPath = m.u32((pUnit + 0x2c) >>> 0) >>> 0
+              if (
+                pPath !== 0 &&
+                (m.u32((pPath + 0x0c) >>> 0) | 0) === spec.posX &&
+                (m.u32((pPath + 0x10) >>> 0) | 0) === spec.posY
+              ) {
+                hitD2GameVa113c(0x6fd012d0)
+                m.setU32((pUnit + 0xc4) >>> 0, (m.u32((pUnit + 0xc4) >>> 0) | 0x03000000) >>> 0)
+              }
+            }
+            pUnit = m.u32((pUnit + 0xe8) >>> 0) >>> 0
+          }
+          break
+        }
+        pRoom = m.u32((pRoom + 0x7c) >>> 0) >>> 0
+      }
+    }
+    k4SavedRoomUnitSpecs = remainingUnits
+  }
+}
+
+function onK4PostActRoomsUpdate113c(): void {
+  const m = k4TrackedMem
+  const pGame = k4TrackedGame >>> 0
+  if (m === null || pGame === 0 || !isByteAddrLoaded113c(m, pGame)) return
+  flushK4ConsumedRoomRestores113c(m, pGame)
+}
+
+function onK4PreSliceFrameSetup113c(): void {
+  clearPendingSavedObjectInitModes113c()
+  const m = k4TrackedMem
+  const pGame = k4TrackedGame >>> 0
+  if (m === null || pGame === 0 || !isByteAddrLoaded113c(m, pGame)) return
+
+  // 1. Snapshot saved non-monster room unit nodes (`[pRoomNode + 0x10]`) before
+  //    `GAME_UpdateActRooms113c` / `CLIENTS_UpdatePlayerRoom113c` consumes them via `0x6FC400E0`.
+  const specs: K4SavedRoomUnitSpec113c[] = []
+  for (let actIdx = 0; actIdx < 5; actIdx++) {
+    let rn = m.u32((pGame + 0xd8 + actIdx * 4) >>> 0) >>> 0
+    while (rn !== 0 && isByteAddrLoaded113c(m, rn)) {
+      const roomX = m.u32(rn) | 0
+      const roomY = m.u32((rn + 0x04) >>> 0) | 0
+      let pNode = m.u32((rn + 0x10) >>> 0) >>> 0
+      while (pNode !== 0 && isByteAddrLoaded113c(m, pNode)) {
+        const unitType = m.u32((pNode + 0x08) >>> 0) >>> 0
+        const flags1C = m.u32((pNode + 0x1c) >>> 0) >>> 0
+        if (unitType !== 1 && (flags1C & 0x0100) === 0) {
+          specs.push({
+            actIdx,
+            roomX,
+            roomY,
+            unitType,
+            classId: m.u32((pNode + 0x0c) >>> 0) | 0,
+            posX: m.u32(pNode) | 0,
+            posY: m.u32((pNode + 0x04) >>> 0) | 0,
+          })
+        }
+        pNode = m.u32((pNode + 0x30) >>> 0) >>> 0
+      }
+      rn = m.u32((rn + 0x14) >>> 0) >>> 0
+    }
+  }
+  k4SavedRoomUnitSpecs = specs
+
+  // 2. Before `GAME_DeactivateUnusedRoomsTick113c` on `(dwGameFrame + 1) % 12 === 0`, cache active
+  //    ground items and ensure `UNITFLAG_SAVE` (`0x02000000`) is set so `ROOM_DeactivateAnyUnitInRoom`
+  //    (`D2Game:0x6FC40A75`, which saves/frees `UNIT_ITEM` unconditionally) deactivates them and
+  //    upgrades synthetic save nodes to `'JM'` (`0x6FC403D0`).
+  k4PreDeactivateItemsByGuid.clear()
+  const nextFrame = ((m.u32((pGame + 0xa8) >>> 0) >>> 0) + 1) >>> 0
+  if (
+    nextFrame % 12 === 0 &&
+    isByteAddrLoaded113c(m, 0x6fde9e1c) &&
+    m.u32(0x6fde9e1c) !== 0
+  ) {
+    const itemHashBase = (pGame + SUNIT_HASH_OFFSET_BY_TYPE_113C[4]!) >>> 0
+    for (let b = 0; b < 128; b++) {
+      let pItem = m.u32((itemHashBase + b * 4) >>> 0) >>> 0
+      while (pItem !== 0 && isByteAddrLoaded113c(m, pItem)) {
+        if (UNITS_GetRoom113c(m, pItem) !== 0) {
+          const origFlags = m.u32((pItem + 0xc4) >>> 0) >>> 0
+          k4PreDeactivateItemsByGuid.set(m.u32((pItem + 0x0c) >>> 0) >>> 0, {
+            pItem,
+            origFlags,
+          })
+          if ((origFlags & 0x02000000) === 0) {
+            m.setU32((pItem + 0xc4) >>> 0, (origFlags | 0x02000000) >>> 0)
+          }
+        }
+        pItem = m.get(pItem, D2UnitStrc.pGameHashNext) >>> 0
+      }
+    }
+  }
+}
+
+function onK4PostSliceFrameCleanup113c(): void {
+  // 1. Preserve `dwFlags & 0x01` on objects dirtied during deferred quest timers (`QUESTS_StepQuestTimers`)
+  //    so they broadcast `0x0E` on the next frame's `CLIENTS_UpdatePlayerRoom`.
+  for (let i = 0; i < k4QuestTimerDirtyUnits.length; i++) {
+    const entry = k4QuestTimerDirtyUnits[i]!
+    if (isByteAddrLoaded113c(entry.m, (entry.pUnit + 0xc4) >>> 0)) {
+      entry.m.setU32(
+        (entry.pUnit + 0xc4) >>> 0,
+        (entry.m.u32((entry.pUnit + 0xc4) >>> 0) | 0x01) >>> 0,
+      )
+    }
+  }
+  k4QuestTimerDirtyUnits.length = 0
+
+  flushPendingSavedObjectInitModes113c()
+  const m = k4TrackedMem
+  const pGame = k4TrackedGame >>> 0
+  if (m === null || pGame === 0 || !isByteAddrLoaded113c(m, pGame)) return
+
+  // 2. Flush any remaining consumed `[pRoomNode + 0x10]` room restores.
+  flushK4ConsumedRoomRestores113c(m, pGame)
+  k4SavedRoomUnitSpecs = []
+
+  // 3. Upgrade synthetic inactive ground-item nodes (`[pRoomNode + 0x08]`) into real `'JM'` (`0x4D4A`)
+  //    bitstream nodes via `ITEMS_SaveItemToNodeAndFree_6FC403D0_113c` (`0x6FC403D0`), and restore
+  //    original `dwFlags` on items whose room remained active.
+  if (k4PreDeactivateItemsByGuid.size > 0) {
+    const ppOutNode = K4_QUEST_ARG_SCRATCH_VA
+    const sm = m as SparseMemory113c
+    for (let actIdx = 0; actIdx < 5; actIdx++) {
+      let rn = m.u32((pGame + 0xd8 + actIdx * 4) >>> 0) >>> 0
+      while (rn !== 0 && isByteAddrLoaded113c(m, rn)) {
+        let pPrev = 0
+        let pCur = m.u32((rn + 0x08) >>> 0) >>> 0
+        while (pCur !== 0 && isByteAddrLoaded113c(m, pCur)) {
+          const pNext = m.u32(pCur) >>> 0
+          if (m.u16((pCur + 0x0e) >>> 0) !== 0x4d4a) {
+            const savedGuid = m.u32((pCur + 0x08) >>> 0) >>> 0
+            const cached = k4PreDeactivateItemsByGuid.get(savedGuid)
+            const pItem = cached !== undefined ? cached.pItem : 0
+            if (pItem !== 0 && UNITS_GetRoom113c(m, pItem) === 0) {
+              m.setU32(ppOutNode, 0)
+              ITEMS_SaveItemToNodeAndFree_6FC403D0_113c(sm, pGame, pItem, 0, ppOutNode)
+              const pNewNode = m.u32(ppOutNode) >>> 0
+              if (pNewNode !== 0) {
+                m.setU32(pNewNode, pNext)
+                if (pPrev === 0) {
+                  m.setU32((rn + 0x08) >>> 0, pNewNode)
+                } else {
+                  m.setU32(pPrev, pNewNode)
+                }
+                pPrev = pNewNode
+                pCur = pNext
+                continue
+              }
+            }
+          }
+          pPrev = pCur
+          pCur = pNext
+        }
+        rn = m.u32((rn + 0x14) >>> 0) >>> 0
+      }
+    }
+    for (const cached of k4PreDeactivateItemsByGuid.values()) {
+      if (
+        cached.pItem !== 0 &&
+        isByteAddrLoaded113c(m, (cached.pItem + 0xc4) >>> 0) &&
+        UNITS_GetRoom113c(m, cached.pItem) !== 0 &&
+        (cached.origFlags & 0x02000000) === 0
+      ) {
+        m.setU32(
+          (cached.pItem + 0xc4) >>> 0,
+          (m.u32((cached.pItem + 0xc4) >>> 0) & ~0x02000000) >>> 0,
+        )
+      }
+    }
+    k4PreDeactivateItemsByGuid.clear()
+  }
 }
 
 registerK4MonsterAltThinkHandlers113c()
@@ -3050,55 +3526,89 @@ function dispatchK4QuestTimer113c(
   pGame: number,
   pQuestData: number,
 ): number {
+  const beforeDirty = pGame !== 0 ? collectRoomUpdateDirtyUnits113c(m, pGame) : null
   const sm = m as SparseMemory113c
+  let rc = 0
   switch (pfnTimer >>> 0) {
     case 0x6fc7c480:
-      return ACT5Q4_AdvanceObjectToMonsterSpawn_6FC7C480_113c(sm, pGame, pQuestData) | 0
+      rc = ACT5Q4_AdvanceObjectToMonsterSpawn_6FC7C480_113c(sm, pGame, pQuestData) | 0
+      break
     case 0x6fc7e660:
-      return ACT5Q5_ActivateAncientStatueObjects_6FC7E660_113c(sm, pGame, pQuestData) | 0
+      rc = ACT5Q5_ActivateAncientStatueObjects_6FC7E660_113c(sm, pGame, pQuestData) | 0
+      break
     case 0x6fc83210:
-      return ACT1Q5_TimerPromoteState0D_6FC83210_113c(sm, pQuestData) | 0
+      rc = ACT1Q5_TimerPromoteState0D_6FC83210_113c(sm, pQuestData) | 0
+      break
     case 0x6fc83a80:
-      return ACT1Q2_TimerPromoteState3_6FC83A80_113c(sm, pQuestData) | 0
+      rc = ACT1Q2_TimerPromoteState3_6FC83A80_113c(sm, pQuestData) | 0
+      break
     case 0x6fc83b50:
-      return ACT1Q1_TimerPromoteState5_6FC83B50_113c(sm, pQuestData) | 0
+      rc = ACT1Q1_TimerPromoteState5_6FC83B50_113c(sm, pQuestData) | 0
+      break
     case 0x6fc87a90:
-      return ACT1Q4_SpawnTristramPortalAtCairnStones_6FC87A90_113c(sm, pGame, pQuestData) | 0
+      rc = ACT1Q4_SpawnTristramPortalAtCairnStones_6FC87A90_113c(sm, pGame, pQuestData) | 0
+      break
     case 0x6fc87c60:
-      return ACT1Q6_TimerTickAndarielDeathSequence_6FC87C60_113c(sm, pGame, pQuestData) | 0
+      rc = ACT1Q6_TimerTickAndarielDeathSequence_6FC87C60_113c(sm, pGame, pQuestData) | 0
+      break
     case 0x6fc88250:
-      return ACT1Q4_TimerRefreshCainMonsterState_6FC88250_113c(sm, pQuestData) | 0
+      rc = ACT1Q4_TimerRefreshCainMonsterState_6FC88250_113c(sm, pQuestData) | 0
+      break
     case 0x6fcda960:
-      return ACT4Q1_TimerSpawnIzualSpirit_6FCDA960_113c(sm, pGame, pQuestData) | 0
+      rc = ACT4Q1_TimerSpawnIzualSpirit_6FCDA960_113c(sm, pGame, pQuestData) | 0
+      break
     case 0x6fcdbdc0:
-      return ACT4Q3_TimerCallback_CheckDiabloSpawnAndEndgame_6FCDBDC0_113c(sm, pGame, pQuestData) | 0
+      rc = ACT4Q3_TimerCallback_CheckDiabloSpawnAndEndgame_6FCDBDC0_113c(sm, pGame, pQuestData) | 0
+      break
     case 0x6fce58b0:
-      return ACT2Q6_TimerSendQuest14Alert_6FCE58B0_113c(sm, pGame, pQuestData) | 0
+      rc = ACT2Q6_TimerSendQuest14Alert_6FCE58B0_113c(sm, pGame, pQuestData) | 0
+      break
     case 0x6fce5be0:
-      return ACT2Q5_TimerSummonerTauntAndAlert_6FCE5BE0_113c(sm, pGame, pQuestData) | 0
+      rc = ACT2Q5_TimerSummonerTauntAndAlert_6FCE5BE0_113c(sm, pGame, pQuestData) | 0
+      break
     case 0x6fce5e30:
-      return ACT2Q3_TimerSendQuest11Alert_6FCE5E30_113c(sm, pGame, pQuestData) | 0
+      rc = ACT2Q3_TimerSendQuest11Alert_6FCE5E30_113c(sm, pGame, pQuestData) | 0
+      break
     case 0x6fce6010:
-      return ACT2Q1_TimerSendQuest9Alert_6FCE6010_113c(sm, pGame, pQuestData) | 0
+      rc = ACT2Q1_TimerSendQuest9Alert_6FCE6010_113c(sm, pGame, pQuestData) | 0
+      break
     case 0x6fce6af0:
-      return ACT2Q3_TimerActivateTaintedSunAndSyncPlayers_6FCE6AF0_113c(sm, pGame, pQuestData) | 0
+      rc = ACT2Q3_TimerActivateTaintedSunAndSyncPlayers_6FCE6AF0_113c(sm, pGame, pQuestData) | 0
+      break
     case 0x6fce94e0:
-      return A5Q4_OpenTemplePortalObject_6FCE94E0_113c(sm, pGame, pQuestData) | 0
+      rc = A5Q4_OpenTemplePortalObject_6FCE94E0_113c(sm, pGame, pQuestData) | 0
+      break
     case 0x6fd057d0:
-      return ACT3Q0_OnWandererSeenSpawnFleshBeasts_6FD057D0_113c(sm, pGame, pQuestData) | 0
+      rc = ACT3Q0_OnWandererSeenSpawnFleshBeasts_6FD057D0_113c(sm, pGame, pQuestData) | 0
+      break
     case 0x6fd068b0:
-      return ACT3Q7_SendMephistoQuestState4Timer_6FD068B0_113c(sm, pGame, pQuestData) | 0
+      rc = ACT3Q7_SendMephistoQuestState4Timer_6FD068B0_113c(sm, pGame, pQuestData) | 0
+      break
     case 0x6fd08f30:
-      return D2Game_6FD08F30_113c(sm, pGame, pQuestData) | 0
+      rc = D2Game_6FD08F30_113c(sm, pGame, pQuestData) | 0
+      break
     default:
-      return 0
+      rc = 0
+      break
   }
+  if (beforeDirty !== null) {
+    const afterDirty = collectRoomUpdateDirtyUnits113c(m, pGame)
+    for (const pUnit of afterDirty) {
+      if (!beforeDirty.has(pUnit)) {
+        k4QuestTimerDirtyUnits.push({ m, pUnit })
+      }
+    }
+  }
+  return rc
 }
 
 export function installK4QuestReplay113c(): void {
   if (k4Installed) return
   k4Installed = true
   registerK4MonsterAltThinkHandlers113c()
+  registerPreSliceFrameSetupHook113c(onK4PreSliceFrameSetup113c)
+  registerPostActRoomsUpdateHook113c(onK4PostActRoomsUpdate113c)
+  registerPostSliceFrameCleanupHook113c(onK4PostSliceFrameCleanup113c)
   registerDefaultSpellIconHandler113c(dispatchK4SpellIconHandler113c)
   registerK4QuestCallbackDispatcher113c(dispatchK4QuestCallback113c)
   registerK4QuestNpcAlertDispatcher113c(dispatchK4QuestNpcAlert113c)

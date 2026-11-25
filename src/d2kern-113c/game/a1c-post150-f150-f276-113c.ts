@@ -3036,6 +3036,7 @@ export function PLRINTRO_SendAllPlayerPetsToClient113c(
   }
 
   const pPlayerData = UNITS_GetPlayerData113c(m, pPlayer) >>> 0
+  if (pPlayerData === 0) return
   const pPetsRoot = m.u32((pPlayerData + 0x44) >>> 0) >>> 0
   if (pPetsRoot === 0) return
 
@@ -3182,7 +3183,10 @@ export function PARTY_SendPartyPetsToClient113c(
 
   let pClient = 0
   if (pPlayer !== 0 && m.u32(pPlayer >>> 0) === 0) {
-    pClient = m.u32((UNITS_GetPlayerData113c(m, pPlayer) + 0x9c) >>> 0) >>> 0
+    const pPlrData = UNITS_GetPlayerData113c(m, pPlayer) >>> 0
+    if (pPlrData !== 0) {
+      pClient = m.u32((pPlrData + 0x9c) >>> 0) >>> 0
+    }
   }
   if (pPlayer === 0 || m.u32((pPlayer + 0x80) >>> 0) === 0 || m.u32(pPlayer >>> 0) !== 0) {
     return

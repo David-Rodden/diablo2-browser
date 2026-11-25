@@ -11,7 +11,8 @@
  * are all required: the caller wires either the kernel port or an explicit unported stand-in, so there is
  * no silent default.
  */
-import { DRLG_GetLevelDefField94_113c } from '../common/drlg/drlg.ts'
+import { DRLG_GetActNoFromLevelId113c, DRLG_GetLevelDefField94_113c } from '../common/drlg/drlg.ts'
+import { DRLGPRESET_FreeSaveHeaderBlock113c } from '../common/drlg/preset.ts'
 import {
   DUNGEON_AddClientToRoom113c,
   DUNGEON_CanFreeActiveRoom113c,
@@ -34,7 +35,12 @@ import {
   UNITS_GetPlayerActiveWeaponFlags113c,
   UNITS_SetPlayerActiveWeaponFlags113c,
 } from '../common/composit.ts'
-import { D2COMMON_SGPT_DATATABLES_VA_113C, D2CommonAssertError } from '../common/inline-helpers.ts'
+import {
+  D2COMMON_SGPT_DATATABLES_VA_113C,
+  D2CommonAssertError,
+  DATATBLS_GetMonStatsTxtRecordInline113c,
+} from '../common/inline-helpers.ts'
+import { STATLIST_SetUnitStat113c } from '../common/statlist.ts'
 import {
   DATATBLS_GetObjectsTxtRecord113c,
   UNIT_GetAlignment113c,
@@ -58,6 +64,7 @@ import {
   UNITROOM_SendDroppedGroundItemToClient113c,
 } from './a1c-post150-f786-f1040-113c.ts'
 import {
+  MONREG_FindOrAllocActRoomNode113c,
   MONREG_FlushAndFreePendingSpawnNodes113c,
   MONREG_RestoreRoomMonstersFromNode113c,
   MONREG_UnlinkAndFreeActRoomNode113c,
@@ -75,11 +82,13 @@ import {
   SUNIT_InsertServerUnit113c,
 } from './game-strc.ts'
 import {
+  AI_InitMonsterAiThinkFn113c,
   D2GAME_IAT_SGPT_DATATABLES_VA_113C,
   MONSTER_ChooseMonsterClass113c,
   MONSTER_ScheduleInitialAiEvent113c,
   MONSTER_SpawnAtCoords113c,
   OBJECTS_InitObjectUnitWithGoldPileFix113c,
+  QUEST_Act4DiabloSealCheck113c,
   REGPOP_FindPackSpawnCoords113c,
   REGPOP_PopulateRoomMonsters113c,
   SUNIT_AllocUnitData113c,
@@ -87,7 +96,19 @@ import {
   SUNIT_SetMonsterAlignmentState113c,
   type RegpopSpawnHooks113c,
 } from './regpop-spawn-113c.ts'
+import { AIGENERAL_FreeMinionList_6FC40B30_113c } from './k2-laneI-0x6fc3-w1-113c.ts'
+import {
+  AIGENERAL_ReplaceMinionListAndInitBossGroup_6FC41210_113c,
+  MONUMOD_AssignSpecificUModAndInit_6FC432B0_113c,
+} from './k2-w2b1-113c.ts'
+import {
+  MONSTER_ApplyPresetAiCommands_6FC3F2D0_113c,
+  MONUMOD_SpawnSuperUniqueOrBoss_6FC446D0_113c,
+} from './k2-w3b2-113c.ts'
+import { MONREG_UpdateMonsterRegionTransferCounts_6FCEA410_113c } from './k2-w5b5-113c.ts'
+import { SUBPARTY_PrependUnitToBucket8Or9_6FD0FDB0_113c } from './k2-w5b9-113c.ts'
 import { MONUMOD_SpawnMinionOrUniqueMonster_6FC44950_113c } from './k2-w11b1-113c.ts'
+import { MONUMOD_SpawnPresetUniqueOrSuperUnique_6FC44E70_113c } from './k2-w12b1-113c.ts'
 import { MONUMOD_InitBossAndMinionPackUMods_6FC448A0_113c } from './k2-w4b1-113c.ts'
 import { MONUMOD_RollChampionOrUniqueUMods_6FC43CA0_113c } from './k2-w4b3-113c.ts'
 import { OBJECTS_PopulateRoom113c, type ObjectsPopulateCallees113c } from './objects-populate-113c.ts'
@@ -543,6 +564,250 @@ function allocAndPlaceSavedUnit113c(
  *    saved ground item nodes and free every node in `pSavedItems`.
  * 4. Walks `pSavedUnits` (`0x34`-byte nodes chained via `+0x30`) to relocate retained corpses/portals or respawn saved objects.
  */
+function restoreRoomMonstersWithBossAndChampion113c(
+  m: Memory113c,
+  pGame: number,
+  pRoom: number,
+): void {
+  const sp = actRoomsStackPtr
+  actRoomsStackPtr = (sp + 0x20) >>> 0
+  let pRoomNode = 0
+  try {
+    DUNGEON_GetRoomCoordinates113c(m, pRoom, sp)
+    const roomX = m.u32(sp) | 0
+    const roomY = m.u32((sp + 0x04) >>> 0) | 0
+    const nLevelId = DUNGEON_GetLevelIdFromRoom113c(m, pRoom)
+    const nAct = DRLG_GetActNoFromLevelId113c(m, nLevelId) & 0xff
+    pRoomNode = MONREG_FindOrAllocActRoomNode113c(m, pGame, nAct, roomX, roomY, 0)
+  } finally {
+    actRoomsStackPtr = sp
+  }
+  if (pRoomNode === 0) {
+    MONREG_RestoreRoomMonstersFromNode113c(m, pGame, pRoom)
+    return
+  }
+
+  hitD2GameVa113c(0x6FC3FB90)
+  const roomLevelId = DUNGEON_GetLevelIdFromRoom113c(m, pRoom) | 0
+  let bChaosSealsCleared = 0
+  if (roomLevelId === 0x6c) {
+    if (QUEST_Act4DiabloSealCheck113c(m, pGame) !== 0) {
+      bChaosSealsCleared = 1
+    }
+  }
+  const pMemPool = m.u32((pGame + 0x1c) >>> 0) >>> 0
+  const sm = m as SparseMemory113c
+  const callTransferCountsIfValid = (
+    origLevel2C: number,
+    bSkipDec: number,
+    nAlignment: number,
+    isDead: number,
+    pSpawned: number,
+  ): void => {
+    const ppReg = (pGame + GAME_OFF_PMONREG_113C) >>> 0
+    if (
+      origLevel2C >= 0 &&
+      roomLevelId >= 0 &&
+      m.u32((ppReg + ((origLevel2C | 0) << 2)) >>> 0) !== 0 &&
+      m.u32((ppReg + ((roomLevelId | 0) << 2)) >>> 0) !== 0
+    ) {
+      MONREG_UpdateMonsterRegionTransferCounts_6FCEA410_113c(
+        sm,
+        ppReg,
+        origLevel2C,
+        bSkipDec,
+        roomLevelId,
+        nAlignment,
+        isDead,
+        pSpawned,
+      )
+    }
+  }
+  let pMon = m.u32((pRoomNode + 0x0c) >>> 0) >>> 0
+  while (pMon !== 0) {
+    const pNext = m.u32((pMon + 0x58) >>> 0) >>> 0
+    const dwFlags14 = m.u32((pMon + 0x14) >>> 0) >>> 0
+    const dwFlags18 = m.u32((pMon + 0x18) >>> 0) >>> 0
+    if ((dwFlags14 & 0x0100) !== 0 || (dwFlags18 & 0x21) === 0) {
+      const nSavedGuid = m.u32((pMon + 0x0c) >>> 0) >>> 0
+      const nSavedClassId = m.u32((pMon + 0x08) >>> 0) | 0
+      const nOrigLevel2C = m.u32((pMon + 0x2c) >>> 0) | 0
+      const nSavedAnimMode = (dwFlags18 & 0x04) !== 0 ? 0x0c : 1
+      const bChaosSkip = nSavedAnimMode !== 0x0c && bChaosSealsCleared !== 0 && nSavedClassId !== 0xf3
+      const bSkipBossNormal =
+        (dwFlags18 & 0x0400) !== 0 && ((dwFlags18 & 0x0100) !== 0 || (dwFlags18 & 0x80) !== 0)
+      let nNormAlignment = 0
+      if ((dwFlags18 & 0x0100) !== 0) nNormAlignment = 2
+      if ((dwFlags18 & 0x80) !== 0) nNormAlignment = 1
+      m.setU32((pRoomNode + 0x0c) >>> 0, pMon)
+      m.setU32((pMon + 0x58) >>> 0, 0)
+      MONREG_RestoreRoomMonstersFromNode113c(m, pGame, pRoom)
+      if ((dwFlags14 & 0x0100) === 0 && !bChaosSkip && !bSkipBossNormal) {
+        const pRestored = SUNIT_GetServerUnit113c(m, pGame, 1, nSavedGuid) >>> 0
+        callTransferCountsIfValid(
+          nOrigLevel2C,
+          dwFlags18 & 0x40,
+          nNormAlignment,
+          nSavedAnimMode === 0x0c ? 1 : 0,
+          pRestored,
+        )
+      }
+      pMon = pNext
+      continue
+    }
+
+    const posX = m.u32(pMon) | 0
+    const posY = m.u32((pMon + 0x04) >>> 0) | 0
+    const nClassId = m.u32((pMon + 0x08) >>> 0) | 0
+    const dwSavedGuid = m.u32((pMon + 0x0c) >>> 0) >>> 0
+    const dwFlags10 = m.u32((pMon + 0x10) >>> 0) >>> 0
+    const nAnimMode = (dwFlags18 & 0x04) !== 0 ? 0x0c : 1
+
+    if (nAnimMode !== 0x0c && bChaosSealsCleared !== 0 && nClassId !== 0xf3) {
+      if (m.u32((pMon + 0x24) >>> 0) !== 0) {
+        DRLGPRESET_FreeSaveHeaderBlock113c(m, pMemPool, (pMon + 0x24) >>> 0)
+      }
+      freeMemNodeAct113c(m, pMon)
+      pMon = pNext
+      continue
+    }
+
+    const skipBoss =
+      (dwFlags18 & 0x0400) !== 0 && ((dwFlags18 & 0x0100) !== 0 || (dwFlags18 & 0x80) !== 0)
+    if (!skipBoss) {
+      let wSpawnFlags = (dwFlags18 & 0x40) !== 0 ? 0x6a : 0x62
+      const pMonStatsTxt = DATATBLS_GetMonStatsTxtRecordInline113c(m, nClassId)
+      if (pMonStatsTxt !== 0 && (m.u8((pMonStatsTxt + 0x0d) >>> 0) & 0x40) !== 0) {
+        wSpawnFlags |= 0x80
+      }
+      let spawnKind = 0
+      if ((dwFlags18 & 0x01) !== 0) spawnKind = 1
+      if ((dwFlags18 & 0x20) !== 0) spawnKind = 2
+
+      let pSpawned = 0
+      if (spawnKind === 1) {
+        pSpawned = MONUMOD_SpawnPresetUniqueOrSuperUnique_6FC44E70_113c(
+          sm,
+          pGame,
+          pRoom,
+          nClassId,
+          posX,
+          posY,
+          dwSavedGuid,
+          m.u16((pMon + 0x30) >>> 0),
+          dwFlags18 & 0x02,
+          dwFlags18 & 0x0800,
+          m.u16((pMon + 0x3c) >>> 0),
+          (pMon + 0x32) >>> 0,
+        ) >>> 0
+      } else if (spawnKind === 2) {
+        pSpawned = MONUMOD_SpawnSuperUniqueOrBoss_6FC446D0_113c(
+          sm,
+          pGame,
+          pRoom,
+          0,
+          posX,
+          posY,
+          -1,
+          nClassId,
+          wSpawnFlags,
+          (pMon + 0x32) >>> 0,
+          dwSavedGuid,
+        ) >>> 0
+      }
+
+      let nAlignment = 0
+      if ((dwFlags18 & 0x0100) !== 0) nAlignment = 2
+      if ((dwFlags18 & 0x80) !== 0) nAlignment = 1
+      if (pSpawned !== 0) {
+        if (nAnimMode === 0x0c) {
+          m.setU32((pSpawned + 0x10) >>> 0, 0x0c)
+        }
+        AIGENERAL_ReplaceMinionListAndInitBossGroup_6FC41210_113c(
+          m,
+          pGame,
+          pSpawned,
+          m.u32((pMon + 0x1c) >>> 0) >>> 0,
+          1,
+          dwFlags18 & 0x08,
+          dwFlags18 & 0x10,
+          m.u32((pMon + 0x20) >>> 0) >>> 0,
+        )
+        const savedExp = m.u32((pMon + 0x40) >>> 0) | 0
+        const savedMaxHp = m.u32((pMon + 0x44) >>> 0) | 0
+        const savedCurHp = m.u32((pMon + 0x48) >>> 0) | 0
+        const savedFrame = m.u32((pMon + 0x54) >>> 0) >>> 0
+        const curGameFrame = m.u32((pGame + 0xa8) >>> 0) >>> 0
+        STATLIST_SetUnitStat113c(m, pSpawned, 0x0d, savedExp, 0)
+        const restoredHp =
+          ((curGameFrame - savedFrame) >>> 0) >= 0x1d4c ? savedMaxHp : savedCurHp
+        STATLIST_SetUnitStat113c(m, pSpawned, 0x07, savedMaxHp, 0)
+        STATLIST_SetUnitStat113c(m, pSpawned, 0x06, restoredHp, 0)
+        const pMonData0 =
+          m.u32(pSpawned >>> 0) === 1 ? (m.u32((pSpawned + 0x14) >>> 0) >>> 0) : 0
+        const pAiGen0 = pMonData0 !== 0 ? (m.u32((pMonData0 + 0x28) >>> 0) >>> 0) : 0
+        AI_InitMonsterAiThinkFn113c(
+          m,
+          pSpawned,
+          pGame,
+          pAiGen0,
+          m.u32((pMon + 0x28) >>> 0) | 0,
+        )
+        MONSTER_ApplyPresetAiCommands_6FC3F2D0_113c(sm, pSpawned, pGame, pMon)
+        if ((dwFlags18 & 0x0400) !== 0) {
+          if (nAlignment === 2) {
+            SUBPARTY_PrependUnitToBucket8Or9_6FD0FDB0_113c(sm, pGame, 8, pSpawned, 0)
+          } else if (nAlignment === 1) {
+            SUBPARTY_PrependUnitToBucket8Or9_6FD0FDB0_113c(sm, pGame, 9, pSpawned, 0)
+          }
+        }
+        if (m.u32(pSpawned >>> 0) === 1) {
+          const pMonData = m.u32((pSpawned + 0x14) >>> 0) >>> 0
+          if (pMonData !== 0) {
+            for (let k = 0; k < 9; k++) {
+              const savedMod = m.u8((pMon + 0x32 + k) >>> 0)
+              if (m.u8((pMonData + 0x1c + k) >>> 0) !== savedMod) {
+                MONUMOD_AssignSpecificUModAndInit_6FC432B0_113c(
+                  m,
+                  pSpawned,
+                  savedMod,
+                  pGame,
+                  0,
+                )
+              }
+            }
+          }
+        }
+        SUNIT_SetMonsterAlignmentState113c(m, pSpawned, nAlignment, 1)
+        if ((dwFlags14 & 0x0200) !== 0) {
+          m.setU32((pSpawned + 0xc8) >>> 0, (m.u32((pSpawned + 0xc8) >>> 0) | 0x0200) >>> 0)
+        }
+        const curUnitFlags = m.u32((pSpawned + 0xc4) >>> 0) >>> 0
+        m.setU32(
+          (pSpawned + 0xc4) >>> 0,
+          (curUnitFlags | (dwFlags10 & 0x20000) | 0x03000000) >>> 0,
+        )
+      } else {
+        AIGENERAL_FreeMinionList_6FC40B30_113c(m, pGame, m.u32((pMon + 0x20) >>> 0) >>> 0)
+      }
+      callTransferCountsIfValid(
+        m.u32((pMon + 0x2c) >>> 0) | 0,
+        dwFlags18 & 0x40,
+        nAlignment,
+        nAnimMode === 0x0c ? 1 : 0,
+        pSpawned,
+      )
+    }
+
+    if (m.u32((pMon + 0x24) >>> 0) !== 0) {
+      DRLGPRESET_FreeSaveHeaderBlock113c(m, pMemPool, (pMon + 0x24) >>> 0)
+    }
+    freeMemNodeAct113c(m, pMon)
+    pMon = pNext
+  }
+  m.setU32((pRoomNode + 0x0c) >>> 0, 0)
+}
+
 export function ROOM_RefreshUnitsAndLoadSaved113c(
   m: Memory113c,
   pGame: number,
@@ -552,7 +817,7 @@ export function ROOM_RefreshUnitsAndLoadSaved113c(
   if (pGame === 0 || pRoom === 0) return
 
   // 1. 0x6FC400F2: call 0x6FC3FB90 (restore saved monsters)
-  MONREG_RestoreRoomMonstersFromNode113c(m, pGame, pRoom)
+  restoreRoomMonstersWithBossAndChampion113c(m, pGame, pRoom)
 
   // 2. 0x6FC4010F: call 0x6FC3EA40 (unlink inactive room node & extract +0x10 saved units / +0x08 saved items)
   let pSavedUnits = 0

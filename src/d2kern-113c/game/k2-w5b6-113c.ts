@@ -130,6 +130,7 @@ import {
   DATATBLS_GetMonsterChainInfo113c,
   DATATBLS_GetSuperUniquesTxtRecord113c,
 } from '../tables/monster-tbls-113c'
+import { MONSTER_DestroyMonsterUnit113c } from './a1c-post150-f150-f276-113c'
 import {
   SKILLS_ApplyProgressiveAttackRatingAndPhysBonuses113c,
   SKILLS_ApplyProgressiveChargesToDamage113c,
@@ -227,7 +228,6 @@ import {
 } from './k2-w4b6-113c'
 import {
   AI_CalcApproxDistFromUnitToCoords_6FCD0980_113c,
-  MONSTER_MorphMonsterClassId_6FCCFC50_113c,
 } from './k2-w4b7-113c'
 import { SUNIT_IsDeadOrDying113c, UNITS_ChangeAnimMode113c } from './monster-events'
 import { OBJECTS_InitObjectUnit113c } from './objects-populate-113c'
@@ -240,6 +240,7 @@ import {
   MONSTER_AddSkillToUnit113c,
   MONSTER_GetBaseIdFromUnit113c,
   MONSTER_GetDifficultyAndPlayerBonus113c,
+  MONSTER_InitMonsterUnit113c,
   MONSTER_SpawnAtCoords113c,
   ROOM_FindRoomContainingSubtile113c,
   SEED_RollLimitedFast113c,
@@ -2937,10 +2938,30 @@ export function MONAI_BaalThroneThink_6FCC8430_113c(
     }
 
     if (waveIdx >= 5) {
-      MONSTER_MorphMonsterClassId_6FCCFC50_113c(m, pUnit >>> 0, pGame >>> 0, 0x22f, 1)
-      MONSTER_GetAiGeneralPtr_6FC218E0_113c(m, pUnit >>> 0)
-      AI_InitMonsterAiThinkFn113c(m, pUnit >>> 0)
-      STATES_ToggleGfxStateFlag113c(m, pUnit >>> 0, 0x8e, 1)
+      // 0x6FCC8555..0x6FCC8577: MONSTER_MorphMonsterClassId(pUnit, pGame, 0x22f, 1) (`0x6FCCFC50` -> `0x6FCD0320` dllAbi)
+      hitD2GameVa113c(0x6FCCFC50)
+      const uPtr = pUnit >>> 0
+      const gPtr = pGame >>> 0
+      const pTablesMorph = getSgptDataTablesPtr(m)
+      const nMonStatsMorph = pTablesMorph !== 0 ? rdI32(m, (pTablesMorph + 0xa80) >>> 0) : 0
+      const pMonStatsBaseMorph = pTablesMorph !== 0 ? (m.u32((pTablesMorph + 0xa78) >>> 0) >>> 0) : 0
+      const pMorphTxt =
+        pMonStatsBaseMorph !== 0 && 0x22f < nMonStatsMorph
+          ? ((pMonStatsBaseMorph + imul32(0x22f, 0x1a8)) >>> 0)
+          : 0
+      const pMasksMorph = m.u32(D2GAME_IAT_GDW_BITMASKS_VA_113C >>> 0) >>> 0
+      const mask1Morph = pMasksMorph !== 0 ? m.u8((pMasksMorph + 0x04) >>> 0) : 0x02
+      if (uPtr !== 0 && m.u32(uPtr) === 1 && pMorphTxt !== 0 && (m.u8((pMorphTxt + 0x0f) >>> 0) & mask1Morph) !== 0) {
+        const pRoomMorph = UNITS_GetRoom113c(m, uPtr) >>> 0
+        const dwUnitIdMorph = m.u32((uPtr + 0x0c) >>> 0) >>> 0
+        MONSTER_DestroyMonsterUnit113c(m, gPtr, uPtr)
+        m.setU32((uPtr + 0x04) >>> 0, 0x22f)
+        MONSTER_InitMonsterUnit113c(m, uPtr, pRoomMorph, gPtr, dwUnitIdMorph, true)
+        UNITS_ChangeAnimMode113c(m, uPtr, 1)
+      }
+      const pNewAiGen = MONSTER_GetAiGeneralPtr_6FC218E0_113c(m, uPtr) >>> 0
+      AI_InitMonsterAiThinkFn113c(m, uPtr, gPtr, pNewAiGen, 0)
+      STATES_ToggleGfxStateFlag113c(m, uPtr, 0x8e, 1)
       const ownerType = pUnit !== 0 ? rdI32(m, pUnit >>> 0) : 6
       const ownerId = pUnit !== 0 ? m.u32((pUnit + 0x0c) >>> 0) >>> 0 : 0xffffffff
       const pStatList = STATLIST_AllocList113c(m, 0, ownerType, ownerId, 0, 0) >>> 0
@@ -3811,7 +3832,7 @@ export function AIBAAL_TrySpawnBaalClone_6FCD7D30_113c(
         m.setU16((pAiGen + 0x08) >>> 0, (m.u16((pAiGen + 0x08) >>> 0) | 1) & 0xffff)
         m.setU32((pAiGen + 0x2c) >>> 0, bossId)
         m.setU32((pAiGen + 0x30) >>> 0, bossType)
-        m.setU32((pAiGen + 0x28) >>> 0, pDestRoom)
+        m.setU32((pAiGen + 0x28) >>> 0, pGame >>> 0)
       }
     }
 
@@ -3824,7 +3845,7 @@ export function AIBAAL_TrySpawnBaalClone_6FCD7D30_113c(
         m.setU16((pCloneAiGen + 0x08) >>> 0, (m.u16((pCloneAiGen + 0x08) >>> 0) | 1) & 0xffff)
         m.setU32((pCloneAiGen + 0x2c) >>> 0, m.u32((pUnit + 0x0c) >>> 0))
         m.setU32((pCloneAiGen + 0x30) >>> 0, m.u32(pUnit >>> 0))
-        m.setU32((pCloneAiGen + 0x28) >>> 0, pDestRoom)
+        m.setU32((pCloneAiGen + 0x28) >>> 0, pGame >>> 0)
       }
     }
 

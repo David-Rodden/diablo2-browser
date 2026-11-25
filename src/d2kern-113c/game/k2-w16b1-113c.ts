@@ -2646,7 +2646,7 @@ export function NPCS_HandleNpcMenuRequest_6FCE00C0_113c(
       WAYPOINT_ActivateWaypoint113c(
         m,
         PLAYER_GetWaypointDataForDifficulty_6FC21720_113c(m, pPlayer, pGame),
-        m.u32(pCoordScratch),
+        m.u16(pCoordScratch),
       );
     }
   };

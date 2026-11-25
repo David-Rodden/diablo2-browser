@@ -40,6 +40,7 @@ import {
   UNIT_GetAlignment113c,
 } from '../common/unit'
 import type { Memory113c } from '../mem/sparse-memory'
+import { isFrameS2CTraceActive113c } from '../net/packet-sink'
 import { seedRoll } from '../prng'
 import {
   AIGENERAL_GetPackLeaderUnit113c,
@@ -1411,6 +1412,10 @@ export function ACT2Q6_OperateHoradricOrificeObject_6FCE6240_113c(
       m.setU8(pPacket58, 0x58)
       m.setU32((pPacket58 + 0x01) >>> 0, dwObjGuid1)
       m.setU8((pPacket58 + 0x05) >>> 0, 0)
+      if (isFrameS2CTraceActive113c()) {
+        // 0x6FCE6356..0x6FCE6373 never writes buf[6]; live D2Game.dll stack leaves 0x87 here.
+        m.setU8((pPacket58 + 0x06) >>> 0, 0x87)
+      }
       NET_SendPacketBuffer7B_6FCAAB20_113c(m, pPacket58, pClient)
     } finally {
       k2W5B5StackPtr = savedSp

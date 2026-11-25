@@ -663,68 +663,75 @@ export function ACT1Q6_Callback00_NpcActivate_6FC80A80_113c(
   const nNpcId = pNpc !== 0 ? m.u32((pNpc + 0x04) >>> 0) | 0 : -1;
   const dwPlayerGuid = pPlayer !== 0 ? m.u32((pPlayer + 0x0c) >>> 0) >>> 0 : 0xffffffff;
   const pQuestDataEx = m.u32((pQuest + 0x18) >>> 0) >>> 0;
-  if (bit0d === 1) {
-    if (nNpcId === 0x94) {
-      if (QUESTS_GuidListContains113c(m, (pQuestDataEx + 0x84) >>> 0, dwPlayerGuid) !== 0) {
-        QUESTS_AddNpcDialogTextNodes113c(m, pQuest, 4, m.u32((pQuestArg + 0x10) >>> 0), 0x94);
+  const pTextHeader = m.u32((pQuestArg + 0x14) >>> 0) >>> 0;
+
+  if (nNpcId === 0x94) {
+    const count94 = m.u16((pQuestDataEx + 0x104) >>> 0);
+    for (let i = 0; i < count94; i = (i + 1) | 0) {
+      if ((m.u32((pQuestDataEx + 0x84 + i * 4) >>> 0) >>> 0) === dwPlayerGuid) {
+        QUESTS_AddNpcDialogTextNodes113c(m, pQuest, 3, pTextHeader, 0x94);
         return;
       }
-      if (m.u8((pQuest + 0x08) >>> 0) !== 0) {
-        QUESTS_AddNpcDialogTextNodes113c(m, pQuest, 3, m.u32((pQuestArg + 0x10) >>> 0), 0x94);
-      }
-      return;
     }
-    if (nNpcId === 0x96) {
-      if (QUESTS_GuidListContains113c(m, (pQuestDataEx + 0x108) >>> 0, dwPlayerGuid) !== 0) {
-        QUESTS_AddNpcDialogTextNodes113c(m, pQuest, 4, m.u32((pQuestArg + 0x10) >>> 0), 0x96);
+  } else if (nNpcId === 0x96) {
+    const count96 = m.u16((pQuestDataEx + 0x188) >>> 0);
+    for (let i = 0; i < count96; i = (i + 1) | 0) {
+      if ((m.u32((pQuestDataEx + 0x108 + i * 4) >>> 0) >>> 0) === dwPlayerGuid) {
+        QUESTS_AddNpcDialogTextNodes113c(m, pQuest, 3, pTextHeader, 0x96);
         return;
       }
-      if (m.u8((pQuest + 0x08) >>> 0) !== 0) {
-        QUESTS_AddNpcDialogTextNodes113c(m, pQuest, 3, m.u32((pQuestArg + 0x10) >>> 0), 0x96);
-      }
-      return;
     }
-    if (nNpcId === 0x109) {
-      if (QUESTS_GuidListContains113c(m, pQuestDataEx, dwPlayerGuid) !== 0) {
-        QUESTS_AddNpcDialogTextNodes113c(m, pQuest, 4, m.u32((pQuestArg + 0x10) >>> 0), 0x109);
+  } else if (nNpcId === 0x109) {
+    const count109 = m.u16((pQuestDataEx + 0x80) >>> 0);
+    for (let i = 0; i < count109; i = (i + 1) | 0) {
+      if ((m.u32((pQuestDataEx + i * 4) >>> 0) >>> 0) === dwPlayerGuid) {
+        QUESTS_AddNpcDialogTextNodes113c(m, pQuest, 3, pTextHeader, 0x109);
         return;
       }
-      if (m.u8((pQuest + 0x08) >>> 0) !== 0) {
-        QUESTS_AddNpcDialogTextNodes113c(m, pQuest, 3, m.u32((pQuestArg + 0x10) >>> 0), 0x109);
-      }
+    }
+  }
+
+  if (bit1 !== 0) {
+    if (nNpcId === 0x109 || nNpcId === 0x94 || nNpcId === 0x96) {
+      QUESTS_AddNpcDialogTextNodes113c(m, pQuest, 4, pTextHeader, nNpcId);
+      return;
+    }
+    QUESTS_AddNpcDialogTextNodes113c(m, pQuest, 3, pTextHeader, nNpcId);
+    return;
+  }
+
+  const guidCount = m.u16((pQuest + 0x9c) >>> 0);
+  for (let i = 0; i < guidCount; i = (i + 1) | 0) {
+    if ((m.u32((pQuest + 0x1c + i * 4) >>> 0) >>> 0) === dwPlayerGuid) {
+      QUESTS_AddNpcDialogTextNodes113c(m, pQuest, 4, pTextHeader, nNpcId);
       return;
     }
   }
-  if (bit1 === 1) {
-    QUESTS_AddNpcDialogTextNodes113c(m, pQuest, 2, m.u32((pQuestArg + 0x10) >>> 0), nNpcId);
+
+  const bState = m.u8((pQuest + 0x0c) >>> 0);
+  if (bState === 1 && nNpcId === 0x109) {
+    if (bit0 === 0) {
+      QUESTS_AddNpcDialogTextNodes113c(m, pQuest, 0, pTextHeader, 0x109);
+      return;
+    }
+  }
+  if (bState === 0) {
     return;
   }
-  if (QUESTS_GuidListContains113c(m, (pQuest + 0x1c) >>> 0, dwPlayerGuid) !== 0) {
-    QUESTS_AddNpcDialogTextNodes113c(m, pQuest, 4, m.u32((pQuestArg + 0x10) >>> 0), nNpcId);
+  if (bit0 === 1 && bit0d === 0) {
     return;
   }
-  if (m.u8((pQuest + 0x09) >>> 0) === 0) {
+  if (bState >= 4 && bit0d === 0) {
     return;
   }
-  const bState = m.u8((pQuest + 0x0b) >>> 0);
-  if (bState === 1 && nNpcId === 0x109 && bit0 === 0) {
-    QUESTS_AddNpcDialogTextNodes113c(m, pQuest, 0, m.u32((pQuestArg + 0x10) >>> 0), 0x109);
-    return;
-  }
-  if (bState >= 6) {
+  if (bit0 === 1 && bit0d === 1) {
     return;
   }
   const nMsgIdx = m.u32((ACT1Q6_DIALOG_STATE_MAP_VA + bState * 4) >>> 0) | 0;
-  if (nMsgIdx === -1 || bit0 === 1) {
+  if (nMsgIdx === -1 || (nMsgIdx >>> 0) >= 6) {
     return;
   }
-  if (nMsgIdx === 3) {
-    if (m.u8((pQuest + 0x08) >>> 0) === 1) {
-      QUESTS_AddNpcDialogTextNodes113c(m, pQuest, 3, m.u32((pQuestArg + 0x10) >>> 0), nNpcId);
-    }
-    return;
-  }
-  QUESTS_AddNpcDialogTextNodes113c(m, pQuest, nMsgIdx, m.u32((pQuestArg + 0x10) >>> 0), nNpcId);
+  QUESTS_AddNpcDialogTextNodes113c(m, pQuest, nMsgIdx, pTextHeader, nNpcId);
 }
 
 /**
@@ -2068,15 +2075,23 @@ export function ACT1Q4_SpawnCainCageAndPortalInTristram_6FC863A0_113c(
   if (pCageObj === 0) {
     return;
   }
-  UNITS_GetRoom113c(m, pCageObj);
+  const pObjRoom = UNITS_GetRoom113c(m, pCageObj) >>> 0;
   const x = UNIT_GetPosX113c(m, pCageObj) | 0;
   const y = UNIT_GetPosY113c(m, pCageObj) | 0;
-  const dwObjGuid = m.u32((pCageObj + 0x0c) >>> 0) >>> 0;
-  m.setU32((pQuestDataEx + 0x6c) >>> 0, dwObjGuid);
-  m.setU8((pQuestDataEx + 0x70) >>> 0, 1);
-  m.setU32((pQuestDataEx + 0x84) >>> 0, x >>> 0);
-  m.setU32((pQuestDataEx + 0x88) >>> 0, y >>> 0);
-  QUEST_Act1TownPortalUpdateState113c(m, pCageObj, pGame);
+  const spArgs = k2W3B6StackPtr;
+  k2W3B6StackPtr = (spArgs + 0x20) >>> 0;
+  try {
+    m.setU32((spArgs + 0x00) >>> 0, pGame >>> 0);
+    m.setU32((spArgs + 0x04) >>> 0, pCageObj >>> 0);
+    m.setU32((spArgs + 0x08) >>> 0, pObjRoom);
+    m.setU32((spArgs + 0x0c) >>> 0, 0);
+    m.setU32((spArgs + 0x10) >>> 0, 0);
+    m.setU32((spArgs + 0x14) >>> 0, x >>> 0);
+    m.setU32((spArgs + 0x18) >>> 0, y >>> 0);
+    QUEST_Act1TownPortalUpdateState113c(m, spArgs);
+  } finally {
+    k2W3B6StackPtr = spArgs;
+  }
   if (m.u8((pQuestDataEx + 0x51) >>> 0) !== 1) {
     return;
   }

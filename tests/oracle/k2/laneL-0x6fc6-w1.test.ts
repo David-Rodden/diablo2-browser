@@ -643,7 +643,7 @@ describe('Milestone 33 [K2] Lane K2-L: 45 D2Game 0x6FC62C70..0x6FC73260 Function
     m.setU32(pRoomA + 0x10, pRoom2)
     m.setU32(pRoomA + 0x24, 1)
     m.setU32(pRoomA + 0x48, m.alloc(0x20))
-    m.setU32(pRoomA + 0x74, 4)
+    m.setU32(pRoomA + 0x74, 0)
 
     const pRoomB = m.alloc(0x90)
     const pNearB = m.alloc(4)
@@ -652,7 +652,7 @@ describe('Milestone 33 [K2] Lane K2-L: 45 D2Game 0x6FC62C70..0x6FC73260 Function
     m.setU32(pRoomB + 0x10, pRoom2)
     m.setU32(pRoomB + 0x24, 1)
     m.setU32(pRoomB + 0x48, m.alloc(0x20))
-    m.setU32(pRoomB + 0x74, 4)
+    m.setU32(pRoomB + 0x74, 0)
 
     CLIENTS_UpdateCurrentRoomIfChanged_6FC6B3C0_113c(m, pClient, pRoomA)
     expect(m.u32(pClient + 0x1b4)).toBe(pRoomA)

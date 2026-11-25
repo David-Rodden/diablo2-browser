@@ -415,6 +415,14 @@ const MONSTER_AI_TABLE_D2GAME_113C: readonly number[] = [
  * tests and kernel boot.
  */
 export function initD2GameGlobalsInMem113c(m: Memory113c, pDataTables: number): void {
+  let alreadyBoundSameTables = false
+  if ((pDataTables >>> 0) !== 0) {
+    try {
+      alreadyBoundSameTables = (m.u32(D2COMMON_SGPT_DATATABLES_VA_113C) >>> 0) === (pDataTables >>> 0)
+    } catch {
+      alreadyBoundSameTables = false
+    }
+  }
   m.setU32(D2COMMON_SGPT_DATATABLES_VA_113C, pDataTables >>> 0)
   m.setU32(D2GAME_IAT_SGPT_DATATABLES_VA_113C, D2COMMON_SGPT_DATATABLES_VA_113C)
   for (let i = 0; i < 32; i++) {
@@ -474,13 +482,24 @@ export function initD2GameGlobalsInMem113c(m: Memory113c, pDataTables: number): 
     )
   }
   m.setU32(D2GAME_CHEST_GARGOYLE_PTRS_VA_113C, 0x6fd22910)
-  m.setU32(D2GAME_GLOBAL_SEED_COUNTER_VA_113C, 0)
-  m.setU32(0x6fd31f90, 0)
-  m.setU32(0x6fd31c3c, 0)
-  m.setU32(0x6fd31c20, 0)
-  m.setU32(0x6fd31c1c, 0)
-  m.setU32(0x6fd286a0, 0)
-  m.setU32(0x6fd18d10, 0)
+  const initBssDword = (addr: number): void => {
+    if (alreadyBoundSameTables) {
+      try {
+        void m.u32(addr)
+        return
+      } catch {
+        // unloaded in SparseMemory113c -> initialize to 0
+      }
+    }
+    m.setU32(addr, 0)
+  }
+  initBssDword(D2GAME_GLOBAL_SEED_COUNTER_VA_113C)
+  initBssDword(0x6fd31f90)
+  initBssDword(0x6fd31c3c)
+  initBssDword(0x6fd31c20)
+  initBssDword(0x6fd31c1c)
+  initBssDword(0x6fd286a0)
+  initBssDword(0x6fd18d10)
   const hirelingBonus9 = [0, 0, 8, 16, 24, 32, 40, 48, 56]
   for (let i = 0; i < hirelingBonus9.length; i++) {
     m.setU32((0x6fd1bbf0 + i * 4) >>> 0, hirelingBonus9[i]! >>> 0)
@@ -4584,6 +4603,43 @@ export function MONSTER_PostSpawnQuestAndSpecialInit113c(
  *
  * @va D2Game:0x6FD0EF10 (1323B)
  */
+function hasLoadedU32Regpop113c(m: Memory113c, addr: number): boolean {
+  const a = addr >>> 0
+  let cur: unknown = m
+  while (cur !== null && typeof cur === 'object' && 'inner' in cur) {
+    cur = (cur as { inner: unknown }).inner
+  }
+  const curObj = cur as {
+    overlayKnown?: Map<number, Uint8Array>
+    baseKnown?: Map<number, Uint8Array>
+    known?: Map<number, Uint8Array>
+    size?: number
+  } | null
+  if (curObj?.overlayKnown !== undefined && curObj.baseKnown !== undefined) {
+    for (let i = 0; i < 4; i++) {
+      const b = (a + i) >>> 0
+      const pg = b >>> 12
+      const off = b & 0xfff
+      const ok = curObj.overlayKnown.get(pg)
+      if (ok !== undefined && ok[off] !== 0) continue
+      const bk = curObj.baseKnown.get(pg)
+      if (bk !== undefined && bk[off] !== 0) continue
+      return false
+    }
+    return true
+  }
+  const known = curObj?.known
+  if (known !== undefined) {
+    for (let i = 0; i < 4; i++) {
+      const b = (a + i) >>> 0
+      const page = known.get(b >>> 12)
+      if (page === undefined || page[b & 0xfff] === 0) return false
+    }
+    return true
+  }
+  return typeof curObj?.size === 'number' ? a !== 0 && a + 4 <= curObj.size : true
+}
+
 export function MONSTER_Create113c(
   m: Memory113c,
   pSpawnArgs: number,
@@ -4592,7 +4648,11 @@ export function MONSTER_Create113c(
   hitD2GameVa113c(0x6FD0EF10)
   const nClassId = m.u32((pSpawnArgs + 0x0c) >>> 0) | 0
   if (nClassId < 0) return 0
-  const pTables = m.u32(m.u32(D2GAME_IAT_SGPT_DATATABLES_VA_113C))
+  if (!hasLoadedU32Regpop113c(m, D2GAME_IAT_SGPT_DATATABLES_VA_113C)) return 0
+  const ppTables = m.u32(D2GAME_IAT_SGPT_DATATABLES_VA_113C) >>> 0
+  if (ppTables === 0 || !hasLoadedU32Regpop113c(m, ppTables)) return 0
+  const pTables = m.u32(ppTables) >>> 0
+  if (pTables === 0) return 0
   if (nClassId >= (m.u32((pTables + 0xa80) >>> 0) | 0)) return 0
   const pMonStats = (m.u32((pTables + 0xa78) >>> 0) + Math.imul(nClassId, 0x1a8)) >>> 0
   if (pMonStats === 0) return 0
@@ -4791,22 +4851,8 @@ export function MONSTER_Create113c(
     MONREG_IncrementSpawnCount113c(m, pUnit, bSkipCount, (pGame + 0xf0) >>> 0, pRoom)
     if (pCoordNode !== 0) {
       MONSTER_SetSpawnRoomCoordNode113c(m, pUnit, pCoordNode)
-    } else if ((m.u8((pMonStats + 0x0f) >>> 0) & m.u32((pMasks + 0x08) >>> 0)) === 0) {
-      const pCurRoom = UNITS_GetRoom113c(m, pUnit)
-      const pBox = (sp + 0x30) >>> 0
-      DUNGEON_GetRoomCoordinates113c(m, pCurRoom, pBox)
-      const pList = DUNGEON_GetRoomCoordListFromSubtile113c(
-        m,
-        pCurRoom,
-        m.u32(pBox) | 0,
-        m.u32((pBox + 0x04) >>> 0) | 0,
-      )
-      MONSTER_SetSpawnRoomCoordNode113c(m, pUnit, pList)
     } else {
-      const pCurRoom = UNITS_GetRoom113c(m, pUnit)
-      const ux = UNIT_GetPosX113c(m, pUnit)
-      const uy = UNIT_GetPosY113c(m, pUnit)
-      const pList = DUNGEON_GetRoomCoordListFromSubtile113c(m, pCurRoom, ux, uy)
+      const pList = DUNGEON_GetRoomCoordListFromSubtile113c(m, pRoom, outX, outY)
       MONSTER_SetSpawnRoomCoordNode113c(m, pUnit, pList)
     }
 

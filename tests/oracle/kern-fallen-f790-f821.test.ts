@@ -354,6 +354,9 @@ describe('src/d2kern-113c B2/B3 binary parity unit suite', () => {
 
     const pUnit = UNITS_Create113c(m, UNIT_MONSTER, 19, 12, pGame)
     const pMonData = m.alloc(D2MonsterDataStrc_SIZE)
+    const pMonStatsTxt = m.alloc(0x1a8)
+    m.setU8(pMonStatsTxt + 0x4f, 15)
+    m.setU32(pMonData, pMonStatsTxt)
     const pAiGen = m.alloc(D2AiGeneralStrc_SIZE)
     const pSkills = m.alloc(0x20)
     m.setU32(pSkills + 0x10, 99) // non-zero dwSkillMode

@@ -1132,3 +1132,39 @@ let registeredFreeAttackerCombatListFn: FreeAttackerCombatListFn113c | undefined
 export function registerFreeAttackerCombatList113c(fn: FreeAttackerCombatListFn113c): void {
   registeredFreeAttackerCombatListFn = fn
 }
+
+export type SliceFrameBoundaryHook113c = () => void
+
+let registeredPreSliceFrameSetupHook: SliceFrameBoundaryHook113c | undefined
+let registeredPostActRoomsUpdateHook: SliceFrameBoundaryHook113c | undefined
+let registeredPostSliceFrameCleanupHook: SliceFrameBoundaryHook113c | undefined
+
+export function registerPreSliceFrameSetupHook113c(fn: SliceFrameBoundaryHook113c): void {
+  registeredPreSliceFrameSetupHook = fn
+}
+
+export function runPreSliceFrameSetupHooks113c(): void {
+  if (registeredPreSliceFrameSetupHook !== undefined) {
+    registeredPreSliceFrameSetupHook()
+  }
+}
+
+export function registerPostActRoomsUpdateHook113c(fn: SliceFrameBoundaryHook113c): void {
+  registeredPostActRoomsUpdateHook = fn
+}
+
+export function runPostActRoomsUpdateHooks113c(): void {
+  if (registeredPostActRoomsUpdateHook !== undefined) {
+    registeredPostActRoomsUpdateHook()
+  }
+}
+
+export function registerPostSliceFrameCleanupHook113c(fn: SliceFrameBoundaryHook113c): void {
+  registeredPostSliceFrameCleanupHook = fn
+}
+
+export function runPostSliceFrameCleanupHooks113c(): void {
+  if (registeredPostSliceFrameCleanupHook !== undefined) {
+    registeredPostSliceFrameCleanupHook()
+  }
+}

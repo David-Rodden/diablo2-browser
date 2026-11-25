@@ -151,6 +151,9 @@ class Mpq:
 PATCH_CHAIN = ["patch-3", "patch-2", "patch", "lichking", "expansion", "common-2", "common"]
 
 
+LOCALE_CHAIN = ["patch-%s-3", "patch-%s-2", "patch-%s", "lichking-locale-%s", "expansion-locale-%s", "locale-%s"]
+
+
 class WowData:
     """Read files from an extracted 3.3.5 `Data` directory through the patch chain."""
 
@@ -161,6 +164,15 @@ class WowData:
             path = os.path.join(data_dir, name + ".MPQ")
             if os.path.exists(path):
                 self.archives.append(Mpq(path))
+        # Locale archives (client database tables live there); file names never clash with the base chain.
+        for locale in sorted(os.listdir(data_dir)) if self.archives else []:
+            locale_dir = os.path.join(data_dir, locale)
+            if not os.path.isfile(os.path.join(locale_dir, "locale-%s.MPQ" % locale)):
+                continue
+            for name in LOCALE_CHAIN:
+                path = os.path.join(locale_dir, name % locale + ".MPQ")
+                if os.path.exists(path):
+                    self.archives.append(Mpq(path))
         if not self.archives:
             raise SystemExit(
                 "World of Warcraft 3.3.5 archives not found in %r. Set WOW_335_DIR to a directory "

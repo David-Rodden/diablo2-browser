@@ -246,10 +246,10 @@ function createRealK2World(levelId = 2): RealK2World {
     m.setU16((pM + 0x06) >>> 0, i)
     m.setU16((pM + 0x18) >>> 0, i)
     m.setU32((pM + 0x0c) >>> 0, 0x8000)
-    // Default nColdEffect = -50 (`0xCE` signed i8) at +0x175..+0x177
-    m.setU8((pM + 0x175) >>> 0, 0xce)
-    m.setU8((pM + 0x176) >>> 0, 0xce)
-    m.setU8((pM + 0x177) >>> 0, 0xce)
+    // Default nColdEffect = -50 (`0xCE` signed i8) at +0x168..+0x16A (`D2Game@0x6FCFAE5A`)
+    m.setU8((pM + 0x168) >>> 0, 0xce)
+    m.setU8((pM + 0x169) >>> 0, 0xce)
+    m.setU8((pM + 0x16a) >>> 0, 0xce)
     const pM2 = (pMonStats2Txt + i * 0x134) >>> 0
     m.setU8((pM2 + 0x08) >>> 0, 2)
     m.setU8((pM2 + 0x09) >>> 0, 2)
@@ -341,6 +341,8 @@ function createRealK2World(levelId = 2): RealK2World {
   const pAct0 = m.alloc(0x80)
   m.setU8((pAct0 + 0x08) >>> 0, 0)
   m.setU32((pGame + 0xbc) >>> 0, pAct0)
+  const pMonReg = m.alloc(0x300)
+  m.setU32((pGame + 0xf0 + levelId * 4) >>> 0, pMonReg)
   EVENT_InitTimerQueue113c(m, pGame)
 
   // 4. D2ActiveRoomStrc (`tileX = 0x0460`, `tileY = 0x0488`, `levelId = 2`)
@@ -468,6 +470,11 @@ function spawnUnitInWorld(
   } else {
     const pMonData = m.alloc(D2MonsterDataStrc_SIZE)
     const pAiGen = m.alloc(D2AiGeneralStrc_SIZE)
+    const pTables0 = m.u32(D2COMMON_SGPT_DATATABLES_VA) >>> 0
+    const pMonStatsBase0 = pTables0 !== 0 ? (m.u32((pTables0 + 0xa78) >>> 0) >>> 0) : 0
+    if (pMonStatsBase0 !== 0) {
+      m.setU32(pMonData, (pMonStatsBase0 + classId * 0x1a8) >>> 0)
+    }
     m.set(pMonData, D2MonsterDataStrc.pAiGeneral, pAiGen)
     m.set(pUnit, D2UnitStrc.pUnitData, pMonData)
   }
@@ -648,8 +655,12 @@ describe('K2 Real D2Game Non-Item Combat, Timed StatLists, Room Restore & 0x6FCA
     )
 
     ROOM_ActivateRoomForClient113c(m, pClient, pRoom, w.pPlayer)
-    // Matches real D2Game.dll oracle `076004880402` (tileX=0x0460, tileY=0x0488, levelId=2)!
-    expect(drainFrameS2CPackets113c(m, pGame)).toEqual(['076004880402'])
+    // Matches real D2Game.dll oracle `0x6FCBDC10`: `076004880402` (AddRoom) followed by
+    // `0x6FC9B0A0` (`UNIT_SendFullUnitSyncToClient`) packets (`0xAC`, `0xAA`, `0x6D`) for monster 9!
+    const actPkts = drainFrameS2CPackets113c(m, pGame)
+    expect(actPkts[0]).toBe('076004880402')
+    expect(actPkts.some((p) => p.startsWith('ac09000000'))).toBe(true)
+    expect(actPkts.some((p) => p.startsWith('6d09000000'))).toBe(true)
 
     ROOM_DeactivateRoomForClient113c(m, pRoom, pGame, pClient)
     const deactPkts = drainFrameS2CPackets113c(m, pGame)
@@ -771,8 +782,8 @@ describe('K2 Real D2Game Non-Item Combat, Timed StatLists, Room Restore & 0x6FCA
     SUNITDMG_ApplyPoisonEffect113c(m, pGame, pPlayer, pTargetMon, 128, 25)
     expect(STATES_CheckState113c(m, pTargetMon, 2)).not.toBe(0)
     const pPoisSl = STATLIST_GetStatListFromUnitAndStateMemPort113c(m, pTargetMon, 2)
-    expect(STATLIST_GetStatValue113c(m, pPoisSl, 57, 0)).toBe(128)
-    expect(STATLIST_GetStatValue113c(m, pPoisSl, 59, 0)).toBe(25)
+    expect(STATLIST_GetStatValue113c(m, pPoisSl, 74, 0) | 0).toBe(-128)
+    expect(m.get(pPoisSl, D2StatListStrc.dwExpireFrame)).toBe(125)
 
     // Register pClient in pRoom and run 0x6FC6B400 -> 0x6FCBDEC0 -> 0x6FC9A5E0 to verify exact 10B 0xA8 Poison SetState (`a8010b0000000a02ff01`)!
     DUNGEON_AddClientToRoom113c(m, pRoom, w.pClient)
@@ -792,10 +803,10 @@ describe('K2 Real D2Game Non-Item Combat, Timed StatLists, Room Restore & 0x6FCA
     CLIENT_SyncRoomAndUnits113c(m, pGame)
     expect(drainFrameS2CPackets113c(m, pGame)).toContain('a9010b00000002')
 
-    // (e) Stun (`0x6FCFCC20`): caps player stun at 13f and monster stun at 250f
+    // (e) Stun (`0x6FCFCC20`): caps player and non-hireling monster stun at 250f (only hirelings cap at 13f)
     SUNITDMG_ApplyStunEffect113c(m, pGame, pFallen, pPlayer, 100)
     const pPlrStun = STATLIST_GetStatListFromUnitAndStateMemPort113c(m, pPlayer, 21)
-    expect(m.get(pPlrStun, D2StatListStrc.dwExpireFrame)).toBe(125 + 13)
+    expect(m.get(pPlrStun, D2StatListStrc.dwExpireFrame)).toBe(125 + 100)
     SUNITDMG_ApplyStunEffect113c(m, pGame, pPlayer, pTargetMon, 999)
     const pMonStun = STATLIST_GetStatListFromUnitAndStateMemPort113c(m, pTargetMon, 21)
     expect(m.get(pMonStun, D2StatListStrc.dwExpireFrame)).toBe(125 + 250)
@@ -818,8 +829,10 @@ describe('K2 Real D2Game Non-Item Combat, Timed StatLists, Room Restore & 0x6FCA
       [10, 2],
     ])
 
-    // Resistance & PvP/Pet helpers
-    expect(SUNITDMG_GetPvpOrPetDamageMultiplier113c(m, pPlayer, pPlayer)).toBe(170)
+    // Resistance & PvP/Pet helpers (`0x6FCFAC10`: self-damage returns 1000, PvP returns 170)
+    const pOtherPlayer = spawnUnitInWorld(m, pGame, pRoom, 0, 4, 2, baseX + 2, baseY)
+    expect(SUNITDMG_GetPvpOrPetDamageMultiplier113c(m, pPlayer, pPlayer)).toBe(1000)
+    expect(SUNITDMG_GetPvpOrPetDamageMultiplier113c(m, pPlayer, pOtherPlayer)).toBe(170)
     expect(SUNITDMG_GetColdEffectLengthBonus113c(m, pPlayer, pPlayer)).toBe(100)
     STATLIST_SetUnitStat113c(m, pPlayer, 39, 90, 0)
     expect(SUNITDMG_GetEffectiveResistance113c(m, pPlayer, 39, 0)).toBe(75)
@@ -889,12 +902,12 @@ describe('K2 Real D2Game Non-Item Combat, Timed StatLists, Room Restore & 0x6FCA
     expect(killPkts).toContain('65010000000100') // 0x65 kill count
     expect(killPkts).toContain('1d0c02') // 0x1D clvl = 2
 
-    // RollDodgeAvoidEvadeBlock (`0x6FCFB030`)
-    STATLIST_SetUnitStat113c(m, pPlayer, 338, 100, 0) // 100% STAT_PASSIVE_DODGE
+    // RollDodgeAvoidEvadeBlock (`0x6FCFB030`: bRanged=0 -> 0x04 Dodge, bRanged=1 -> 0x02 Avoid)
+    STATLIST_SetUnitStat113c(m, pPlayer, 338, 100, 0) // 100% STAT_PASSIVE_DODGE (melee)
+    STATLIST_SetUnitStat113c(m, pPlayer, 339, 100, 0) // 100% STAT_PASSIVE_AVOID (ranged)
     m.set(pPlayer, D2UnitStrc.dwAnimMode, 1)
-    m.set(pDmg, D2DamageStrc.wResultFlags, 0x01)
-    expect(SUNITDMG_RollDodgeAvoidEvadeBlock113c(m, pFallen, pPlayer, pDmg)).toBe(1)
-    expect((m.get(pDmg, D2DamageStrc.wResultFlags) & 0x81) >>> 0).toBe(0x80)
+    expect(SUNITDMG_RollDodgeAvoidEvadeBlock113c(m, pFallen, pPlayer, 0)).toBe(0x04)
+    expect(SUNITDMG_RollDodgeAvoidEvadeBlock113c(m, pFallen, pPlayer, 1)).toBe(0x02)
   })
 
   it('7. Pure SparseMemory113c replacements for all 30 fallen-ai VAs & GAME_UpdateGameFrame113c', () => {

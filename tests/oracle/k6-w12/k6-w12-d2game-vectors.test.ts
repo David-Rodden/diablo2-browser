@@ -636,6 +636,7 @@ describe('[K6] Wave 12 real-DLL D2Game.dll (0x6FCC0000..0x6FD142D0) Hi-VA Part 4
       off += 4100
     }
     bindK2KernelGlobals113c(mem)
+    mem.fill(0x6fd18d10, 4, 0)
     mem.fill(STAGE_BASE, STAGE_FIXED_SIZE, 0)
     mem.commitOverlayToBase()
   })

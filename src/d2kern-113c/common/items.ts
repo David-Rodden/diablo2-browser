@@ -7227,15 +7227,16 @@ export function ITEMS_SerializeItemBitstream113c(
   }
 
   if (srv !== 0) {
+    const sm = withItemsSerStackScratch113c(m)
     const savedSp = itemsSerStackPtr113c
     const tmpFields = savedSp
     itemsSerStackPtr113c = (savedSp + 8) >>> 0
     let f1c = 0
     let f20 = 0
     try {
-      ITEMS_GetAutoAffixData113c(m, item, tmpFields, (tmpFields + 4) >>> 0)
-      f1c = m.u32(tmpFields)
-      f20 = m.u32((tmpFields + 4) >>> 0)
+      ITEMS_GetAutoAffixData113c(sm, item, tmpFields, (tmpFields + 4) >>> 0)
+      f1c = sm.u32(tmpFields)
+      f20 = sm.u32((tmpFields + 4) >>> 0)
     } finally {
       itemsSerStackPtr113c = savedSp
     }
@@ -8034,7 +8035,62 @@ export function ITEMS_GetRepairAllCost113c(
  * `__stdcall(pItem, pOutBuffer, nMaxBytes, bWriteHeader, bIncludeSockets, bSimpleItemCodeOnly) -> u32`, `ret 0x18`).
  */
 const ITEMS_SER_STACK_BASE_113C = 0x6fde3d00
+const ITEMS_SER_STACK_SIZE_113C = 0x80
+const _itemsSerStackBuf113c = new ArrayBuffer(ITEMS_SER_STACK_SIZE_113C)
+const _itemsSerStackU8_113c = new Uint8Array(_itemsSerStackBuf113c)
+const _itemsSerStackDv113c = new DataView(_itemsSerStackBuf113c)
 let itemsSerStackPtr113c = ITEMS_SER_STACK_BASE_113C
+
+function withItemsSerStackScratch113c(m: Memory113c): Memory113c {
+  if ((m as { __hasItemsSerScratch?: boolean }).__hasItemsSerScratch) return m
+  const isStack = (p: number): boolean => {
+    const u = p >>> 0
+    return u >= ITEMS_SER_STACK_BASE_113C && u < ITEMS_SER_STACK_BASE_113C + ITEMS_SER_STACK_SIZE_113C
+  }
+  const wrapped: Memory113c & { __hasItemsSerScratch: boolean; inner: Memory113c } = {
+    __hasItemsSerScratch: true,
+    inner: m,
+    alloc: (size) => m.alloc(size),
+    u8: (p) => (isStack(p) ? _itemsSerStackU8_113c[(p >>> 0) - ITEMS_SER_STACK_BASE_113C]! : m.u8(p)),
+    u16: (p) =>
+      isStack(p) ? _itemsSerStackDv113c.getUint16((p >>> 0) - ITEMS_SER_STACK_BASE_113C, true) : m.u16(p),
+    u32: (p) =>
+      isStack(p) ? _itemsSerStackDv113c.getUint32((p >>> 0) - ITEMS_SER_STACK_BASE_113C, true) : m.u32(p),
+    setU8: (p, v) => {
+      if (isStack(p)) _itemsSerStackU8_113c[(p >>> 0) - ITEMS_SER_STACK_BASE_113C] = v & 0xff
+      else m.setU8(p, v)
+    },
+    setU16: (p, v) => {
+      if (isStack(p)) _itemsSerStackDv113c.setUint16((p >>> 0) - ITEMS_SER_STACK_BASE_113C, v & 0xffff, true)
+      else m.setU16(p, v)
+    },
+    setU32: (p, v) => {
+      if (isStack(p)) _itemsSerStackDv113c.setUint32((p >>> 0) - ITEMS_SER_STACK_BASE_113C, v >>> 0, true)
+      else m.setU32(p, v)
+    },
+    get: (base, f, idx = 0) => {
+      const width = f.type === 'u8' ? 1 : f.type === 'u16' ? 2 : 4
+      const p = ((base >>> 0) + f.off + idx * width) >>> 0
+      return width === 1 ? wrapped.u8(p) : width === 2 ? wrapped.u16(p) : wrapped.u32(p)
+    },
+    set: (base, f, v, idx = 0) => {
+      const width = f.type === 'u8' ? 1 : f.type === 'u16' ? 2 : 4
+      const p = ((base >>> 0) + f.off + idx * width) >>> 0
+      if (width === 1) wrapped.setU8(p, v)
+      else if (width === 2) wrapped.setU16(p, v)
+      else wrapped.setU32(p, v)
+    },
+    fill: (p, len, v) => {
+      if (isStack(p)) {
+        const off = (p >>> 0) - ITEMS_SER_STACK_BASE_113C
+        _itemsSerStackU8_113c.fill(v & 0xff, off, off + len)
+      } else {
+        m.fill(p, len, v)
+      }
+    },
+  }
+  return wrapped
+}
 
 export function ITEMS_SerializeItemToBuffer113c(
   m: Memory113c,
@@ -8046,21 +8102,22 @@ export function ITEMS_SerializeItemToBuffer113c(
   bSimpleItemCodeOnly: number,
 ): number {
   hitD2CommonVa113c(0x6FD79D00)
+  const sm = withItemsSerStackScratch113c(m)
   const savedSp = itemsSerStackPtr113c
   const bitBuf = savedSp
   itemsSerStackPtr113c = (savedSp + 0x18) >>> 0
   try {
-    fogInitBitBuffer113c(m, bitBuf, pOutBuffer, nMaxBytes)
+    fogInitBitBuffer113c(sm, bitBuf, pOutBuffer, nMaxBytes)
     ITEMS_WriteItemStreamAndSockets113c(
-      m,
+      sm,
       pItem,
       bitBuf,
       bWriteHeader,
       bIncludeSockets,
       bSimpleItemCodeOnly,
     )
-    if (m.u32((bitBuf + 0x10) >>> 0) !== 0) return 0
-    return fogGetBitBufferSize113c(m, bitBuf) >>> 0
+    if (sm.u32((bitBuf + 0x10) >>> 0) !== 0) return 0
+    return fogGetBitBufferSize113c(sm, bitBuf) >>> 0
   } finally {
     itemsSerStackPtr113c = savedSp
   }

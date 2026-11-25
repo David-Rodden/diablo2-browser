@@ -816,7 +816,11 @@ export function STATLIST_SumDirectAndSubLists113c(
     return sum | 0
   }
   let isDamageRelated: boolean
-  if (pIscRec !== 0 && hasLoadedU32PtrStatlist113c(m, D2COMMON_GDWBITMASKS_IAT_VA_113C)) {
+  if (
+    pIscRec !== 0 &&
+    hasLoadedU32PtrStatlist113c(m, D2COMMON_GDWBITMASKS_IAT_VA_113C) &&
+    hasLoadedByteStatlist113c(m, (pIscRec + 4) >>> 0)
+  ) {
     const pMasks = m.u32(D2COMMON_GDWBITMASKS_IAT_VA_113C)
     isDamageRelated = (m.u8((pIscRec + 4) >>> 0) & m.u32((pMasks + 8) >>> 0)) !== 0
   } else {
@@ -848,6 +852,38 @@ export function STATLIST_SumDirectAndSubLists113c(
  * `D2Common 0x6FD89530` (`EvalStatWithOps`): exact implementation of the 13-entry jump table
  * at `0x6FD89AF0` (`op 1..13`).
  */
+function hasLoadedByteStatlist113c(m: Memory113c, addr: number): boolean {
+  const a = addr >>> 0
+  let cur: unknown = m
+  while (cur !== null && typeof cur === 'object' && 'inner' in cur) {
+    cur = (cur as { inner: unknown }).inner
+  }
+  const curObj = cur as {
+    overlayKnown?: Map<number, Uint8Array>
+    baseKnown?: Map<number, Uint8Array>
+    known?: Map<number, Uint8Array>
+    size?: number
+  } | null
+  if (curObj?.overlayKnown !== undefined && curObj.baseKnown !== undefined) {
+    const pg = a >>> 12
+    const off = a & 0xfff
+    const ok = curObj.overlayKnown.get(pg)
+    if (ok !== undefined && ok[off] !== 0) return true
+    const bk = curObj.baseKnown.get(pg)
+    return bk !== undefined && bk[off] !== 0
+  }
+  const known = curObj?.known
+  if (known !== undefined) {
+    const page = known.get(a >>> 12)
+    return page !== undefined && page[a & 0xfff] !== 0
+  }
+  const size = curObj?.size
+  if (typeof size === 'number') {
+    return a !== 0 && a < size
+  }
+  return false
+}
+
 function hasLoadedU32PtrStatlist113c(m: Memory113c, addr: number): boolean {
   const a = addr >>> 0
   let cur: unknown = m
@@ -3127,7 +3163,7 @@ function recordModStatMem113c(m: Memory113c, pListEx: number, dwKey: number): vo
   const sgpt = m.u32(D2COMMON_SGPT_DATATABLES_VA_113C)
   if (statId >= (m.u32((sgpt + 0xbd4) >>> 0) | 0)) return
   const pIscRec = (m.u32((sgpt + 0xbcc) >>> 0) + imul32(statId, 0x144)) >>> 0
-  if (pIscRec === 0) return
+  if (pIscRec === 0 || !hasLoadedByteStatlist113c(m, (pIscRec + 5) >>> 0)) return
   const dl = m.u8((pIscRec + 5) >>> 0)
   const pBitMasks = m.u32(D2COMMON_GDWBITMASKS_IAT_VA_113C)
   if ((m.u8((pBitMasks + 0x10) >>> 0) & dl) === 0) return

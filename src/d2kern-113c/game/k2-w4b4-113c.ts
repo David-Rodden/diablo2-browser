@@ -151,6 +151,7 @@ import {
   MONSTER_RegisterContinuousModeEvent113c,
   UNITS_ChangeAnimMode113c,
 } from './monster-events'
+import { MONAI_ForEachUnitInNonTownAdjacentRoomsWithPlayer_6FCD0CE0_113c } from './k2-w4b7-113c'
 import {
   AI_InitMonsterAiThinkFn113c,
   D2GAME_IAT_GDW_BITMASKS_VA_113C,
@@ -2272,7 +2273,15 @@ export function AI_SelectHostileTargetByMetrics_6FCA4720_113c(
     m.setU32((pCtx + 0x10) >>> 0, 0x7fffffff)
     m.setU32((pCtx + 0x18) >>> 0, 0x7fffffff)
 
-    AITARGET_ScanUnitsByModeTable113c(m, 1, pCtx, ediGame, esiMon, 0x6fc9cf10)
+    hitD2GameVa113c(0x6FCD17B0)
+    MONAI_ForEachUnitInNonTownAdjacentRoomsWithPlayer_6FCD0CE0_113c(
+      m,
+      esiMon,
+      0x6fc9cf10,
+      ediGame,
+      pCtx,
+      AI_ScanCallbackHostileTargetsMetrics_6FC9CF10_113c,
+    )
 
     if (m.u32((pCtx + 0x0c) >>> 0) !== 0) {
       const roll1 = stepUnitLcgMod100_113c(m, (esiMon + 0x20) >>> 0)
@@ -2358,7 +2367,16 @@ export function AI_ThinkPackFollowerMelee_6FCA4800_113c(
   try {
     m.setU32(pBestCtx, 0)
     m.setU32((pBestCtx + 4) >>> 0, 0x7fffffff)
-    AITARGET_ScanUnitsByModeTable113c(m, 1, pBestCtx, ediGame, esiMon, 0x6fcbca00)
+    hitD2GameVa113c(0x6FCD17B0)
+    MONAI_ForEachUnitInNonTownAdjacentRoomsWithPlayer_6FCD0CE0_113c(
+      m,
+      esiMon,
+      0x6fcbca00,
+      ediGame,
+      pBestCtx,
+      (mem, _pg, orig, cand, ctx) =>
+        SKILLS_FindClosestSameBaseMonsterCallback_6FCBCA00_113c(mem, orig, cand, ctx),
+    )
     const pAlly = m.u32(pBestCtx) >>> 0
     if (pAlly !== 0) {
       const diff2 = m.u8((ediGame + 0x6d) >>> 0) & 0xff

@@ -233,7 +233,11 @@ function aiApproachTargetTown113c(
 ): number {
   let hasHydratedTables = false;
   try {
-    hasHydratedTables = mem.u32(0x6fde9e1c) !== 0 && mem.u32(0x6fd1829c) !== 0;
+    hasHydratedTables =
+      mem.u32(0x6fde9e1c) !== 0 &&
+      mem.u32(0x6fd1829c) !== 0 &&
+      mem.u32(0x6fde4180) !== 0 &&
+      mem.u32(0x6fdf13a4) !== 0;
   } catch {
     hasHydratedTables = false;
   }

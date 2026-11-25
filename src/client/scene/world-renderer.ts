@@ -46,7 +46,13 @@ import {
   type MeshSkinLook,
   type MeshSkinModel,
 } from '../../common/units/mesh-skin-model.ts'
-import { decodeMeshPaperdollSelection, meshPaperdollGlowBySlot } from '../../common/units/mesh-skin-paperdoll.ts'
+import type { MeshSkinAttachment } from '../render/mesh-skin-renderer.ts'
+import {
+  applyMeshPaperdollUniqueLooks,
+  decodeMeshPaperdollSelection,
+  meshPaperdollGlowBySlot,
+  meshPaperdollUniqueWeapons,
+} from '../../common/units/mesh-skin-paperdoll.ts'
 import { getSharedClassLayerCompositor } from '../frontend/avatar-compositor.ts'
 import { dir64ToClipDirection } from '../../common/units/direction.ts'
 import { PLR_MODES } from '../../common/units/plr-mode.ts'
@@ -1070,21 +1076,60 @@ export function drawLoadingMonsterPlaceholder113c(
 
 const meshSkinLooksByModel = new WeakMap<MeshSkinModel, Map<string, MeshSkinLook | null>>()
 
-/** The look a paper-doll model wears for a drawable's selection key (`null`: the model's default). */
-function resolveMeshSkinUnitLook(model: MeshSkinModel, paperdollKey: string | undefined): MeshSkinLook | null {
-  if (model.paperdoll === null || paperdollKey === undefined) return null
+const NO_MESH_SKIN_ATTACHMENTS: readonly MeshSkinAttachment[] = Object.freeze([])
+
+/**
+ * What a paper-doll model wears for a drawable's selection key: the look (`null`: the model's
+ * default) and the weapon pack models attached to its hands. A unique weapon whose pack model is
+ * loaded replaces the family model of that hand; until then (or without a pack) the family model
+ * and its quality glow are shown.
+ */
+function resolveMeshSkinUnitDress(
+  renderer: SpriteRenderer,
+  skinService: CharacterSkinService | null,
+  model: MeshSkinModel,
+  paperdollKey: string | undefined,
+): { readonly look: MeshSkinLook | null; readonly attachments: readonly MeshSkinAttachment[] } {
+  const doll = model.paperdoll
+  if (doll === null || paperdollKey === undefined) return { look: null, attachments: NO_MESH_SKIN_ATTACHMENTS }
+  const decoded = decodeMeshPaperdollSelection(paperdollKey)
+  const points = doll.attachments
+  let attachments = NO_MESH_SKIN_ATTACHMENTS
+  let weaponAttached = false
+  let offhandAttached = false
+  if (points !== null && skinService !== null) {
+    const ids = meshPaperdollUniqueWeapons(decoded)
+    const list: MeshSkinAttachment[] = []
+    if (ids.weapon !== null) {
+      const weapon = skinService.getMeshSkinWeapon(renderer, points.pack, ids.weapon)
+      if (weapon !== null && weapon !== 'loading') {
+        list.push({ gpu: weapon.gpu, point: points[weapon.hand], mirror: false })
+        weaponAttached = true
+      }
+    }
+    if (ids.offhand !== null) {
+      const weapon = skinService.getMeshSkinWeapon(renderer, points.pack, ids.offhand)
+      if (weapon !== null && weapon !== 'loading') {
+        // A second weapon is the mirror image of the right-hand model, held in the left hand.
+        list.push({ gpu: weapon.gpu, point: points.left, mirror: true })
+        offhandAttached = true
+      }
+    }
+    if (list.length > 0) attachments = list
+  }
   let looks = meshSkinLooksByModel.get(model)
   if (!looks) {
     looks = new Map()
     meshSkinLooksByModel.set(model, looks)
   }
-  let look = looks.get(paperdollKey)
+  const lookKey = weaponAttached || offhandAttached ? `${paperdollKey}|${weaponAttached ? 'w' : ''}${offhandAttached ? 'o' : ''}` : paperdollKey
+  let look = looks.get(lookKey)
   if (look === undefined) {
-    const selection = decodeMeshPaperdollSelection(paperdollKey)
+    const selection = applyMeshPaperdollUniqueLooks(decoded, { weapon: weaponAttached, offhand: offhandAttached })
     look = resolveMeshSkinLook(model, selection, meshPaperdollGlowBySlot(selection))
-    looks.set(paperdollKey, look)
+    looks.set(lookKey, look)
   }
-  return look
+  return { look, attachments }
 }
 
 /** How a mesh skin clip should be played this frame. */
@@ -1112,6 +1157,7 @@ function drawMeshSkinUnit(
   play: MeshSkinPlaySpec,
   nowMs: number,
   glowTintRgb: readonly [number, number, number] | null,
+  skinService: CharacterSkinService | null = null,
 ): boolean {
   runtime.meshRenderer.beginFrame(nowMs)
   runtime.animator.prune(nowMs)
@@ -1130,13 +1176,15 @@ function drawMeshSkinUnit(
     worldX: unit.worldX,
     worldY: unit.worldY,
   })
+  const dress = resolveMeshSkinUnitDress(renderer, skinService, meshUnit.model, unit.meshPaperdoll)
   const impostor = runtime.meshRenderer.drawImpostor(
     meshUnit.gpu,
     posed.pose,
     posed.dir64,
     spec.pxPerUnit,
     spec.box,
-    resolveMeshSkinUnitLook(meshUnit.model, unit.meshPaperdoll),
+    dress.look,
+    dress.attachments,
   )
   if (impostor === null) return false
 
@@ -1217,16 +1265,26 @@ function drawPlayerMeshSkin(
   skinService: CharacterSkinService,
   classToken: PlayerClassToken,
   nowMs: number,
+  morphToken: string | null = null,
 ): boolean {
-  const meshUnit = skinService.getMeshSkinUnit(renderer, classToken, null)
+  // A shape-shifted player is drawn with the skin's model for that morph: one fixed look, so no
+  // paper-doll, no weapon clip variants and no skill sequences (every attack is the morph's swing).
+  const meshUnit =
+    morphToken !== null
+      ? skinService.getMeshSkinMorphUnit(renderer, classToken, morphToken)
+      : skinService.getMeshSkinUnit(renderer, classToken, null)
   if (meshUnit === null || meshUnit === 'loading') return false
+  const isMorph = morphToken !== null
 
   const modeToken = PLR_MODES[unit.mode]?.token.toLowerCase() ?? 'nu'
-  const unitKey = `player:${unit.unitId}`
+  // A morph model has its own skeleton, so it animates under its own key.
+  const unitKey = isMorph ? `player:${unit.unitId}:${morphToken}` : `player:${unit.unitId}`
   const isHeldCorpse = Boolean(unit.isCorpse) && modeToken !== 'dt'
   let rawKey = isHeldCorpse ? 'dd' : modeToken
   let sequenceProgress: number | null = null
-  if (!unit.isCorpse && modeToken === 'sq') {
+  if (!unit.isCorpse && modeToken === 'sq' && isMorph) {
+    rawKey = 'a1'
+  } else if (!unit.isCorpse && modeToken === 'sq') {
     const seqSkillId = unit.castState?.skillId ?? (unit.classId === 1 ? 49 : 0)
     const seqWClass = unit.equipmentAppearance?.wclass ?? 'hth'
     const seqStartedAtMs = resolveOneShotStartMs(
@@ -1250,7 +1308,7 @@ function drawPlayerMeshSkin(
 
   const baseClipKey = resolveSkinClipKey(classToken, rawKey, meshUnit.clips)
   const clipKey =
-    baseClipKey !== null && unit.meshPaperdoll !== undefined
+    baseClipKey !== null && unit.meshPaperdoll !== undefined && !isMorph
       ? resolveMeshWeaponClipKey(baseClipKey, decodeMeshPaperdollSelection(unit.meshPaperdoll).weapon, meshUnit.clips)
       : baseClipKey
   const entry = clipKey ? meshUnit.clips[clipKey] : undefined
@@ -1310,7 +1368,10 @@ function drawPlayerMeshSkin(
     }
   }
 
-  return drawMeshSkinUnit(renderer, unit, skinService.getMeshSkinRuntime(renderer), meshUnit, unitKey, play, nowMs, null)
+  return drawMeshSkinUnit(
+    renderer, unit, skinService.getMeshSkinRuntime(renderer), meshUnit, unitKey, play, nowMs, null,
+    isMorph ? null : skinService,
+  )
 }
 
 /** Draw a player-owned summon with its owner's real-time mesh skin (same timing rules as the sprite path). */
@@ -1433,7 +1494,16 @@ export function drawSceneUnitDrawable(
         const selectedManifest = skinService.peekSelectedManifest(skinClassToken)
         const isMeshSkin =
           selectedManifest !== null && selectedManifest !== 'loading' && selectedManifest.format === 'mesh'
+        // A mesh skin with its own model for this morph shows it, unless the player asked for the
+        // vanilla morph sprites.
         if (
+          isMeshSkin &&
+          isTransformedMorph &&
+          skinCfg.morphPolicy !== 'vanilla-morph' &&
+          selectedManifest.morphs?.[tokenLower] !== undefined
+        ) {
+          if (drawPlayerMeshSkin(renderer, unit, skinService, skinClassToken, nowMs, tokenLower)) return
+        } else if (
           isMeshSkin &&
           (!isTransformedMorph || shouldSkinOverrideMorph(selectedManifest, skinCfg.morphPolicy)) &&
           drawPlayerMeshSkin(renderer, unit, skinService, skinClassToken, nowMs)

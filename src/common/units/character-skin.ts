@@ -202,7 +202,22 @@ export interface CharacterSkinManifest {
   readonly minions?: Readonly<Record<string, CharacterSkinMinionSpec>> | undefined
   /** Present exactly when `format === 'mesh'`. */
   readonly mesh?: CharacterSkinMeshSpec | undefined
+  /**
+   * Mesh skins only: models shown while the player is shape-shifted, keyed by the morph's unit
+   * token (`40` werewolf, `tg` werebear, `va` vampire, `fk` fetish). A morph without an entry keeps
+   * following the morph policy (hero model or vanilla morph sprite).
+   */
+  readonly morphs?: Readonly<Record<string, CharacterSkinMorphSpec>> | undefined
 }
+
+/** A shape-shift form of a mesh skin: one fixed model, no paper-doll. */
+export interface CharacterSkinMorphSpec {
+  readonly mesh: CharacterSkinMeshSpec
+  readonly shadowScale?: number | undefined
+}
+
+/** Unit tokens of the 1.13c player morphs a skin may provide a model for. */
+export const SKINNABLE_MORPH_TOKENS = ['40', 'tg', 'va', 'fk'] as const
 
 export interface CharacterSkinCatalogEntry {
   readonly id: string
@@ -708,6 +723,39 @@ export function validateCharacterSkinManifest(raw: unknown): CharacterSkinManife
     }
   }
 
+  let morphs: Readonly<Record<string, CharacterSkinMorphSpec>> | undefined
+  if (obj.morphs !== undefined) {
+    if (!isMesh) throw new Error(`Character skin "${obj.id}" has morphs but format is "rgba"`)
+    if (!obj.morphs || typeof obj.morphs !== 'object' || Array.isArray(obj.morphs)) {
+      throw new Error('Invalid character skin morphs: expected JSON object')
+    }
+    const validated: Record<string, CharacterSkinMorphSpec> = {}
+    for (const [rawToken, rawMorph] of Object.entries(obj.morphs as Record<string, unknown>)) {
+      const token = rawToken.trim().toLowerCase()
+      if (!(SKINNABLE_MORPH_TOKENS as readonly string[]).includes(token)) {
+        throw new Error(
+          `Invalid character skin morphs key "${rawToken}" (expected one of ${SKINNABLE_MORPH_TOKENS.join(', ')})`,
+        )
+      }
+      if (!rawMorph || typeof rawMorph !== 'object' || Array.isArray(rawMorph)) {
+        throw new Error(`Invalid character skin morphs.${rawToken}: expected JSON object`)
+      }
+      const mo = rawMorph as Record<string, unknown>
+      let morphShadowScale: number | undefined
+      if (mo.shadowScale !== undefined) {
+        morphShadowScale = Number(mo.shadowScale)
+        if (!Number.isFinite(morphShadowScale) || morphShadowScale < 0 || morphShadowScale > 4) {
+          throw new Error(`Invalid character skin morphs.${rawToken}.shadowScale=${String(mo.shadowScale)}`)
+        }
+      }
+      validated[token] = {
+        mesh: validateMeshSpec(mo.mesh, `morphs.${rawToken}.mesh`, REQUIRED_MINION_CLIP_KEYS),
+        ...(morphShadowScale !== undefined ? { shadowScale: morphShadowScale } : {}),
+      }
+    }
+    if (Object.keys(validated).length > 0) morphs = validated
+  }
+
   return {
     schema: isMesh ? 2 : 1,
     id: obj.id,
@@ -731,6 +779,7 @@ export function validateCharacterSkinManifest(raw: unknown): CharacterSkinManife
     ...(glowGroups !== undefined ? { glowGroups } : {}),
     ...(minions !== undefined ? { minions } : {}),
     ...(mesh !== undefined ? { mesh } : {}),
+    ...(morphs !== undefined ? { morphs } : {}),
   }
 }
 

@@ -2,6 +2,7 @@ import { D2CommonAssertError } from '../common/inline-helpers.ts';
 import { UNITS_GetPlayerData113c } from '../common/composit.ts';
 import { DRLG_GetActNoFromLevelId113c } from '../common/drlg/drlg.ts';
 import {
+  DUNGEON_CheckLOSDraw113c,
   DUNGEON_GetAdjacentRoomsListFromRoom113c,
   DUNGEON_GetLevelIdFromRoom113c,
   DUNGEON_GetRoomExFromRoom113c,
@@ -75,6 +76,7 @@ import {
   AIGENERAL_GetPackLeaderUnit113c,
   AI_CalcApproxUnitDistSubtiles113c,
   AI_CheckApproachTauntSound113c,
+  AI_LookupDispatchTableRow113c,
   AI_TryMonsterTeleportEscape113c,
   SUNITDMG_FreeAttackerCombatList113c,
 } from './ai-fallen-113c.ts';
@@ -82,6 +84,7 @@ import { SEED_RollLimitedRandomNumber113c } from './combat-a1c-113c.ts';
 import { PLAYER_StartModeAtCoords113c } from './c2s-packet-113c.ts';
 import {
   AI_FleeFrom113c,
+  AI_GeneralFindTargetOrThrottle113c,
   AI_IdleWander113c,
   AI_Stall113c,
   AI_DispatchTargetByAiFlag113c,
@@ -89,9 +92,13 @@ import {
   PLAYER_ScheduleSkillActionFrameEvents113c,
   PLAYER_StartModeCast113c,
 } from './k2-real-s2c-combat-113c.ts';
+import { QUESTS_GuidListContains113c } from './k2-items-tc-w1-113c.ts';
 import { PLAYER_HandleDeathCorpseAndSave_6FC99730_113c } from './k2-w16b1-113c.ts';
 import { OBJ_TryOperateObjectIfInRange_6FC8A720_113c } from './k2-w4b3-113c.ts';
-import { MONAI_CheckLineOfWalkFreeCoordsBetweenUnits_6FCD0E90_113c } from './k2-w4b7-113c.ts';
+import {
+  MONAI_CheckLineOfWalkFreeCoordsBetweenUnits_6FCD0E90_113c,
+  MONAI_ForEachPackMemberWithFilter_6FCD1320_113c,
+} from './k2-w4b7-113c.ts';
 import { AI_WalkWanderAroundUnitOrSelf_6FD12870_113c } from './k2-w5b10-113c.ts';
 import { SUNIT_GetServerUnit113c } from './game-strc.ts';
 import {
@@ -179,13 +186,7 @@ function stepSeedLcg(m: Memory113c, pSeed: number): number {
 }
 
 function checkUnitGuidInList0x80(m: Memory113c, pList: number, dwUnitId: number): number {
-  const count = m.u16(pList + 0x80);
-  for (let i = 0; i < count; i++) {
-    if (m.u32(pList + i * 4) === (dwUnitId >>> 0)) {
-      return 1;
-    }
-  }
-  return 0;
+  return QUESTS_GuidListContains113c(m, pList, dwUnitId);
 }
 
 const NPC_QUEST_CLASS_TO_INDEX: ReadonlyArray<readonly [number, number]> = [
@@ -475,7 +476,138 @@ export function AI_HandleStunDoorOrLeaderFollow113c(
     return 1;
   }
   if (pAiTickArgs !== 0 && m.u32(pAiTickArgs >>> 0) !== 0) {
-    return AI_FollowPackLeaderOrAttack113c(m, pAiTickArgs, pUnit, pGame) !== 0 ? 1 : 0;
+    if (AI_FollowPackLeaderOrAttack113c(m, pAiTickArgs, pUnit, pGame) !== 0) {
+      return 1;
+    }
+    const tickPtr = pAiTickArgs >>> 0;
+    if (
+      tickPtr >= 0x6fc1dc80 &&
+      tickPtr < 0x6fc1e080 &&
+      pUnit !== 0 &&
+      pGame !== 0 &&
+      (m.u32(pUnit) | 0) === 1 &&
+      STATES_CheckState113c(m, pUnit, 1) === 0
+    ) {
+      const pAiGen = m.u32(tickPtr) >>> 0;
+      const pMonStats = m.u32((tickPtr + 0x1c) >>> 0) >>> 0;
+      const pMonData = m.u32((pUnit + 0x14) >>> 0) >>> 0;
+      const cls = m.u32((pUnit + 0x04) >>> 0) | 0;
+      const pfnThink = pAiGen !== 0 ? (m.u32((pAiGen + 0x04) >>> 0) >>> 0) : 0;
+      if (
+        pAiGen !== 0 &&
+        pMonStats !== 0 &&
+        pMonData !== 0 &&
+        m.u32(pMonData) !== 0 &&
+        m.u32((pMonData + 0x38) >>> 0) === 0 &&
+        m.u32((pGame + 0x1118) >>> 0) === 0 &&
+        pfnThink !== 0x6fc3dd40 &&
+        pfnThink !== 0x6fc3db40 &&
+        pfnThink !== 0x6fc3bc60 &&
+        pfnThink !== 0x6fcbcb00 &&
+        pfnThink !== 0x6fc39880 &&
+        pfnThink !== 0x6fcca4d0 &&
+        pfnThink !== 0x6fc3e900 &&
+        pfnThink !== 0x6fcc9e80 &&
+        pfnThink !== 0x6fccb580 &&
+        cls !== 147 &&
+        cls !== 148 &&
+        cls !== 149 &&
+        cls !== 150 &&
+        cls !== 152 &&
+        cls !== 154 &&
+        cls !== 155 &&
+        cls !== 179 &&
+        cls !== 271 &&
+        cls !== 338 &&
+        cls !== 359 &&
+        cls !== 560 &&
+        cls !== 561 &&
+        UNIT_GetAlignment113c(m, pUnit) === 0
+      ) {
+        const pRow = AI_LookupDispatchTableRow113c(m, pUnit, m.u32(pAiGen) | 0) >>> 0;
+        if (pRow !== 0 && (m.u32(pRow) >>> 0) === 1) {
+          const wFlags = m.u16((pAiGen + 0x08) >>> 0);
+          let losCheck = 0;
+          const pRoom0 = UNITS_GetRoom113c(m, pUnit) >>> 0;
+          if (pRoom0 !== 0) {
+            if ((wFlags & 0x40) !== 0) {
+              losCheck = 1;
+            } else if (DUNGEON_CheckLOSDraw113c(m, pRoom0) === 0 && ((wFlags >>> 3) & 1) === 0) {
+              const pAiCache = m.u32((pMonData + 0x50) >>> 0) >>> 0;
+              losCheck = pAiCache !== 0 && m.u32((pAiCache + 0x24) >>> 0) !== 0 ? 0 : 1;
+            }
+          }
+          if (losCheck === 1) {
+            const diff = m.u8((pGame + 0x6d) >>> 0);
+            const rawAiDist = m.u8((pMonStats + diff + 0x52) >>> 0);
+            const maxDist = rawAiDist !== 0 ? rawAiDist : 0x23;
+            const monAct = m.u8((pUnit + 0x18) >>> 0);
+            let hasNearRawPlayer = false;
+            let hasVisibleTarget = false;
+            for (let slot = 0; slot < 8 && !hasVisibleTarget; slot++) {
+              let node = m.u32((pGame + 0x10f8 + (slot << 2)) >>> 0) >>> 0;
+              if (node === 0) continue;
+              const headUnit = m.u32(node) >>> 0;
+              if (headUnit === 0 || (m.u32(headUnit) | 0) !== 0) continue;
+              if (m.u8((headUnit + 0x18) >>> 0) !== monAct) continue;
+              const uRoom = UNITS_GetRoom113c(m, headUnit) >>> 0;
+              if (uRoom === 0 || DUNGEON_CheckRoomIsTownMemPort113c(m, uRoom) !== 0) continue;
+              let d = AI_CalcApproxUnitDistSubtiles113c(m, pUnit, headUnit) | 0;
+              if ((d >>> 0) < 35) {
+                hasNearRawPlayer = true;
+              }
+              if ((d >>> 0) >= 0x37) continue;
+              if (SUNIT_IsDeadOrDying113c(m, headUnit) !== 0) {
+                d = 0x7fffffff;
+              }
+              let cand = headUnit;
+              while (true) {
+                if ((d >>> 0) < (maxDist >>> 0) && UNITS_HasCollisionBetweenUnits113c(m, pUnit, cand, 4) === 0) {
+                  hasVisibleTarget = true;
+                  break;
+                }
+                node = m.u32((node + 0x08) >>> 0) >>> 0;
+                if (node === 0) break;
+                cand = m.u32(node) >>> 0;
+                d = AI_CalcApproxUnitDistSubtiles113c(m, pUnit, cand) | 0;
+              }
+            }
+            if (hasNearRawPlayer && !hasVisibleTarget) {
+              let petNode = m.u32((pGame + 0x111c) >>> 0) >>> 0;
+              while (petNode !== 0) {
+                const pet = m.u32(petNode) >>> 0;
+                if (
+                  pet !== 0 &&
+                  m.u8((pet + 0x18) >>> 0) === monAct &&
+                  UNITS_HasCollisionBetweenUnits113c(m, pUnit, pet, 4) === 0
+                ) {
+                  hasVisibleTarget = true;
+                  break;
+                }
+                petNode = m.u32((petNode + 0x08) >>> 0) >>> 0;
+              }
+            }
+            if (hasNearRawPlayer && !hasVisibleTarget) {
+              return withTownRuntimeGapStack(8, (spOut) => {
+                m.setU32(spOut, 0x7fffffff);
+                m.setU32((spOut + 4) >>> 0, 0);
+                AI_GeneralFindTargetOrThrottle113c(
+                  m,
+                  pGame,
+                  pUnit,
+                  pAiGen,
+                  (spOut + 4) >>> 0,
+                  spOut,
+                  true,
+                );
+                return 1;
+              });
+            }
+          }
+        }
+      }
+    }
+    return 0;
   }
   const res = withTownRuntimeGapStack(4, (pAiTickArgsPtr) => {
     m.setU32(pAiTickArgsPtr, pAiTickArgs);
@@ -536,7 +668,7 @@ export function AI_AcquireOrValidateCombatTarget113c(
   const pNewTarget = scanRes[0];
   const newDist = scanRes[1];
   if (pNewTarget === 0) {
-    AI_IdleWander113c(m, pGame, pUnit);
+    AI_IdleWander113c(m, pGame, pUnit, 4);
     return 1;
   }
   m.setU32(pAiTickArgs + 8, pNewTarget);
@@ -1108,9 +1240,10 @@ export function PLAYER_RecalcTargetUnitPath113c(
   const firstX = PATH_GetFirstPointX113c(m, pPath);
   const firstY = PATH_GetFirstPointY113c(m, pPath);
   if (
-    pTarget !== m.u32(pPathSyncState + 4) ||
-    firstX !== i32(m, pPathSyncState + 8) ||
-    firstY !== i32(m, pPathSyncState + 0xc)
+    pPathSyncState !== 0 &&
+    (pTarget !== m.u32(pPathSyncState + 4) ||
+      firstX !== i32(m, pPathSyncState + 8) ||
+      firstY !== i32(m, pPathSyncState + 0xc))
   ) {
     m.setU32(pPathSyncState + 4, pTarget);
     m.setU32(pPathSyncState + 8, firstX);
@@ -1125,8 +1258,10 @@ export function PLAYER_RecalcTargetUnitPath113c(
   if (nPoints !== 0) {
     UNITROOM_RefreshUnit113c(m, pUnit);
     m.setU32(pUnit + 0xc4, (m.u32(pUnit + 0xc4) | 1) >>> 0);
-    m.setU8(pPathSyncState, 0);
-    m.setU8(pPathSyncState + 1, 0);
+    if (pPathSyncState !== 0) {
+      m.setU8(pPathSyncState, 0);
+      m.setU8(pPathSyncState + 1, 0);
+    }
     return pathType;
   }
   if (pathType === 2 || pathType === 7 || pathType === 9 || pathType === 13) {
@@ -1377,7 +1512,7 @@ const AITARGET_SCAN_MODE_TABLE: ReadonlyArray<readonly [number, number]> = [
   [0, 6],
   [0, 7],
   [0, CB_ID_MODE_8],
-  [3, 9],
+  [3, 0x6fcd12b0],
   [3, 0],
   [2, CB_ID_MODE_11],
   [0, CB_ID_MODE_12],
@@ -1437,11 +1572,7 @@ export function AITARGET_ScanUnitsByModeTable113c(
     return 0;
   }
   if (mode === 3) {
-    const pLeader = AIGENERAL_GetPackLeaderUnit113c(m, pOriginUnit);
-    if (pLeader === 0 || m.u32(pLeader) !== 1) {
-      return 0;
-    }
-    return 0;
+    return MONAI_ForEachPackMemberWithFilter_6FCD1320_113c(m, pOriginUnit, pGame, pfnCb, pCtx);
   }
   const pRoom = UNITS_GetRoom113c(m, pOriginUnit);
   if (pRoom === 0) {

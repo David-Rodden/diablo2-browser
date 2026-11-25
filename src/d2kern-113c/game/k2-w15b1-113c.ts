@@ -2446,7 +2446,8 @@ export function ACT2Q2_OnHoradricStaffOrificeActivate_6FCE9CB0_113c(
 
       let pOrificeObj = pOrificeObjArg !== undefined ? pOrificeObjArg >>> 0 : 0;
       if (pOrificeObjArg === undefined) {
-        const dwOrificeGuid = m.u32(pState0D + 0x18);
+        const dwOrificeGuid20 = m.u32(pState0D + 0x20);
+        const dwOrificeGuid = dwOrificeGuid20 !== 0 ? dwOrificeGuid20 : m.u32(pState0D + 0x18);
         const pBucketHead = m.u32(pGame + 0x1520 + ((dwOrificeGuid & 0x7f) << 2));
         let pCur = pBucketHead;
         while (pCur !== 0) {

@@ -17,9 +17,16 @@ export type MeshPaperdollWeapon =
   | 'none' | 'axe' | 'pick' | 'axe2h' | 'club' | 'mace' | 'hammer' | 'hammer2h' | 'scepter'
   | 'sword' | 'saber' | 'sword2h' | 'dagger' | 'spear' | 'trident' | 'polearm' | 'scythe' | 'claw'
   | 'staff' | 'wand' | 'orb' | 'bow' | 'crossbow' | 'javelin' | 'tknife' | 'taxe' | 'tpotion'
+  /** A two-handed sword held in one hand because the other hand is occupied (Barbarian). */
+  | 'sword2h1'
 
-/** Off-hand families: shield shapes, paladin shields and necromancer heads. */
-export type MeshPaperdollOffhand = 'none' | 'buckler' | 'shield' | 'kite' | 'tower' | 'spiked' | 'paladin' | 'head'
+/**
+ * Off-hand families: shield shapes, paladin shields and necromancer heads, or the second weapon of
+ * a dual wielder (`w-<weapon family>`, Barbarian and Assassin).
+ */
+export type MeshPaperdollOffhand =
+  | 'none' | 'buckler' | 'shield' | 'kite' | 'tower' | 'spiked' | 'paladin' | 'head'
+  | `w-${Exclude<MeshPaperdollWeapon, 'none' | 'sword2h1'>}`
 
 /** Item quality tiers that tint an item's glow (`none`: no glow). */
 export type MeshPaperdollGlow = 'none' | 'magic' | 'set' | 'rare' | 'unique' | 'crafted'
@@ -45,6 +52,13 @@ export interface MeshPaperdollSelection {
   /** Quality glow of the weapon / off-hand item (`none` when the slot is empty). */
   readonly weaponGlow: MeshPaperdollGlow
   readonly offhandGlow: MeshPaperdollGlow
+  /**
+   * `UniqueItems.txt` row id of a unique weapon in the main / off hand. When the skin's weapon pack
+   * has a model for that id it is shown instead of the family model, see
+   * {@link applyMeshPaperdollUniqueLooks}.
+   */
+  readonly weaponUnique?: number | undefined
+  readonly offhandUnique?: number | undefined
 }
 
 /** Base item codes worn in the visual slots (`undefined` / empty for an empty slot). */
@@ -57,6 +71,9 @@ export interface MeshPaperdollEquipment {
   /** 1.13c item quality (1..9) of the items in `hand1` / `hand2`. */
   readonly hand1Quality?: number | undefined
   readonly hand2Quality?: number | undefined
+  /** `UniqueItems.txt` row id of the items in `hand1` / `hand2` (only read for quality 7). */
+  readonly hand1Unique?: number | undefined
+  readonly hand2Unique?: number | undefined
 }
 
 export const EMPTY_MESH_PAPERDOLL_SELECTION: MeshPaperdollSelection = Object.freeze({
@@ -208,15 +225,17 @@ export function resolveMeshPaperdollSelection(equipment: MeshPaperdollEquipment)
   const helmRow = baseRow(equipment.helm)
   const armorRow = baseRow(equipment.armor)
   const hands = [
-    { row: baseRow(equipment.hand1), quality: equipment.hand1Quality },
-    { row: baseRow(equipment.hand2), quality: equipment.hand2Quality },
+    { row: baseRow(equipment.hand1), quality: equipment.hand1Quality, unique: equipment.hand1Unique },
+    { row: baseRow(equipment.hand2), quality: equipment.hand2Quality, unique: equipment.hand2Unique },
   ]
+  let weaponUnique: number | undefined
+  let offhandUnique: number | undefined
 
   let weapon: MeshPaperdollWeapon = 'none'
   let offhand: MeshPaperdollOffhand = 'none'
   let weaponGlow: MeshPaperdollGlow = 'none'
   let offhandGlow: MeshPaperdollGlow = 'none'
-  for (const { row, quality } of hands) {
+  for (const { row, quality, unique } of hands) {
     if (!row) continue
     const asOffhand = offhandOf(row)
     if (asOffhand !== 'none') {
@@ -226,16 +245,31 @@ export function resolveMeshPaperdollSelection(equipment: MeshPaperdollEquipment)
       }
       continue
     }
-    // Only one weapon is shown: the first hand that holds one (dual wielding is not modelled).
     const asWeapon = weaponOf(row)
-    if (asWeapon !== 'none' && weapon === 'none') {
+    if (asWeapon === 'none') continue
+    // 12-bit wire field; 0xfff marks "no row".
+    const uniqueId = quality === 7 && unique !== undefined && unique >= 0 && unique < 0xfff ? unique : undefined
+    if (weapon === 'none') {
       weapon = asWeapon
       weaponGlow = meshPaperdollGlowForQuality(quality)
+      weaponUnique = uniqueId
+    } else if (offhand === 'none') {
+      // Dual wielding: the second weapon goes to the off hand.
+      // `weaponOf` never yields the one-handed greatsword variant (it is decided below).
+      offhand = `w-${asWeapon as Exclude<MeshPaperdollWeapon, 'none' | 'sword2h1'>}`
+      offhandGlow = meshPaperdollGlowForQuality(quality)
+      offhandUnique = uniqueId
     }
   }
+  // 1.13c lets a Barbarian hold a two-handed sword in one hand whenever the other hand is occupied.
+  if (weapon === 'sword2h' && offhand !== 'none') weapon = 'sword2h1'
   const helm = helmRow ? helmOf(helmRow) : 'none'
   const armor = armorRow ? armorOf(armorRow) : 'none'
-  return { weapon, offhand, helm, armor, weaponGlow, offhandGlow }
+  return {
+    weapon, offhand, helm, armor, weaponGlow, offhandGlow,
+    ...(weaponUnique !== undefined ? { weaponUnique } : {}),
+    ...(offhandUnique !== undefined ? { offhandUnique } : {}),
+  }
 }
 
 const SLOT_ORDER = ['armor', 'helm', 'offhand', 'weapon'] as const
@@ -248,7 +282,47 @@ export function encodeMeshPaperdollSelection(selection: MeshPaperdollSelection):
   const parts = SLOT_ORDER.map((slot) => `${slot}=${selection[slot]}`)
   if (selection.offhandGlow !== 'none') parts.push(`offhandGlow=${selection.offhandGlow}`)
   if (selection.weaponGlow !== 'none') parts.push(`weaponGlow=${selection.weaponGlow}`)
+  if (selection.offhandUnique !== undefined) parts.push(`offhandUnique=${String(selection.offhandUnique)}`)
+  if (selection.weaponUnique !== undefined) parts.push(`weaponUnique=${String(selection.weaponUnique)}`)
   return parts.join(',')
+}
+
+/** `UniqueItems.txt` row ids a decoded selection asks a weapon pack model for, per hand. */
+export function meshPaperdollUniqueWeapons(
+  decodedSelection: Readonly<Record<string, string>>,
+): { readonly weapon: number | null; readonly offhand: number | null } {
+  const id = (raw: string | undefined): number | null => {
+    if (raw === undefined || !/^\d{1,4}$/.test(raw)) return null
+    return Number(raw)
+  }
+  return {
+    weapon: id(decodedSelection.weaponUnique),
+    // Only a dual wielder's second weapon: shields and heads have no pack models.
+    offhand: decodedSelection.offhand?.startsWith('w-') ? id(decodedSelection.offhandUnique) : null,
+  }
+}
+
+/**
+ * The selection to wear when weapon pack models stand in for the hands marked in `attached`: that
+ * hand's family model is taken off (option `none`) and, the pack model being its own mark of
+ * quality, so is its quality glow. A hand that is not attached keeps the family model and the glow.
+ * The caller still reads the weapon family from the original selection to pick the stance clips.
+ */
+export function applyMeshPaperdollUniqueLooks(
+  decodedSelection: Readonly<Record<string, string>>,
+  attached: { readonly weapon: boolean; readonly offhand: boolean },
+): Readonly<Record<string, string>> {
+  if (!attached.weapon && !attached.offhand) return decodedSelection
+  const out: Record<string, string> = { ...decodedSelection }
+  if (attached.weapon) {
+    out.weapon = 'none'
+    delete out.weaponGlow
+  }
+  if (attached.offhand) {
+    out.offhand = 'none'
+    delete out.offhandGlow
+  }
+  return out
 }
 
 /** Glow tint per slot (`{ weapon: rgb, offhand: rgb }`) of a decoded selection record. */
@@ -291,6 +365,7 @@ export function resolveMeshPaperdollKeyFromSlots(
   codeAt: (bodyLoc: number) => string | undefined,
   weaponSet: number,
   qualityAt: (bodyLoc: number) => number | undefined = () => undefined,
+  uniqueAt: (bodyLoc: number) => number | undefined = () => undefined,
 ): string {
   const useSwap =
     weaponSet === 1 && codeAt(4) === undefined && codeAt(5) === undefined &&
@@ -303,6 +378,8 @@ export function resolveMeshPaperdollKeyFromSlots(
       hand2: codeAt(useSwap ? 12 : 5),
       hand1Quality: qualityAt(useSwap ? 11 : 4),
       hand2Quality: qualityAt(useSwap ? 12 : 5),
+      hand1Unique: uniqueAt(useSwap ? 11 : 4),
+      hand2Unique: uniqueAt(useSwap ? 12 : 5),
     }),
   )
 }

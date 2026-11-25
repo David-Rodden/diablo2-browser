@@ -202,6 +202,9 @@ export async function withPlayHarness(outName: string, fn: (h: PlayHarness) => P
     assert(boundPort, 'Failed to start Vite dev server')
     const targetUrl = `http://127.0.0.1:${String(boundPort)}/play.html`
     console.log(`[harness] ${targetUrl}`)
+    const chromeEnv: NodeJS.ProcessEnv = { ...process.env }
+    delete chromeEnv.DISPLAY
+    delete chromeEnv.WAYLAND_DISPLAY
     chromeProc = spawn(
       chromeBin,
       [
@@ -212,7 +215,7 @@ export async function withPlayHarness(outName: string, fn: (h: PlayHarness) => P
         '--force-device-scale-factor=1', '--window-size=1280,960', `--user-data-dir=${userDataDir}`,
         '--remote-debugging-port=0', 'about:blank',
       ],
-      { stdio: ['ignore', 'ignore', 'pipe'] },
+      { stdio: ['ignore', 'ignore', 'pipe'], env: chromeEnv },
     )
     let chromeStderr = ''
     chromeProc.stderr?.on('data', (chunk) => {

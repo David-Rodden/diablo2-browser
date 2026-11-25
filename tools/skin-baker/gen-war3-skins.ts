@@ -17,7 +17,7 @@
 
 import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -37,7 +37,8 @@ interface ConvertedClip {
 
 interface ConvertedUnit {
   readonly glb: string
-  readonly portrait: string
+  /** Portrait image; shape-shift forms have none. */
+  readonly portrait?: string
   readonly pxPerUnit: number
   readonly box: { readonly width: number; readonly height: number; readonly footX: number; readonly footY: number }
   readonly clips: Readonly<Record<string, ConvertedClip>>
@@ -48,6 +49,8 @@ interface ConvertedUnit {
 interface ConvertedUnits {
   readonly preview: string
   readonly units: Readonly<Record<string, ConvertedUnit>>
+  /** Shape-shift forms by Diablo II morph token (`40` werewolf, `tg` werebear). */
+  readonly morphs?: Readonly<Record<string, ConvertedUnit>>
 }
 
 interface LocalizedText {
@@ -191,6 +194,96 @@ export const WAR3_SKINS: readonly War3SkinDef[] = [
     heroClipAliases: {},
     minions: {},
   },
+  {
+    id: 'dz-wow-nightelf',
+    targetClass: 'dz',
+    source: 'wow',
+    name: { zh: '暗夜精灵德鲁伊（随装备换装）', en: 'Night Elf Druid (follows equipment)' },
+    description: {
+      zh: '《魔兽世界》暗夜精灵女性实时 3D 骨骼模型，武器、盾牌、头盔和衣服随身上装备实时更换；变身狼人时显示银松森林狼人，变身熊人时显示冬泉谷熊怪。',
+      en: 'Real-time World of Warcraft night elf female model whose weapons, shield, helmet and body armour follow the equipment worn; Werewolf shows a Silverpine worgen and Werebear a Winterspring furbolg.',
+    },
+    floating: false,
+    shadowOffsetY: 0,
+    shadowScale: 0.9,
+    heroClipAliases: {},
+    minions: {},
+  },
+  {
+    id: 'am-wow-bloodelf',
+    targetClass: 'am',
+    source: 'wow',
+    name: { zh: '血精灵游侠（随装备换装）', en: 'Blood Elf Ranger (follows equipment)' },
+    description: {
+      zh: '《魔兽世界》血精灵女性实时 3D 骨骼模型，武器、盾牌、头盔和衣服随身上装备实时更换。',
+      en: 'Real-time World of Warcraft blood elf female model whose weapons, shield, helmet and body armour follow the equipment worn.',
+    },
+    floating: false,
+    shadowOffsetY: 0,
+    shadowScale: 0.9,
+    heroClipAliases: {},
+    minions: {},
+  },
+  {
+    id: 'ne-wow-undead',
+    targetClass: 'ne',
+    source: 'wow',
+    name: { zh: '亡灵死灵法师（随装备换装）', en: 'Undead Necromancer (follows equipment)' },
+    description: {
+      zh: '《魔兽世界》亡灵男性实时 3D 骨骼模型，武器、盾牌、头盔和衣服随身上装备实时更换；召唤物保持原版外观。',
+      en: 'Real-time World of Warcraft undead male model whose weapons, shield, helmet and body armour follow the equipment worn; summons keep their original look.',
+    },
+    floating: false,
+    shadowOffsetY: 0,
+    shadowScale: 0.9,
+    heroClipAliases: {},
+    minions: {},
+  },
+  {
+    id: 'pa-wow-dwarf',
+    targetClass: 'pa',
+    source: 'wow',
+    name: { zh: '矮人圣骑士（随装备换装）', en: 'Dwarf Paladin (follows equipment)' },
+    description: {
+      zh: '《魔兽世界》矮人男性实时 3D 骨骼模型，武器、盾牌、头盔和衣服随身上装备实时更换。',
+      en: 'Real-time World of Warcraft dwarf male model whose weapons, shield, helmet and body armour follow the equipment worn.',
+    },
+    floating: false,
+    shadowOffsetY: 0,
+    shadowScale: 0.9,
+    heroClipAliases: {},
+    minions: {},
+  },
+  {
+    id: 'ba-wow-orc',
+    targetClass: 'ba',
+    source: 'wow',
+    name: { zh: '兽人战士（随装备换装，可双持）', en: 'Orc Warrior (follows equipment, dual wield)' },
+    description: {
+      zh: '《魔兽世界》兽人男性实时 3D 骨骼模型，武器、盾牌、头盔和衣服随身上装备实时更换；双持时左手武器同样显示。',
+      en: 'Real-time World of Warcraft orc male model whose weapons, shield, helmet and body armour follow the equipment worn; a second weapon shows in the left hand.',
+    },
+    floating: false,
+    shadowOffsetY: 0,
+    shadowScale: 0.9,
+    heroClipAliases: {},
+    minions: {},
+  },
+  {
+    id: 'ai-wow-draenei',
+    targetClass: 'ai',
+    source: 'wow',
+    name: { zh: '德莱尼刺客（随装备换装，可双持）', en: 'Draenei Assassin (follows equipment, dual wield)' },
+    description: {
+      zh: '《魔兽世界》德莱尼女性实时 3D 骨骼模型，武器、盾牌、头盔和衣服随身上装备实时更换；双持爪时左手爪同样显示。',
+      en: 'Real-time World of Warcraft draenei female model whose weapons, shield, helmet and body armour follow the equipment worn; a second claw shows in the left hand.',
+    },
+    floating: false,
+    shadowOffsetY: 0,
+    shadowScale: 0.9,
+    heroClipAliases: {},
+    minions: {},
+  },
 ]
 
 function resolveWar3MpqDir(): string {
@@ -238,6 +331,46 @@ function meshSpec(unit: ConvertedUnit, file: string, aliases: Readonly<Record<st
   return { file, pxPerUnit: unit.pxPerUnit, box: unit.box, clips }
 }
 
+/** Directory (next to the skins) of the shared unique weapon models the WoW skins attach. */
+export const WOW_WEAPON_PACK_ID = 'wow-weapons'
+
+/**
+ * Convert and write the shared weapon pack: `<outRoot>/wow-weapons/weapons.json` plus one
+ * content-hashed GLB per unique weapon. Returns the number of weapons and their total size.
+ */
+export function packWowWeaponPack(outRoot: string): { readonly count: number; readonly bytes: number } {
+  const here = dirname(fileURLToPath(import.meta.url))
+  const tmpDir = mkdtempSync(join(tmpdir(), 'd2w-weapon-glb-'))
+  try {
+    execFileSync(
+      'python3',
+      [join(here, 'convert_wow_m2_to_glb.py'), '--wow-dir', resolveWow335Dir(), '--weapon-pack', '--verify', '--out-dir', tmpDir],
+      { stdio: 'inherit' },
+    )
+    const converted = JSON.parse(readFileSync(join(tmpDir, 'weapons.json'), 'utf8')) as {
+      readonly pack: string
+      readonly weapons: Readonly<Record<string, { readonly glb: string; readonly hand: 'right' | 'left' }>>
+    }
+    if (converted.pack !== WOW_WEAPON_PACK_ID) throw new Error(`Unexpected weapon pack id "${converted.pack}"`)
+    const outDir = join(outRoot, WOW_WEAPON_PACK_ID)
+    rmSync(outDir, { recursive: true, force: true })
+    mkdirSync(outDir, { recursive: true })
+    const weapons: Record<string, { file: string; hand: 'right' | 'left' }> = {}
+    let bytes = 0
+    for (const [id, entry] of Object.entries(converted.weapons)) {
+      const glb = new Uint8Array(readFileSync(join(tmpDir, entry.glb)))
+      const file = hashedName(`u-${id}`, 'glb', glb)
+      writeFileSync(join(outDir, file), glb)
+      weapons[id] = { file, hand: entry.hand }
+      bytes += glb.byteLength
+    }
+    writeFileSync(join(outDir, 'weapons.json'), `${JSON.stringify({ schema: 1, weapons }, null, 1)}\n`)
+    return { count: Object.keys(weapons).length, bytes }
+  } finally {
+    rmSync(tmpDir, { recursive: true, force: true })
+  }
+}
+
 export function generateWar3SkinBundle(def: War3SkinDef): PackedCharacterSkinBundle {
   const here = dirname(fileURLToPath(import.meta.url))
   const converterArgs =
@@ -256,6 +389,9 @@ export function generateWar3SkinBundle(def: War3SkinDef): PackedCharacterSkinBun
     const addModel = (unitKey: string, stem: string): { readonly unit: ConvertedUnit; readonly file: string } => {
       const unit = converted.units[unitKey]
       if (!unit) throw new Error(`Converter output is missing unit "${unitKey}"`)
+      return addUnit(unit, stem)
+    }
+    const addUnit = (unit: ConvertedUnit, stem: string): { readonly unit: ConvertedUnit; readonly file: string } => {
       const bytes = read(unit.glb)
       // Fail here, not in the browser, if the model cannot be loaded by the runtime parser.
       const model = parseMeshSkinModel(bytes)
@@ -275,6 +411,7 @@ export function generateWar3SkinBundle(def: War3SkinDef): PackedCharacterSkinBun
     const minions: Record<string, unknown> = {}
     for (const [key, meta] of Object.entries(def.minions)) {
       const m = addModel(key, `minion-${key}`)
+      if (m.unit.portrait === undefined) throw new Error(`Converted minion "${key}" has no portrait`)
       const portraitBytes = read(m.unit.portrait)
       const portraitFile = hashedName(`portrait-${key}`, 'png', portraitBytes)
       files[portraitFile] = portraitBytes
@@ -285,6 +422,12 @@ export function generateWar3SkinBundle(def: War3SkinDef): PackedCharacterSkinBun
         portraitFile,
         mesh: meshSpec(m.unit, m.file),
       }
+    }
+
+    const morphs: Record<string, unknown> = {}
+    for (const [token, unit] of Object.entries(converted.morphs ?? {})) {
+      const m = addUnit(unit, `morph-${token}`)
+      morphs[token] = { shadowScale: 1, mesh: meshSpec(m.unit, m.file) }
     }
 
     const manifest = validateCharacterSkinManifest({
@@ -302,6 +445,7 @@ export function generateWar3SkinBundle(def: War3SkinDef): PackedCharacterSkinBun
       previewFile,
       mesh: meshSpec(hero.unit, hero.file, { ...(hero.unit.aliases ?? {}), ...def.heroClipAliases }),
       ...(Object.keys(minions).length > 0 ? { minions } : {}),
+      ...(Object.keys(morphs).length > 0 ? { morphs } : {}),
     })
     files['skin.json'] = new TextEncoder().encode(`${JSON.stringify(manifest, null, 2)}\n`)
 
@@ -320,8 +464,17 @@ if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(resolve(p
   const outRoot = process.argv[2] ? resolve(process.argv[2]) : resolve(process.cwd(), 'public', 'skins')
   // Optional second argument: pack only the skin with this id.
   const only = process.argv[3]
-  if (only !== undefined && !WAR3_SKINS.some((def) => def.id === only)) {
-    throw new Error(`Unknown skin id "${only}" (known: ${WAR3_SKINS.map((def) => def.id).join(', ')})`)
+  if (only !== undefined && only !== WOW_WEAPON_PACK_ID && !WAR3_SKINS.some((def) => def.id === only)) {
+    throw new Error(
+      `Unknown skin id "${only}" (known: ${[...WAR3_SKINS.map((def) => def.id), WOW_WEAPON_PACK_ID].join(', ')})`,
+    )
+  }
+  // The shared weapon pack is packed with everything, or alone when asked for by its id.
+  if (only === undefined || only === WOW_WEAPON_PACK_ID) {
+    const pack = packWowWeaponPack(outRoot)
+    console.log(
+      `Packed ${WOW_WEAPON_PACK_ID} -> ${outRoot}/${WOW_WEAPON_PACK_ID} (${String(pack.count)} weapons, ${(pack.bytes / 1024).toFixed(1)} KB)`,
+    )
   }
   for (const def of WAR3_SKINS) {
     if (only !== undefined && def.id !== only) continue

@@ -153,6 +153,7 @@ import {
   SKILLS_GetUnitTargetOrFirstPathCoords_6FCBFA30_113c,
   SKILLS_RollAndAddSkillElemDamage_6FCBF210_113c,
 } from './k2-w4b6-113c'
+import { MONAI_ForEachUnitInNonTownAdjacentRoomsWithPlayer_6FCD0CE0_113c } from './k2-w4b7-113c'
 import {
   ACT4Q1_EnsureStartedOrInvokeLinkedQuestCallback_6FCD8A70_113c,
   ACT4Q1_HasActiveQuestNpcIndicator_6FCD8AE0_113c,
@@ -1676,7 +1677,16 @@ export function AI_GreaterMummyThink_6FCA8380_113c(
       m.setU32((pScanCtx + 0x18) >>> 0, 1);
     }
   }
-  AITARGET_ScanUnitsByModeTable113c(m, 1, pScanCtx, pGame, pUnit, 0x6fc9b8e0);
+  hitD2GameVa113c(0x6FCD17B0);
+  MONAI_ForEachUnitInNonTownAdjacentRoomsWithPlayer_6FCD0CE0_113c(
+    m,
+    pUnit,
+    0x6fc9b8e0,
+    pGame,
+    pScanCtx,
+    (mem, _pg, orig, cand, ctx) =>
+      AI_ScanCallbackResurrectOrHealTarget_6FC9B8E0_113c(mem as SparseMemory113c, orig, cand, ctx),
+  );
   if (m.u32(pScanCtx) === 0xdeadbeef) {
     AI_ScanCallbackResurrectOrHealTarget_6FC9B8E0_113c(m, pUnit, pTarget, pScanCtx);
   }

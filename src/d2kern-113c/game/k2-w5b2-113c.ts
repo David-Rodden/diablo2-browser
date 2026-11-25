@@ -132,6 +132,7 @@ import {
 import {
   MONSTER_ApplyElementalDamageAndResistStats113c,
   NET_QueuePacketToClientBuffer113c,
+  UNIT_SendFullUnitSyncToClient113c,
 } from './boot-init-gap-a-113c'
 import {
   D2GAME_ARENA_FindPlayerSlotByUnit113c,
@@ -3116,6 +3117,38 @@ function petsWarpPetUnitToRoomAndCoord_6FCB71F0(
 
   if ((pTargetRoom >>> 0) !== pOldRoom) {
     UNITS_SetPathRoomRefreshFlag113c(m, pPetUnit >>> 0, 1)
+    const pCurrRoomSync = UNITS_GetRoom113c(m, pPetUnit >>> 0) >>> 0
+    const pPrevRoomSync = pOldRoom >>> 0
+    if (pCurrRoomSync !== pPrevRoomSync) {
+      const currClients = pCurrRoomSync !== 0 ? (m.u32((pCurrRoomSync + 0x48) >>> 0) >>> 0) : 0
+      const currCount = pCurrRoomSync !== 0 ? (m.u32((pCurrRoomSync + 0x78) >>> 0) >>> 0) : 0
+      const prevClients = pPrevRoomSync !== 0 ? (m.u32((pPrevRoomSync + 0x48) >>> 0) >>> 0) : 0
+      const prevCount = pPrevRoomSync !== 0 ? (m.u32((pPrevRoomSync + 0x78) >>> 0) >>> 0) : 0
+      let iCurr = 0
+      let iPrev = 0
+      while (iCurr < currCount && iPrev < prevCount && currClients !== 0 && prevClients !== 0) {
+        const pClCurr = m.u32((currClients + iCurr * 4) >>> 0) >>> 0
+        const pClPrev = m.u32((prevClients + iPrev * 4) >>> 0) >>> 0
+        if (pClCurr < pClPrev) {
+          if (pClCurr !== 0 && (CLIENTS_GetPlayerUnit113c(m, pClCurr, 0) >>> 0) !== (pPetUnit >>> 0)) {
+            UNIT_SendFullUnitSyncToClient113c(m, pClCurr, pPetUnit >>> 0, 0, undefined, pGame >>> 0)
+          }
+          iCurr++
+        } else if (pClCurr > pClPrev) {
+          iPrev++
+        } else {
+          iCurr++
+          iPrev++
+        }
+      }
+      while (iCurr < currCount && currClients !== 0) {
+        const pClCurr = m.u32((currClients + iCurr * 4) >>> 0) >>> 0
+        if (pClCurr !== 0 && (CLIENTS_GetPlayerUnit113c(m, pClCurr, 0) >>> 0) !== (pPetUnit >>> 0)) {
+          UNIT_SendFullUnitSyncToClient113c(m, pClCurr, pPetUnit >>> 0, 0, undefined, pGame >>> 0)
+        }
+        iCurr++
+      }
+    }
     SUNIT_UpdateUnitPositionAndRoom113c(m, pOldRoom, pPetUnit >>> 0, pGame >>> 0)
   }
 

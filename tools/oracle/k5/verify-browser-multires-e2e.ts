@@ -409,6 +409,9 @@ export async function runK5BrowserMultiresE2e(
   let cdp: K5CdpClient | null = null
 
   try {
+    const chromeEnv: NodeJS.ProcessEnv = { ...process.env }
+    delete chromeEnv.DISPLAY
+    delete chromeEnv.WAYLAND_DISPLAY
     chromeProc = spawn(
       chromeBin,
       [
@@ -436,7 +439,7 @@ export async function runK5BrowserMultiresE2e(
         '--remote-debugging-port=0',
         'about:blank',
       ],
-      { stdio: ['ignore', 'ignore', 'pipe'] },
+      { stdio: ['ignore', 'ignore', 'pipe'], env: chromeEnv },
     )
 
     let chromeStderr = ''

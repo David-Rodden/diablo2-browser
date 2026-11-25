@@ -646,7 +646,15 @@ export function MONAI_PutridDefilerThink_6FCC7290_113c(
     m.fill(sp, 0x24, 0)
     m.setU32(sp, 0)
     m.setU32((sp + 4) >>> 0, 0x19)
-    pCandidate = AITARGET_ScanUnitsByModeTable113c(m, 1, sp, pGame >>> 0, pUnit >>> 0, 0x6fcc4180) >>> 0
+    hitD2GameVa113c(0x6FCD17B0)
+    pCandidate = MONAI_ForEachUnitInNonTownAdjacentRoomsWithPlayer_6FCD0CE0_113c(
+      m,
+      pUnit >>> 0,
+      0x6fcc4180,
+      pGame >>> 0,
+      sp,
+      MONAI_MatchImpregnatableMonsterWithin25Callback_6FCC4180_113c,
+    ) >>> 0
   } finally {
     k2W4B7StackPtr = (sp + 0x28) >>> 0
   }

@@ -593,6 +593,7 @@ describe('[K6] Fix 3 real-DLL D2Game.dll Hi-VA Closer & Round-3 parity vectors',
       }
       mem.setU32(0x6fdeff6c, hdrVa)
     }
+    mem.fill(0x6fd18d10, 4, 0)
     mem.fill(STAGE_BASE, STAGE_FIXED_SIZE, 0)
     mem.fill(GAME_SLOTS_BASE, GAME_SLOTS_LEN, 0)
     mem.commitOverlayToBase()

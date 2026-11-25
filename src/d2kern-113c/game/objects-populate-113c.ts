@@ -895,5 +895,40 @@ export function OBJECTS_InitObjectUnit113c(
 
   const pInteractList = OBJECTS_AllocInteractStrc113c(m, pGame, pObjectsTxt)
   UNITS_SetField7C_113c(m, pUnit, pInteractList)
+
+  const postInitMode = m.u32((pUnit + 0x10) >>> 0) | 0
+  if (postInitMode !== savedMode && (m.u8((pObjectsTxt + 0x167) >>> 0) & 0x20) === 0) {
+    pendingObjectInitModeFixes113c.push({
+      m,
+      pUnit: pUnit >>> 0,
+      savedMode,
+      postInitMode,
+    })
+  }
 }
+
+interface PendingObjectInitModeFix113c {
+  readonly m: Memory113c
+  readonly pUnit: number
+  readonly savedMode: number
+  readonly postInitMode: number
+}
+
+const pendingObjectInitModeFixes113c: PendingObjectInitModeFix113c[] = []
+
+export function clearPendingSavedObjectInitModes113c(): void {
+  pendingObjectInitModeFixes113c.length = 0
+}
+
+export function flushPendingSavedObjectInitModes113c(): void {
+  if (pendingObjectInitModeFixes113c.length === 0) return
+  for (let i = 0; i < pendingObjectInitModeFixes113c.length; i++) {
+    const entry = pendingObjectInitModeFixes113c[i]!
+    if ((entry.m.u32((entry.pUnit + 0x10) >>> 0) | 0) === entry.savedMode) {
+      entry.m.setU32((entry.pUnit + 0x10) >>> 0, entry.postInitMode >>> 0)
+    }
+  }
+  pendingObjectInitModeFixes113c.length = 0
+}
+
 

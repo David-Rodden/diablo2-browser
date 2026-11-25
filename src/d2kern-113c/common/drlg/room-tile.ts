@@ -2386,7 +2386,7 @@ export function DRLGROOMTILE_UpdateTileData113c(
   if ((curFlags & 0x01) !== 0) {
     const curType = m.u32((tileData + 0x1c) >>> 0) | 0;
     if (curType === 8 || curType === 9) {
-      DRLGROOMTILE_ApplyTileFlagsAndSpawnWarp113c(m, x, curFlags, roomEx, tileData, curType, y);
+      DRLGROOMTILE_ApplyTileFlagsAndSpawnWarp113c(m, x, flags, roomEx, tileData, curType, y);
     }
     return;
   }

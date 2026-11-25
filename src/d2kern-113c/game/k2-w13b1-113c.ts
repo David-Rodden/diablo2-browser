@@ -313,6 +313,7 @@ import {
 import { PLAYER_CanManipulateItemDuringInteractOrTrade_6FC588C0_113c } from './k2-w5b1-113c'
 import { NET_SendPacket9D_ItemAction05WithNodePage_6FCAC810_113c } from './k2-w5b2-113c'
 import {
+  AI_ScanRoomTargetAndCountAlliesCallback_6FCC5230_113c,
   ITEMS_FindAutoStackCompatItemInInventory_6FCDC6B0_113c,
   MONAI_FindTargetOrNearestBlockingObstacle_6FCD1BC0_113c,
 } from './k2-w5b3-113c'
@@ -1177,8 +1178,10 @@ export function findTargetForPlayerOrPet6FCD1C90W13B1(
     const pRoom = UNITS_GetRoom113c(m, pOriginUnit) >>> 0
     const posX = UNIT_GetPosX113c(m, pOriginUnit) | 0
     const posY = UNIT_GetPosY113c(m, pOriginUnit) | 0
+    const pRoomEx = pRoom !== 0 ? (m.u32((pRoom + 0x10) >>> 0) >>> 0) : 0
+    const pLogicalInfo = pRoomEx !== 0 ? (m.u32((pRoomEx + 0x64) >>> 0) >>> 0) : 0
     const coordIdx =
-      pRoom !== 0 ? (DUNGEON_GetRoomCoordListIndexAtSubtile113c(m, pRoom, posX, posY) | 0) : 0
+      pLogicalInfo !== 0 ? (DUNGEON_GetRoomCoordListIndexAtSubtile113c(m, pRoom, posX, posY) | 0) : 0
 
     let radius = 35
     if (uType === 1) {
@@ -3979,7 +3982,15 @@ export function D2Game_6FCCB580_113c(
     m.setU32(sp + 0x1c, 0);
     m.setU32(sp + 0x20, 0);
     m.setU32(sp + 0x24, 0);
-    AITARGET_ScanUnitsByModeTable113c(m, 1, sp, pGame, pUnit, 0x6fcc5230);
+    hitD2GameVa113c(0x6FCD17B0);
+    MONAI_ForEachUnitInNonTownAdjacentRoomsWithPlayer_6FCD0CE0_113c(
+      m,
+      pUnit,
+      0x6fcc5230,
+      pGame,
+      sp,
+      AI_ScanRoomTargetAndCountAlliesCallback_6FCC5230_113c,
+    );
     if (bInCombat === 0) {
       if (pOwnerTarget !== 0) {
         pTarget = pOwnerTarget;

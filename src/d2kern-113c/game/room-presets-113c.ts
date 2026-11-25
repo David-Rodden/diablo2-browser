@@ -93,6 +93,278 @@ export interface RoomPresetCallees113c {
 
 /** Scratch "stack" for the on-stack locals of these functions (outside every recorded heap range). */
 let presetStackPtr = 0x7fd00000
+/** Scratch pool for `0x6FD5B320` (`0x245`) repaired `D2PresetUnitStrc` nodes so heap allocation order stays invariant. */
+let presetRepairPoolPtr = 0x7fd20000
+const repairedPresetRooms = new WeakMap<Memory113c, Set<number>>()
+
+function stepPresetSeed64_113c(seed: { lo: number; hi: number }): number {
+  const prod = BigInt(seed.lo >>> 0) * 0x6ac690c5n + BigInt(seed.hi >>> 0)
+  seed.lo = Number(prod & 0xffffffffn) >>> 0
+  seed.hi = Number((prod >> 32n) & 0xffffffffn) >>> 0
+  return seed.lo
+}
+
+function unstepPresetSeed64_113c(seed: { lo: number; hi: number }): void {
+  const prod = (BigInt(seed.hi >>> 0) << 32n) | BigInt(seed.lo >>> 0)
+  const prevLo = prod / 0x6ac690c5n
+  const prevHi = prod % 0x6ac690c5n
+  seed.lo = Number(prevLo & 0xffffffffn) >>> 0
+  seed.hi = Number(prevHi & 0xffffffffn) >>> 0
+}
+
+/**
+ * Repairs `D2RoomExStrc.pPresetUnits (+0x5C)` on TS-generated preset rooms (`pRoomEx >= 0x40000000`)
+ * whose DS1 contains `0x245` (`OBJECTS_SpawnPresetTorchOrBrazier`): `D2Common:0x6FD5B320` (`0x6FD5B377 -> 0x6FD5B460`)
+ * tests `al & 3` and skips on `== 0` (`spawn = (lo & 3) !== 0`), whereas `preset.ts` tested `(lo & 1) !== 0`.
+ */
+function repairSimPresetRoom245List113c(m: Memory113c, pRoom: number): void {
+  if (pRoom === 0) return
+  const pRoomEx = m.u32((pRoom + 0x10) >>> 0) >>> 0
+  if (pRoomEx < 0x40000000) return
+  if ((m.u32((pRoomEx + 0x48) >>> 0) | 0) !== 2) return
+  let seen = repairedPresetRooms.get(m)
+  if (seen === undefined) {
+    seen = new Set<number>()
+    repairedPresetRooms.set(m, seen)
+  }
+  if (seen.has(pRoomEx)) return
+  seen.add(pRoomEx)
+
+  const pPresetRoom = m.u32((pRoomEx + 0x20) >>> 0) >>> 0
+  if (pPresetRoom === 0) return
+  const pMap = m.u32((pPresetRoom + 0x08) >>> 0) >>> 0
+  if (pMap === 0) return
+  const pLvlPrest = m.u32((pMap + 0x08) >>> 0) >>> 0
+  const pFile = m.u32((pMap + 0x0c) >>> 0) >>> 0
+  if (pLvlPrest === 0 || pFile === 0) return
+
+  let has245 = false
+  for (let pSrc = m.u32((pFile + 0x54) >>> 0) >>> 0; pSrc !== 0; pSrc = m.u32((pSrc + 0x0c) >>> 0) >>> 0) {
+    if ((m.u32((pSrc + 0x14) >>> 0) | 0) === 2 && (m.u32((pSrc + 0x04) >>> 0) | 0) === 0x245) {
+      has245 = true
+      break
+    }
+  }
+  if (!has245) return
+
+  const pTables = readSgptDataTablesForPresets113c(m)
+  const nMonStats = pTables !== 0 ? (m.u32((pTables + 0xa80) >>> 0) | 0) : 0
+  const nSuper = m.u32(0x6fdf09b4) | 0
+
+  const bScan = m.u32((pLvlPrest + 0x34) >>> 0) | 0
+  const nPops = m.u32((pLvlPrest + 0x38) >>> 0) | 0
+  const seed = { lo: 0, hi: 0 }
+  if (bScan === 0 && nPops === 0) {
+    const roomInitLo = m.u32((pRoomEx + 0x04) >>> 0) >>> 0
+    const nextLvlLo = (((BigInt(roomInitLo) - 0x29an) & 0xffffffffn) * 0x8a3e6e0dn) & 0xffffffffn
+    const prod2 = nextLvlLo * 0x6ac690c5n + 0x29an
+    seed.lo = roomInitLo
+    seed.hi = Number((prod2 >> 32n) & 0xffffffffn) >>> 0
+  } else {
+    const pLevel = m.u32((pRoomEx + 0x58) >>> 0) >>> 0
+    if (pLevel === 0) return
+    let pFirstMapRoomEx = 0
+    for (let rx = m.u32((pLevel + 0x10) >>> 0) >>> 0; rx !== 0; rx = m.u32((rx + 0x24) >>> 0) >>> 0) {
+      if ((m.u32((rx + 0x48) >>> 0) | 0) !== 2) continue
+      const pr = m.u32((rx + 0x20) >>> 0) >>> 0
+      if (pr !== 0 && (m.u32((pr + 0x08) >>> 0) >>> 0) === pMap) {
+        pFirstMapRoomEx = rx
+      }
+    }
+    if (pFirstMapRoomEx === 0) return
+    let nRolls = 0
+    for (let pSrc = m.u32((pFile + 0x54) >>> 0) >>> 0; pSrc !== 0; pSrc = m.u32((pSrc + 0x0c) >>> 0) >>> 0) {
+      const ut = m.u32((pSrc + 0x14) >>> 0) | 0
+      const cid = m.u32((pSrc + 0x04) >>> 0) | 0
+      if (ut === 1) {
+        if (cid < nMonStats) {
+          const c = cid < 0 ? -1 : cid
+          if (c === 0xcc || c === 0xcd || c === 0x173 || c === 0x174) nRolls++
+        } else {
+          const rel = (cid - nMonStats) | 0
+          if (rel >= nSuper) {
+            const sIdx = (rel - nSuper) | 0
+            if (sIdx >= 0x21 && sIdx <= 0x23) nRolls++
+          }
+        }
+      } else if (ut === 2 && (cid === 0xc4 || cid === 0x105 || cid === 0x245)) {
+        nRolls++
+      }
+    }
+    const firstRoomInitLo = m.u32((pFirstMapRoomEx + 0x04) >>> 0) >>> 0
+    const firstNextLvlLo = Number(
+      (((BigInt(firstRoomInitLo) - 0x29an) & 0xffffffffn) * 0x8a3e6e0dn) & 0xffffffffn,
+    ) >>> 0
+    seed.lo = m.u32((pLevel + 0x1c4) >>> 0) >>> 0
+    seed.hi = m.u32((pLevel + 0x1c8) >>> 0) >>> 0
+    let found = false
+    for (let back = 0; back < 4096; back++) {
+      if (seed.lo === firstNextLvlLo) {
+        found = true
+        break
+      }
+      unstepPresetSeed64_113c(seed)
+    }
+    if (!found) return
+    for (let k = 0; k < 1 + nRolls; k++) {
+      unstepPresetSeed64_113c(seed)
+    }
+  }
+  const mapOffX = Math.imul(m.u32((pMap + 0x10) >>> 0) | 0, 5)
+  const mapOffY = Math.imul(m.u32((pMap + 0x14) >>> 0) | 0, 5)
+  const tileX = m.u32((pRoomEx + 0x34) >>> 0) | 0
+  const tileY = m.u32((pRoomEx + 0x38) >>> 0) | 0
+  const tileW = m.u32((pRoomEx + 0x3c) >>> 0) | 0
+  const tileH = m.u32((pRoomEx + 0x40) >>> 0) | 0
+  const minSubX = Math.imul(tileX, 5)
+  const minSubY = Math.imul(tileY, 5)
+  const maxSubX = Math.imul((tileX + tileW) | 0, 5)
+  const maxSubY = Math.imul((tileY + tileH) | 0, 5)
+
+  interface Ds1Spec {
+    readonly type: number
+    readonly cls: number
+    readonly relX: number
+    readonly relY: number
+    readonly mode: number
+    readonly flags: number
+    readonly buggySpawn: boolean
+    readonly trueSpawn: boolean
+  }
+  const specs: Ds1Spec[] = []
+  for (let pSrc = m.u32((pFile + 0x54) >>> 0) >>> 0; pSrc !== 0; pSrc = m.u32((pSrc + 0x0c) >>> 0) >>> 0) {
+    const nUnitType = m.u32((pSrc + 0x14) >>> 0) | 0
+    const nClassId = m.u32((pSrc + 0x04) >>> 0) | 0
+    let buggySpawn = true
+    let trueSpawn = true
+    if (nUnitType === 1) {
+      if (nClassId < nMonStats) {
+        const c = nClassId < 0 ? -1 : nClassId
+        if (c === 0xcc || c === 0xcd || c === 0x173 || c === 0x174) {
+          const lo = stepPresetSeed64_113c(seed)
+          if (lo % 3 !== 0) {
+            buggySpawn = false
+            trueSpawn = false
+          }
+        }
+      } else {
+        const rel = (nClassId - nMonStats) | 0
+        if (rel >= nSuper) {
+          const sIdx = (rel - nSuper) | 0
+          if (sIdx === 0x21 || sIdx === 0x23) {
+            const lo = stepPresetSeed64_113c(seed)
+            if ((lo & 3) === 0) {
+              buggySpawn = false
+              trueSpawn = false
+            }
+          } else if (sIdx === 0x22) {
+            const lo = stepPresetSeed64_113c(seed)
+            if ((lo & 1) === 0) {
+              buggySpawn = false
+              trueSpawn = false
+            }
+          }
+        }
+      }
+    } else if (nUnitType === 2) {
+      if (nClassId === 0xc4 || nClassId === 0x105) {
+        const lo = stepPresetSeed64_113c(seed)
+        if ((lo & 1) !== 0) {
+          buggySpawn = false
+          trueSpawn = false
+        }
+      } else if (nClassId === 0x245) {
+        const lo = stepPresetSeed64_113c(seed)
+        buggySpawn = (lo & 1) === 0
+        trueSpawn = (lo & 3) !== 0
+      }
+    }
+    const worldX = ((m.u32((pSrc + 0x08) >>> 0) | 0) + mapOffX) | 0
+    const worldY = ((m.u32((pSrc + 0x18) >>> 0) | 0) + mapOffY) | 0
+    if (worldX >= minSubX && worldX < maxSubX && worldY >= minSubY && worldY < maxSubY) {
+      specs.push({
+        type: nUnitType,
+        cls: nClassId,
+        relX: (worldX - minSubX) | 0,
+        relY: (worldY - minSubY) | 0,
+        mode: m.u32(pSrc) | 0,
+        flags: m.u32((pSrc + 0x1c) >>> 0) >>> 0,
+        buggySpawn,
+        trueSpawn,
+      })
+    }
+  }
+
+  let anyDiff = false
+  for (let i = 0; i < specs.length; i++) {
+    if (specs[i]!.buggySpawn !== specs[i]!.trueSpawn) {
+      anyDiff = true
+      break
+    }
+  }
+  if (!anyDiff) return
+
+  const curNodes: number[] = []
+  for (let p = m.u32((pRoomEx + 0x5c) >>> 0) >>> 0; p !== 0; p = m.u32((p + PRESET_OFF_NEXT) >>> 0) >>> 0) {
+    curNodes.push(p)
+  }
+  const buggySpecs = specs.filter(s => s.buggySpawn)
+  let matchStart = -1
+  for (let start = 0; start + buggySpecs.length <= curNodes.length; start++) {
+    let ok = true
+    for (let j = 0; j < buggySpecs.length; j++) {
+      const pNode = curNodes[start + j]!
+      const bs = buggySpecs[j]!
+      if (
+        (m.u32((pNode + PRESET_OFF_TYPE) >>> 0) | 0) !== bs.type ||
+        (m.u32((pNode + PRESET_OFF_CLASS) >>> 0) | 0) !== bs.cls ||
+        (m.u32((pNode + PRESET_OFF_X) >>> 0) | 0) !== bs.relX ||
+        (m.u32((pNode + PRESET_OFF_Y) >>> 0) | 0) !== bs.relY
+      ) {
+        ok = false
+        break
+      }
+    }
+    if (ok) {
+      matchStart = start
+      break
+    }
+  }
+  if (matchStart < 0) return
+
+  const replacement: number[] = []
+  let buggyCursor = 0
+  for (let i = 0; i < specs.length; i++) {
+    const sp = specs[i]!
+    const existingNode = sp.buggySpawn ? curNodes[matchStart + buggyCursor++]! : 0
+    if (!sp.trueSpawn) continue
+    if (existingNode !== 0) {
+      replacement.push(existingNode)
+    } else {
+      const pNew = presetRepairPoolPtr >>> 0
+      presetRepairPoolPtr = (pNew + 0x20) >>> 0
+      m.fill(pNew, 0x20, 0)
+      m.setU32((pNew + PRESET_OFF_MODE) >>> 0, sp.mode >>> 0)
+      m.setU32((pNew + PRESET_OFF_CLASS) >>> 0, sp.cls >>> 0)
+      m.setU32((pNew + PRESET_OFF_X) >>> 0, sp.relX >>> 0)
+      m.setU32((pNew + PRESET_OFF_TYPE) >>> 0, sp.type >>> 0)
+      m.setU32((pNew + PRESET_OFF_Y) >>> 0, sp.relY >>> 0)
+      m.setU32((pNew + PRESET_OFF_FLAGS) >>> 0, sp.flags >>> 0)
+      replacement.push(pNew)
+    }
+  }
+
+  const finalNodes = [
+    ...curNodes.slice(0, matchStart),
+    ...replacement,
+    ...curNodes.slice(matchStart + buggySpecs.length),
+  ]
+  for (let i = 0; i < finalNodes.length; i++) {
+    const nxt = i + 1 < finalNodes.length ? finalNodes[i + 1]! : 0
+    m.setU32((finalNodes[i]! + PRESET_OFF_NEXT) >>> 0, nxt >>> 0)
+  }
+  m.setU32((pRoomEx + 0x5c) >>> 0, finalNodes.length > 0 ? finalNodes[0]! : 0)
+}
 
 /**
  * Preset object post-init (`eax = pGame`, `ecx = pUnit`, `edx = pSaveChain`, plain `ret`): for an object
@@ -250,6 +522,7 @@ export function ROOM_SpawnPresetUnits113c(
 ): void {
   hitD2GameVa113c(0x6FD01430)
   if (pGame === 0) return
+  repairSimPresetRoom245List113c(m, pRoom)
   const pFirst = DUNGEON_AcquireRoomExDT1Mask113c(m, pRoom) >>> 0
   const nLevelId = DUNGEON_GetLevelIdFromRoom113c(m, pRoom) | 0
   for (let pPreset = pFirst; pPreset !== 0; pPreset = m.u32((pPreset + PRESET_OFF_NEXT) >>> 0) >>> 0) {

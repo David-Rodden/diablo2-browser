@@ -335,10 +335,10 @@ describe('Lane C B010 — Real D2Common.dll Differential Replay & Negative Contr
       }
     }
 
-    // 4. WALL_STYLE_GROUP_TABLE_6FDDA758 at VA 0x6FDDA758 (.rdata, 15 ints = 60 bytes)
+    // 4. WALL_STYLE_GROUP_TABLE_6FDDA758 at VA 0x6FDDA758 (.rdata, 20 ints = 80 bytes covering orientations 0..19)
     const wallGroupOff = 0x6fdda758 - 0x6fd50000;
-    expect(WALL_STYLE_GROUP_TABLE_6FDDA758.length).toBe(15);
-    for (let i = 0; i < 15; i++) {
+    expect(WALL_STYLE_GROUP_TABLE_6FDDA758.length).toBe(20);
+    for (let i = 0; i < 20; i++) {
       expect(WALL_STYLE_GROUP_TABLE_6FDDA758[i]).toBe(buf.readInt32LE(wallGroupOff + i * 4));
     }
 

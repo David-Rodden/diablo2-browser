@@ -68,8 +68,8 @@ const K6_S3_SCENARIO_SPECS_113C: readonly K6S3ScenarioSpec113c[] = [
     totalHits: 1605,
     d2CommonExecuted: 835,
     d2GameExecuted: 770,
-    minStrictHorizon: 1026,
-    minPosHorizon: 1234,
+    minStrictHorizon: 1480,
+    minPosHorizon: 1480,
   },
   {
     name: 'k6s3-act1-bosses-cowlevel-imbue',
@@ -78,8 +78,8 @@ const K6_S3_SCENARIO_SPECS_113C: readonly K6S3ScenarioSpec113c[] = [
     totalHits: 1801,
     d2CommonExecuted: 924,
     d2GameExecuted: 877,
-    minStrictHorizon: 524,
-    minPosHorizon: 524,
+    minStrictHorizon: 1611,
+    minPosHorizon: 1611,
   },
   {
     name: 'k6s3-act2-bosses-staff-duriel',
@@ -88,8 +88,8 @@ const K6_S3_SCENARIO_SPECS_113C: readonly K6S3ScenarioSpec113c[] = [
     totalHits: 1856,
     d2CommonExecuted: 932,
     d2GameExecuted: 924,
-    minStrictHorizon: 461,
-    minPosHorizon: 461,
+    minStrictHorizon: 3028,
+    minPosHorizon: 3028,
   },
   {
     name: 'k6s3-act3-council-mephisto-quests',
@@ -98,8 +98,8 @@ const K6_S3_SCENARIO_SPECS_113C: readonly K6S3ScenarioSpec113c[] = [
     totalHits: 1816,
     d2CommonExecuted: 914,
     d2GameExecuted: 902,
-    minStrictHorizon: 1053,
-    minPosHorizon: 1053,
+    minStrictHorizon: 2001,
+    minPosHorizon: 2001,
   },
   {
     name: 'k6s3-act4-izual-hellforge-diablo',
@@ -108,8 +108,8 @@ const K6_S3_SCENARIO_SPECS_113C: readonly K6S3ScenarioSpec113c[] = [
     totalHits: 1810,
     d2CommonExecuted: 931,
     d2GameExecuted: 879,
-    minStrictHorizon: 853,
-    minPosHorizon: 853,
+    minStrictHorizon: 4217,
+    minPosHorizon: 4217,
   },
   {
     name: 'k6s3-act5-shenk-anya-ancients-baal',
@@ -118,8 +118,8 @@ const K6_S3_SCENARIO_SPECS_113C: readonly K6S3ScenarioSpec113c[] = [
     totalHits: 1934,
     d2CommonExecuted: 940,
     d2GameExecuted: 994,
-    minStrictHorizon: 1160,
-    minPosHorizon: 1160,
+    minStrictHorizon: 6547,
+    minPosHorizon: 6547,
   },
   {
     name: 'k6s3-crafting-runewords-c2s-monai',
@@ -128,8 +128,8 @@ const K6_S3_SCENARIO_SPECS_113C: readonly K6S3ScenarioSpec113c[] = [
     totalHits: 1687,
     d2CommonExecuted: 956,
     d2GameExecuted: 731,
-    minStrictHorizon: 1089,
-    minPosHorizon: 1487,
+    minStrictHorizon: 1834,
+    minPosHorizon: 1834,
   },
 ]
 

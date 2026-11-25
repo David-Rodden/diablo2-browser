@@ -582,6 +582,7 @@ export function buildRenderableUnits(
         (bodyLoc) => host.world.containers.equipmentBySlot.get(bodyLoc)?.code,
         selfWeaponSet,
         (bodyLoc) => host.world.containers.equipmentBySlot.get(bodyLoc)?.quality,
+        (bodyLoc) => host.world.containers.equipmentBySlot.get(bodyLoc)?.uniqueItemId,
       ),
       states: selfStates,
       stats: selfUnit?.stats ?? host.world.self.stats,
@@ -1145,6 +1146,7 @@ export function buildRenderableUnits(
                     (bodyLoc) => remoteEquipSlots.get(bodyLoc)?.code,
                     0,
                     (bodyLoc) => remoteEquipSlots.get(bodyLoc)?.quality,
+                    (bodyLoc) => remoteEquipSlots.get(bodyLoc)?.uniqueItemId,
                   ),
                 }
               : {}),

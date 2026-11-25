@@ -5168,6 +5168,16 @@ export function PATH_Step113c(m: Memory113c, pUnit: number, nRate: number): numb
   return 0
 }
 
+let skipDeadCollisionUnit113c = 0
+
+/**
+ * Scoped guard used when `D2Game:0x6FC9542E` (`MONSTATS2_CheckFlagBit(classId, 0x13)` `deadCol`)
+ * skips `PATH_MarkUnitDeadCollision(pUnit, 1)` on death.
+ */
+export function setSkipDeadCollisionUnit113c(pUnit: number): void {
+  skipDeadCollisionUnit113c = pUnit >>> 0
+}
+
 /**
  * `@va D2Common:0x6FD865A0` (`D2Common.#10084` `PATH_MarkUnitDeadCollision113c`,
  * `__stdcall(pUnit, bIsCorpse) -> void`, `ret 8`).
@@ -5177,8 +5187,11 @@ export function PATH_MarkUnitDeadCollision113c(
   pUnit: number,
   bIsCorpse: number,
 ): void {
-  hitD2CommonVa113c(0x6FD865A0)
   const unit = pUnit >>> 0
+  if (skipDeadCollisionUnit113c !== 0 && unit === skipDeadCollisionUnit113c && (bIsCorpse | 0) === 1) {
+    return
+  }
+  hitD2CommonVa113c(0x6FD865A0)
   const pPath = m.u32((unit + 0x2c) >>> 0)
   if ((bIsCorpse | 0) === 0 && m.u32(unit) === 1) {
     PATH_RemoveUnitCollisionFootprint113c(m, unit, 1)

@@ -1128,7 +1128,7 @@ export function D2GAME_SUNIT_SyncUnitStateToClient113c(
   }
   const unitType = mem.u32(pUnit) >>> 0
   const unitFlags = mem.u32(pUnit + 0xc4) >>> 0
-  const hasFlag10 = (unitFlags & 0x10) !== 0 && (unitFlags & 0x800) === 0
+  const hasFlag10 = (unitFlags & 0x10) !== 0
   let bPreSynced = 0
   if (hasFlag10) {
     const pSpecial =

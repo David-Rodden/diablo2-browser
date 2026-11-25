@@ -322,6 +322,46 @@ export function DATATBLS_GetMonStats2TxtRecordFromMonStatsIdInline113c(m: Memory
   return monStats2FromMonStatsId(m, nMonStatsId)
 }
 
+function isLoadedU32Inline113c(m: Memory113c, addr: number): boolean {
+  const a = addr >>> 0
+  let cur: unknown = m
+  while (cur !== null && typeof cur === 'object' && 'inner' in cur) {
+    cur = (cur as { inner: unknown }).inner
+  }
+  const curObj = cur as {
+    overlayKnown?: Map<number, Uint8Array>
+    baseKnown?: Map<number, Uint8Array>
+    known?: Map<number, Uint8Array>
+    size?: number
+  } | null
+  if (curObj?.overlayKnown !== undefined && curObj.baseKnown !== undefined) {
+    for (let i = 0; i < 4; i++) {
+      const b = (a + i) >>> 0
+      const pg = b >>> 12
+      const off = b & 0xfff
+      const ok = curObj.overlayKnown.get(pg)
+      if (ok !== undefined && ok[off] !== 0) continue
+      const bk = curObj.baseKnown.get(pg)
+      if (bk !== undefined && bk[off] !== 0) continue
+      return false
+    }
+    return true
+  }
+  const known = curObj?.known
+  if (known !== undefined) {
+    for (let i = 0; i < 4; i++) {
+      const b = (a + i) >>> 0
+      const page = known.get(b >>> 12)
+      if (page === undefined || page[b & 0xfff] === 0) return false
+    }
+    return true
+  }
+  if (typeof curObj?.size === 'number') {
+    return a !== 0 && a + 4 <= curObj.size
+  }
+  return true
+}
+
 /**
  * Bit test shared by 0x6FD51400 / 0x6FD51470: `if (rec == 0) return 0` (explicit `test eax,eax` after the add),
  * then `gdwBitMasks[idx & 7] & byte[rec + off + (idx sar 3)]` (`movzx` byte read first, then the IAT load).
@@ -332,6 +372,9 @@ function monStats2BitTest(m: Memory113c, nMonStatsId: number, nBitIndex: number,
   if (rec === 0) return 0
   const idx = nBitIndex | 0
   const byte = m.u8((rec + off + sar32(idx, 3)) >>> 0)
+  if (!isLoadedU32Inline113c(m, D2COMMON_GDWBITMASKS_IAT_VA_113C)) {
+    return (((1 << (idx & 7)) >>> 0) & byte) >>> 0
+  }
   const pBitMasks = m.u32(D2COMMON_GDWBITMASKS_IAT_VA_113C)
   return (m.u32((pBitMasks + (idx & 7) * 4) >>> 0) & byte) >>> 0
 }

@@ -569,6 +569,7 @@ describe('[K6] Fix 2 real-DLL D2Game.dll Round-2 parity & MonAI unlock vectors',
       off += 4100
     }
     bindK2KernelGlobals113c(mem)
+    mem.fill(0x6fd18d10, 4, 0)
     mem.fill(STAGE_BASE, STAGE_FIXED_SIZE, 0)
     mem.commitOverlayToBase()
   })

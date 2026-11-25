@@ -98,6 +98,36 @@ export interface LoadedMeshSkinUnit {
   readonly shadowScale: number
 }
 
+/** One weapon model of a shared weapon pack, uploaded to one renderer. */
+export interface LoadedMeshSkinWeapon {
+  readonly gpu: MeshSkinGpuModel
+  /** The hand that holds it as the main weapon (bows sit in the left hand). */
+  readonly hand: 'right' | 'left'
+}
+
+/** `weapons.json` of a weapon pack: `UniqueItems.txt` row id -> model file and main hand. */
+type WeaponPackIndex = ReadonlyMap<number, { readonly file: string; readonly hand: 'right' | 'left' }>
+
+const WEAPON_PACK_ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,47}$/
+
+function parseWeaponPackIndex(raw: unknown): WeaponPackIndex {
+  const weapons = (raw as { weapons?: unknown } | null)?.weapons
+  if (typeof weapons !== 'object' || weapons === null || Array.isArray(weapons)) {
+    throw new Error('weapons.json has no "weapons" object')
+  }
+  const out = new Map<number, { file: string; hand: 'right' | 'left' }>()
+  for (const [key, value] of Object.entries(weapons as Record<string, unknown>)) {
+    const entry = value as { file?: unknown; hand?: unknown } | null
+    const file = entry?.file
+    const hand = entry?.hand
+    if (!/^\d{1,4}$/.test(key) || typeof file !== 'string' || !isValidSkinRelativeFile(file) || (hand !== 'right' && hand !== 'left')) {
+      throw new Error(`weapons.json entry "${key}" is invalid`)
+    }
+    out.set(Number(key), { file, hand })
+  }
+  return out
+}
+
 /** Mesh skin runtime owned by one sprite renderer. */
 export interface MeshSkinRuntime {
   readonly meshRenderer: MeshSkinRenderer
@@ -105,6 +135,8 @@ export interface MeshSkinRuntime {
 }
 
 export const MESH_SKIN_HERO_UNIT_KEY = 'hero'
+/** Unit key prefix of a skin's shape-shift models (`morph:40`, `morph:tg`, ...). */
+export const MESH_SKIN_MORPH_UNIT_PREFIX = 'morph:'
 
 export interface SkinAvatarCompositeFrame {
   readonly x: number
@@ -190,6 +222,13 @@ const BUILTIN_FALLBACK_SKINS: readonly CharacterSkinCatalogEntry[] = Object.free
     previewPath: 'ne-kelthuzad/preview.png',
   }),
   Object.freeze({
+    id: 'ne-wow-undead',
+    name: Object.freeze({ zh: '亡灵死灵法师（随装备换装）', en: 'Undead Necromancer (follows equipment)' }),
+    targetClass: 'ne',
+    source: 'builtin',
+    manifestPath: 'ne-wow-undead/skin.json',
+  }),
+  Object.freeze({
     id: 'so-jaina',
     name: Object.freeze({ zh: '吉安娜·普罗德摩尔', en: 'Jaina Proudmoore' }),
     description: Object.freeze({
@@ -215,11 +254,25 @@ const BUILTIN_FALLBACK_SKINS: readonly CharacterSkinCatalogEntry[] = Object.free
     manifestPath: 'am-sylvanas/skin.json',
   }),
   Object.freeze({
+    id: 'am-wow-bloodelf',
+    name: Object.freeze({ zh: '血精灵游侠（随装备换装）', en: 'Blood Elf Ranger (follows equipment)' }),
+    targetClass: 'am',
+    source: 'builtin',
+    manifestPath: 'am-wow-bloodelf/skin.json',
+  }),
+  Object.freeze({
     id: 'pa-arthas',
     name: Object.freeze({ zh: '阿尔萨斯王子', en: 'Arthas (Paladin)' }),
     targetClass: 'pa',
     source: 'builtin',
     manifestPath: 'pa-arthas/skin.json',
+  }),
+  Object.freeze({
+    id: 'pa-wow-dwarf',
+    name: Object.freeze({ zh: '矮人圣骑士（随装备换装）', en: 'Dwarf Paladin (follows equipment)' }),
+    targetClass: 'pa',
+    source: 'builtin',
+    manifestPath: 'pa-wow-dwarf/skin.json',
   }),
   Object.freeze({
     id: 'ba-grom',
@@ -229,11 +282,25 @@ const BUILTIN_FALLBACK_SKINS: readonly CharacterSkinCatalogEntry[] = Object.free
     manifestPath: 'ba-grom/skin.json',
   }),
   Object.freeze({
+    id: 'ba-wow-orc',
+    name: Object.freeze({ zh: '兽人战士（随装备换装，可双持）', en: 'Orc Warrior (follows equipment, dual wield)' }),
+    targetClass: 'ba',
+    source: 'builtin',
+    manifestPath: 'ba-wow-orc/skin.json',
+  }),
+  Object.freeze({
     id: 'dz-malfurion',
     name: Object.freeze({ zh: '玛法里奥·怒风', en: 'Malfurion Stormrage' }),
     targetClass: 'dz',
     source: 'builtin',
     manifestPath: 'dz-malfurion/skin.json',
+  }),
+  Object.freeze({
+    id: 'dz-wow-nightelf',
+    name: Object.freeze({ zh: '暗夜精灵德鲁伊（随装备换装）', en: 'Night Elf Druid (follows equipment)' }),
+    targetClass: 'dz',
+    source: 'builtin',
+    manifestPath: 'dz-wow-nightelf/skin.json',
   }),
   Object.freeze({
     id: 'ai-maiev',
@@ -242,17 +309,24 @@ const BUILTIN_FALLBACK_SKINS: readonly CharacterSkinCatalogEntry[] = Object.free
     source: 'builtin',
     manifestPath: 'ai-maiev/skin.json',
   }),
+  Object.freeze({
+    id: 'ai-wow-draenei',
+    name: Object.freeze({ zh: '德莱尼刺客（随装备换装，可双持）', en: 'Draenei Assassin (follows equipment, dual wield)' }),
+    targetClass: 'ai',
+    source: 'builtin',
+    manifestPath: 'ai-wow-draenei/skin.json',
+  }),
 ])
 
 /** Built-in skin a class gets by default when the skin plugin is switched on. */
 export const BUILTIN_DEFAULT_SKIN_BY_CLASS: Readonly<Partial<Record<PlayerClassToken, string>>> = Object.freeze({
-  am: 'am-sylvanas',
-  so: 'so-jaina',
-  ne: 'ne-kelthuzad',
-  pa: 'pa-arthas',
-  ba: 'ba-grom',
-  dz: 'dz-malfurion',
-  ai: 'ai-maiev',
+  am: 'am-wow-bloodelf',
+  so: 'so-wow-human-mage',
+  ne: 'ne-wow-undead',
+  pa: 'pa-wow-dwarf',
+  ba: 'ba-wow-orc',
+  dz: 'dz-wow-nightelf',
+  ai: 'ai-wow-draenei',
 })
 
 const CLASS_DISPLAY_NAMES: Readonly<Record<PlayerClassToken, { readonly zh: string; readonly en: string }>> = {
@@ -320,12 +394,20 @@ async function defaultDecodeMeshTexture(bytes: Uint8Array, mimeType: string): Pr
 }
 
 /** Models, textures and playback state of mesh skins for one sprite renderer. */
+/** Anything the per-renderer mesh cache holds: it owns one uploaded model. */
+interface MeshSkinCacheEntry {
+  readonly gpu: MeshSkinGpuModel
+}
+
+/** Cache key namespace of weapon pack models (`weapon::<pack>::<id>`); never a skin id. */
+const MESH_SKIN_WEAPON_KEY_PREFIX = 'weapon::'
+
 class PerRendererMeshSkinCache implements MeshSkinRuntime {
   readonly meshRenderer: MeshSkinRenderer
   readonly animator = new MeshSkinAnimator()
   private readonly renderer: SpriteRenderer
-  private readonly loaded = new Map<string, LoadedMeshSkinUnit>()
-  private readonly inflight = new Map<string, Promise<LoadedMeshSkinUnit | null>>()
+  private readonly loaded = new Map<string, MeshSkinCacheEntry>()
+  private readonly inflight = new Map<string, Promise<MeshSkinCacheEntry | null>>()
   private readonly failed = new Set<string>()
   /** Bumped by every eviction so loads that were in flight at that moment are discarded. */
   private generation = 0
@@ -335,30 +417,31 @@ class PerRendererMeshSkinCache implements MeshSkinRuntime {
     this.meshRenderer = new MeshSkinRenderer(renderer)
   }
 
-  getReady(cacheKey: string): LoadedMeshSkinUnit | undefined {
+  /** The entry under `cacheKey`; the key's namespace fixes its type (units vs. pack weapons). */
+  getReady<T extends MeshSkinCacheEntry = LoadedMeshSkinUnit>(cacheKey: string): T | undefined {
     const existing = this.loaded.get(cacheKey)
     if (existing && this.renderer.isDisposed) {
       this.loaded.clear()
       return undefined
     }
-    return existing
+    return existing as T | undefined
   }
 
   hasFailed(cacheKey: string): boolean {
     return this.failed.has(cacheKey)
   }
 
-  ensureLoaded(
+  ensureLoaded<T extends MeshSkinCacheEntry = LoadedMeshSkinUnit>(
     cacheKey: string,
-    loadFn: (meshRenderer: MeshSkinRenderer) => Promise<LoadedMeshSkinUnit | null>,
-  ): Promise<LoadedMeshSkinUnit | null> {
-    const existing = this.getReady(cacheKey)
+    loadFn: (meshRenderer: MeshSkinRenderer) => Promise<T | null>,
+  ): Promise<T | null> {
+    const existing = this.getReady<T>(cacheKey)
     if (existing) return Promise.resolve(existing)
     if (this.failed.has(cacheKey) || this.renderer.isDisposed) return Promise.resolve(null)
     const pending = this.inflight.get(cacheKey)
-    if (pending) return pending
+    if (pending) return pending as Promise<T | null>
     const generation = this.generation
-    const p = (async (): Promise<LoadedMeshSkinUnit | null> => {
+    const p = (async (): Promise<T | null> => {
       try {
         const unit = await loadFn(this.meshRenderer)
         // An eviction while loading (plugin disabled, skin replaced) makes this result stale.
@@ -791,6 +874,8 @@ class PerRendererSkinAtlasCache {
 
 export class CharacterSkinService {
   private readonly skinsBaseUrl: string
+  /** Weapon pack indexes by pack id: `'loading'`, the parsed index, or `null` when unavailable. */
+  private readonly weaponPackIndexes = new Map<string, WeaponPackIndex | 'loading' | null>()
   private readonly fetchFn: typeof fetch | undefined
   private readonly decodeImageBytes: (bytes: Uint8Array, expectedW: number, expectedH: number) => Promise<DecodedSkinImage>
   private readonly decodeMeshTexture: (bytes: Uint8Array, mimeType: string) => Promise<DecodedSkinImage>
@@ -1169,7 +1254,11 @@ export class CharacterSkinService {
         continue
       }
       this.gpuCaches.get(renderer)?.evictAllMinions()
-      this.meshCaches.get(renderer)?.evictWhere((key) => !key.endsWith(`::${MESH_SKIN_HERO_UNIT_KEY}`))
+      this.meshCaches
+        .get(renderer)
+        ?.evictWhere(
+          (key) => !key.endsWith(`::${MESH_SKIN_HERO_UNIT_KEY}`) && !key.includes(`::${MESH_SKIN_MORPH_UNIT_PREFIX}`),
+        )
     }
   }
 
@@ -1303,6 +1392,89 @@ export class CharacterSkinService {
     return 'loading'
   }
 
+  /**
+   * The model the selected mesh skin of `classToken` shows for the morph `morphToken` (`40`, `tg`,
+   * ...), `'loading'` while it loads, or `null` when the skin has no model for that morph.
+   */
+  getMeshSkinMorphUnit(
+    renderer: SpriteRenderer,
+    classToken: PlayerClassToken,
+    morphToken: string,
+  ): LoadedMeshSkinUnit | 'loading' | null {
+    if (!this.config.enabled) return null
+    const skinId = this.getSelectedSkinId(classToken)
+    if (!skinId) return null
+    const manifest = this.peekSelectedManifest(classToken)
+    if (manifest === 'loading') return 'loading'
+    const token = morphToken.trim().toLowerCase()
+    if (manifest === null || manifest.format !== 'mesh' || !manifest.morphs?.[token]) return null
+    const unitKey = `${MESH_SKIN_MORPH_UNIT_PREFIX}${token}`
+    const cache = this.getOrCreateMeshCache(renderer)
+    const cacheKey = `${skinId}::${unitKey}`
+    const ready = cache.getReady(cacheKey)
+    if (ready) return ready
+    if (cache.hasFailed(cacheKey)) return null
+    void this.ensureMeshSkinUnit(renderer, skinId, unitKey)
+    return 'loading'
+  }
+
+  /**
+   * Synchronous render-loop lookup for one weapon of a shared weapon pack (`<skins>/<pack>/`):
+   * the uploaded model, `'loading'` while its index or file is being fetched (started on first
+   * miss), or `null` when the pack has no model for `uniqueId` or it cannot be loaded.
+   */
+  getMeshSkinWeapon(renderer: SpriteRenderer, pack: string, uniqueId: number): LoadedMeshSkinWeapon | 'loading' | null {
+    if (!this.config.enabled || !WEAPON_PACK_ID_PATTERN.test(pack)) return null
+    const index = this.weaponPackIndexes.get(pack)
+    if (index === undefined) {
+      void this.loadWeaponPackIndex(pack)
+      return 'loading'
+    }
+    if (index === 'loading') return 'loading'
+    const entry = index?.get(uniqueId)
+    if (!entry) return null
+    const cache = this.getOrCreateMeshCache(renderer)
+    const cacheKey = `${MESH_SKIN_WEAPON_KEY_PREFIX}${pack}::${String(uniqueId)}`
+    const ready = cache.getReady<LoadedMeshSkinWeapon>(cacheKey)
+    if (ready) return ready
+    if (cache.hasFailed(cacheKey)) return null
+    void cache.ensureLoaded<LoadedMeshSkinWeapon>(cacheKey, async (meshRenderer) => {
+      if (!this.fetchFn) throw new Error('fetch is unavailable')
+      const url = `${this.skinsBaseUrl}/${pack}/${entry.file}`
+      const resp = await this.fetchFn(url)
+      if (!resp.ok) throw new Error(`HTTP ${String(resp.status)} fetching ${url}`)
+      const model = parseMeshSkinModel(new Uint8Array(await resp.arrayBuffer()))
+      const decoded: DecodedSkinImage[] = []
+      try {
+        for (const img of model.images) decoded.push(await this.decodeMeshTexture(img.bytes, img.mimeType))
+        if (renderer.isDisposed) return null
+        const gpu = meshRenderer.uploadModel(
+          model,
+          decoded.map((d) => d.source as MeshSkinTextureSource),
+        )
+        return { gpu, hand: entry.hand }
+      } finally {
+        for (const d of decoded) d.close?.()
+      }
+    })
+    return 'loading'
+  }
+
+  private async loadWeaponPackIndex(pack: string): Promise<void> {
+    this.weaponPackIndexes.set(pack, 'loading')
+    try {
+      if (!this.fetchFn) throw new Error('fetch is unavailable')
+      const url = `${this.skinsBaseUrl}/${pack}/weapons.json`
+      const resp = await this.fetchFn(url, { cache: 'no-cache' })
+      if (!resp.ok) throw new Error(`HTTP ${String(resp.status)} fetching ${url}`)
+      this.weaponPackIndexes.set(pack, parseWeaponPackIndex(await resp.json()))
+    } catch (err) {
+      // No pack on this site: players keep the family models (and their quality glow).
+      this.weaponPackIndexes.set(pack, null)
+      console.warn(`[CharacterSkinService] Weapon pack "${pack}" is unavailable: ${(err as Error).message}`)
+    }
+  }
+
   ensureMeshSkinUnit(
     renderer: SpriteRenderer,
     skinId: string,
@@ -1312,8 +1484,11 @@ export class CharacterSkinService {
     const cache = this.getOrCreateMeshCache(renderer)
     return cache.ensureLoaded(`${skinId}::${unitKey}`, async (meshRenderer) => {
       const manifest = await this.loadManifest(skinId)
-      const minionSpec = minionKey === null ? undefined : manifest.minions?.[unitKey]
-      const spec = minionKey === null ? manifest.mesh : minionSpec?.mesh
+      const morphSpec = unitKey.startsWith(MESH_SKIN_MORPH_UNIT_PREFIX)
+        ? manifest.morphs?.[unitKey.slice(MESH_SKIN_MORPH_UNIT_PREFIX.length)]
+        : undefined
+      const minionSpec = minionKey === null || morphSpec ? undefined : manifest.minions?.[unitKey]
+      const spec = minionKey === null ? manifest.mesh : (morphSpec?.mesh ?? minionSpec?.mesh)
       if (!spec) return null
       const model = parseMeshSkinModel(await this.loadSkinFileBytes(skinId, spec.file))
       const clips: Record<string, LoadedMeshSkinClip> = {}
@@ -1334,7 +1509,7 @@ export class CharacterSkinService {
           model,
           decoded.map((d) => d.source as MeshSkinTextureSource),
         )
-        const owner = minionKey === null ? manifest : minionSpec
+        const owner = minionKey === null ? manifest : (morphSpec ?? minionSpec)
         return {
           skinId,
           unitKey,
@@ -1342,8 +1517,8 @@ export class CharacterSkinService {
           model,
           gpu,
           clips,
-          floating: owner?.floating === true,
-          shadowOffsetY: owner?.shadowOffsetY ?? 0,
+          floating: owner !== undefined && 'floating' in owner && owner.floating === true,
+          shadowOffsetY: owner !== undefined && 'shadowOffsetY' in owner ? (owner.shadowOffsetY ?? 0) : 0,
           shadowScale: owner?.shadowScale ?? 1,
         }
       } finally {

@@ -3169,7 +3169,7 @@ export function MONSTER_SpawnPresetPackTable_6FD0F940_113c(
               const pAiGeneral = pMonData !== 0 ? m.u32((pMonData + 0x28) >>> 0) >>> 0 : 0
               m.setU32((pAiGeneral + 0x2c) >>> 0, dwOwnerGuid)
               m.setU32((pAiGeneral + 0x30) >>> 0, dwOwnerType)
-              m.setU32((pAiGeneral + 0x28) >>> 0, pRoom >>> 0)
+              m.setU32((pAiGeneral + 0x28) >>> 0, pGame >>> 0)
             }
             bSpawnedAny = 1
           }

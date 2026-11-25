@@ -58,6 +58,10 @@ async function main(): Promise<void> {
       app.pluginMenu.open();
       app.pluginMenu.selectPlugin('character-skins');
       await app.plugins.setEnabled('character-skins', true);
+      // The checks below are about Kel'Thuzad and his summons; he is not the Necromancer default.
+      const mod = await import('/src/client/render/character-skin-cache.ts');
+      const svc = mod.getGlobalCharacterSkinService();
+      svc.setConfig({ selectedByClass: { ...svc.getConfig().selectedByClass, ne: 'ne-kelthuzad' } });
       app.pluginMenu.render();
       return true;
     })()`)
@@ -285,9 +289,13 @@ async function main(): Promise<void> {
       [6, 'ai', 'ai-maiev'],
     ] as const) {
       const modelsBefore = await h.cdp.evaluate<number>(countMeshModels)
-      await h.cdp.evaluate(`(() => {
+      await h.cdp.evaluate(`(async () => {
         const app = window.__d2Play;
         const w = app.session.world;
+        // Select the skin explicitly: it is not necessarily the class default.
+        const mod = await import('/src/client/render/character-skin-cache.ts');
+        const svc = mod.getGlobalCharacterSkinService();
+        svc.setConfig({ selectedByClass: { ...svc.getConfig().selectedByClass, ${token}: '${skinId}' } });
         w.self.charClass = ${String(classId)};
         app.session.selfAppearanceCache = null;
         const u = w.getUnit('player', ${String(selfId)});
@@ -389,6 +397,164 @@ async function main(): Promise<void> {
         await h.tick(3)
         await h.cdp.captureScreenshot(join(outDir, `08-so-wow-human-mage-${name}-800x600.png`))
       }
+    }
+
+    // Druid paper-doll skin with shape-shift models: the hero model normally, the skin's worgen for
+    // the werewolf state (139, token `40`) and its furbolg for the werebear state (140, token `tg`).
+    {
+      const setDruid = (morphState: number | null): Promise<unknown> =>
+        h.cdp.evaluate(`(async () => {
+          const app = window.__d2Play;
+          const w = app.session.world;
+          const mod = await import('/src/client/render/character-skin-cache.ts');
+          const svc = mod.getGlobalCharacterSkinService();
+          svc.setConfig({ selectedByClass: { ...svc.getConfig().selectedByClass, dz: 'dz-wow-nightelf' } });
+          const eq = w.containers.equipmentBySlot;
+          for (const k of [...eq.keys()]) eq.delete(k);
+          w.self.charClass = 5;
+          app.session.selfAppearanceCache = null;
+          const u = w.getUnit('player', ${String(selfId)});
+          const morphStates = ${JSON.stringify(morphState === null ? [] : [morphState])};
+          for (const st of [139, 140]) w.self.states.delete(st);
+          for (const st of morphStates) w.self.states.add(st);
+          if (u) { u.classId = 5; u.token = 'dz'; u.mode = 1; u.dir64 = 0; u.targetDirection = 0; u.castState = undefined; u.states.replaceAll(morphStates); }
+          app.hudModel.syncFromWorld();
+          // Appearance-only items (no wire stats), set after the HUD sync like the Sorceress looks above.
+          eq.set(3, { id: 7003, itemId: 7003, code: 'lea', rawCode: 'lea', bodyLoc: 3, equippedSlot: 3, identified: true, quality: 2, stats: [] });
+          eq.set(4, { id: 7004, itemId: 7004, code: 'clb', rawCode: 'clb', bodyLoc: 4, equippedSlot: 4, identified: true, quality: 2, stats: [] });
+          app.session.selfAppearanceCache = null;
+          app.renderFrame(performance.now());
+        })()`)
+      const druidForms: readonly (readonly [string, number | null, string, string])[] = [
+        ['hero', null, `player:${String(selfId)}`, 'nu:1h'],
+        ['werewolf', 139, `player:${String(selfId)}:40`, 'nu'],
+        ['werebear', 140, `player:${String(selfId)}:tg`, 'nu'],
+      ]
+      await h.cdp.setViewport(800, 600)
+      await h.cdp.evaluate(`window.__d2Play.settings.set({ viewport: '800x600' })`)
+      for (const [name, morphState, animKey, wantClip] of druidForms) {
+        await setDruid(morphState)
+        let clip: string | null = null
+        for (let i = 0; i < 80 && clip !== wantClip; i += 1) {
+          await h.tick(2)
+          clip = await h.cdp.evaluate<string | null>(`(async () => {
+            const mod = await import('/src/client/render/character-skin-cache.ts');
+            window.__d2Play.renderFrame(performance.now());
+            for (const rt of mod.getGlobalCharacterSkinService().listMeshSkinRuntimes()) {
+              const st = rt.animator.snapshot().filter((u) => u.unitKey === '${animKey}').pop();
+              if (st) return st.clip;
+            }
+            return null;
+          })()`)
+          if (clip !== wantClip) await sleep(100)
+        }
+        assert(clip === wantClip, `Druid ${name}: expected clip '${wantClip}' under '${animKey}', got '${String(clip)}'`)
+        await h.tick(3)
+        await h.cdp.captureScreenshot(join(outDir, `09-dz-wow-nightelf-${name}-800x600.png`))
+      }
+      await setDruid(null)
+    }
+
+    // The other paper-doll skins: each class's model plays the clip of the weapon worn; a second
+    // weapon (Barbarian, Assassin) goes to the left hand as the off-hand option `w-<weapon>`.
+    {
+      const classLooks: readonly (readonly [number, string, string, Readonly<Record<number, string>>, string, string])[] = [
+        [0, 'am', 'am-wow-bloodelf', { 3: 'lea', 4: 'lbw' }, 'nu:bow', 'none'],
+        [2, 'ne', 'ne-wow-undead', { 3: 'qui', 4: 'wnd', 5: 'ne1' }, 'nu:1h', 'head'],
+        [3, 'pa', 'pa-wow-dwarf', { 3: 'plt', 4: 'scp', 5: 'pa1' }, 'nu:1h', 'paladin'],
+        [4, 'ba', 'ba-wow-orc', { 3: 'stu', 4: 'clm', 5: 'hax' }, 'nu:1h', 'w-axe'],
+        [6, 'ai', 'ai-wow-draenei', { 3: 'lea', 4: 'ktr', 5: 'ktr' }, 'nu:1h', 'w-claw'],
+      ]
+      for (const [classId, token, skinId, codes, wantClip, wantOffhand] of classLooks) {
+        await h.cdp.evaluate(`(async () => {
+          const app = window.__d2Play;
+          const w = app.session.world;
+          const mod = await import('/src/client/render/character-skin-cache.ts');
+          const svc = mod.getGlobalCharacterSkinService();
+          svc.setConfig({ selectedByClass: { ...svc.getConfig().selectedByClass, ${token}: '${skinId}' } });
+          const eq = w.containers.equipmentBySlot;
+          for (const k of [...eq.keys()]) eq.delete(k);
+          w.self.charClass = ${String(classId)};
+          const u = w.getUnit('player', ${String(selfId)});
+          if (u) { u.classId = ${String(classId)}; u.token = '${token}'; u.mode = 1; u.dir64 = 4; u.targetDirection = 4; u.castState = undefined; u.states.replaceAll([]); }
+          app.hudModel.syncFromWorld();
+          for (const [slot, code] of Object.entries(${JSON.stringify(codes)})) {
+            eq.set(Number(slot), { id: 7000 + Number(slot), itemId: 7000 + Number(slot), code, rawCode: code, bodyLoc: Number(slot), equippedSlot: Number(slot), identified: true, quality: 2, stats: [] });
+          }
+          app.session.selfAppearanceCache = null;
+          app.renderFrame(performance.now());
+        })()`)
+        let got: { clip: string | null; offhand: string | null } = { clip: null, offhand: null }
+        for (let i = 0; i < 100 && got.clip !== wantClip; i += 1) {
+          await h.tick(2)
+          got = await h.cdp.evaluate<{ clip: string | null; offhand: string | null }>(`(async () => {
+            const mod = await import('/src/client/render/character-skin-cache.ts');
+            const pd = await import('/src/common/units/mesh-skin-paperdoll.ts');
+            const app = window.__d2Play;
+            app.renderFrame(performance.now());
+            const eq = app.session.world.containers.equipmentBySlot;
+            const key = pd.resolveMeshPaperdollKeyFromSlots((loc) => eq.get(loc)?.code, 0);
+            let clip = null;
+            for (const rt of mod.getGlobalCharacterSkinService().listMeshSkinRuntimes()) {
+              const st = rt.animator.snapshot().filter((u) => u.unitKey === 'player:${String(selfId)}').pop();
+              if (st) clip = st.clip;
+            }
+            return { clip, offhand: pd.decodeMeshPaperdollSelection(key).offhand ?? null };
+          })()`)
+          if (got.clip !== wantClip) await sleep(100)
+        }
+        assert(got.clip === wantClip, `${skinId}: expected clip '${wantClip}', got '${String(got.clip)}'`)
+        assert(got.offhand === wantOffhand, `${skinId}: expected off-hand '${wantOffhand}', got '${String(got.offhand)}'`)
+        await h.tick(3)
+        await h.cdp.captureScreenshot(join(outDir, `10-${skinId}-800x600.png`))
+      }
+    }
+
+    // Unique weapons of the shared weapon pack: the models of the two weapons worn are fetched on
+    // demand and attached to the hands (the second one mirrored in the left hand).
+    {
+      const weaponStates = (): Promise<{ states: string[]; models: number }> =>
+        h.cdp.evaluate(`(async () => {
+          const mod = await import('/src/client/render/character-skin-cache.ts');
+          const svc = mod.getGlobalCharacterSkinService();
+          window.__d2Play.renderFrame(performance.now());
+          const rt = svc.listMeshSkinRuntimes()[0];
+          const states = [261, 294].map((id) => {
+            const r = svc.getMeshSkinWeapon(rt.meshRenderer.renderer, 'wow-weapons', id);
+            return r === null ? 'missing' : r === 'loading' ? 'loading' : 'ready';
+          });
+          return { states, models: rt.meshRenderer.liveModelCount };
+        })()`)
+      const modelsBefore = await h.cdp.evaluate<number>(countMeshModels)
+      await h.cdp.evaluate(`(async () => {
+        const app = window.__d2Play;
+        const w = app.session.world;
+        const mod = await import('/src/client/render/character-skin-cache.ts');
+        const svc = mod.getGlobalCharacterSkinService();
+        svc.setConfig({ selectedByClass: { ...svc.getConfig().selectedByClass, ba: 'ba-wow-orc' } });
+        const eq = w.containers.equipmentBySlot;
+        for (const k of [...eq.keys()]) eq.delete(k);
+        w.self.charClass = 4;
+        const u = w.getUnit('player', ${String(selfId)});
+        if (u) { u.classId = 4; u.token = 'ba'; u.mode = 1; u.dir64 = 4; u.targetDirection = 4; u.castState = undefined; u.states.replaceAll([]); }
+        app.hudModel.syncFromWorld();
+        // The Grandfather (Colossus Blade) and Razoredge (Tomahawk), set after the HUD sync as above.
+        for (const [slot, code, uniqueItemId] of [[4, '7gd', 261], [5, '7ha', 294]]) {
+          eq.set(slot, { id: 7000 + slot, itemId: 7000 + slot, code, rawCode: code, bodyLoc: slot, equippedSlot: slot, identified: true, quality: 7, uniqueItemId, stats: [] });
+        }
+        app.session.selfAppearanceCache = null;
+        app.renderFrame(performance.now());
+      })()`)
+      let got = await weaponStates()
+      for (let i = 0; i < 100 && got.states.some((st) => st !== 'ready'); i += 1) {
+        await h.tick(2)
+        await sleep(100)
+        got = await weaponStates()
+      }
+      assert(got.states.every((st) => st === 'ready'), `Expected both pack weapons to load, got ${JSON.stringify(got.states)}`)
+      assert(got.models >= modelsBefore + 2, `Expected two weapon models to be uploaded (${String(modelsBefore)} -> ${String(got.models)})`)
+      await h.tick(3)
+      await h.cdp.captureScreenshot(join(outDir, '11-unique-weapons-800x600.png'))
     }
 
     assert(h.cdp.missingArt.length === 0, `Unexpected missingArt errors: ${JSON.stringify(h.cdp.missingArt)}`)
