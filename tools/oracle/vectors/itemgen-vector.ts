@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import {
   evaluateItemgenVector113c,
   type ItemGenVectorInput113c,
@@ -10,11 +11,22 @@ import {
 import { parseVectorHeader, type VectorHeader } from './vector-format.ts'
 
 export const ITEMGEN_INPUT_BYTES = 16
-export const ITEMGEN_OUTPUT_BYTES = 48
-export const ITEMGEN_RECORD_SIZE = 64
+export const ITEMGEN_OUTPUT_BYTES = 84
+export const ITEMGEN_RECORD_SIZE = 100
 
-export interface ItemGenVectorRecord extends ItemGenVectorInput113c, ItemGenVectorOutput113c {
+export interface ItemGenVectorRecord
+  extends ItemGenVectorInput113c,
+    Omit<ItemGenVectorOutput113c, 'bitstream'> {
   readonly index: number
+  readonly bitstreamSha256: string
+}
+
+function bytesToHex(bytes: Uint8Array): string {
+  let out = ''
+  for (let i = 0; i < bytes.length; i++) {
+    out += bytes[i]!.toString(16).padStart(2, '0')
+  }
+  return out
 }
 
 export function parseItemGenVectors(rawBuffer: Uint8Array): {
@@ -67,6 +79,9 @@ export function parseItemGenVectors(rawBuffer: Uint8Array): {
       sockets: rawBuffer[off + 55]!,
       outSeedLo: view.getUint32(off + 56, true),
       outSeedHi: view.getUint32(off + 60, true),
+      autoAffix: view.getUint16(off + 64, true),
+      bitstreamBytes: view.getUint16(off + 66, true),
+      bitstreamSha256: bytesToHex(rawBuffer.subarray(off + 68, off + 100)),
     })
     off += ITEMGEN_RECORD_SIZE
   }
@@ -109,6 +124,7 @@ export function verifyItemGenVectors(
   for (const rec of records) {
     m.resetOverlay()
     const out = evaluateItemgenVector113c(m, rec)
+    const actualSha = createHash('sha256').update(out.bitstream).digest('hex')
     check(rec, 'itemFlags', rec.itemFlags, out.itemFlags)
     check(rec, 'fileIndex', rec.fileIndex, out.fileIndex)
     check(rec, 'magicPrefix', rec.magicPrefix.join(','), out.magicPrefix.join(','))
@@ -126,6 +142,9 @@ export function verifyItemGenVectors(
     check(rec, 'sockets', rec.sockets, out.sockets)
     check(rec, 'outSeedLo', rec.outSeedLo, out.outSeedLo)
     check(rec, 'outSeedHi', rec.outSeedHi, out.outSeedHi)
+    check(rec, 'autoAffix', rec.autoAffix, out.autoAffix)
+    check(rec, 'bitstreamBytes', rec.bitstreamBytes, out.bitstreamBytes)
+    check(rec, 'bitstreamSha256', rec.bitstreamSha256, actualSha)
   }
 
   return { header, totalRecords: records.length, mismatches }

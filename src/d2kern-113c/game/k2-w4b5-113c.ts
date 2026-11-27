@@ -1822,6 +1822,12 @@ export function PETS_WarpPetUnitToRoomAndCoord_6FCB71F0_113c(
   pGame: number,
   nX: number,
   nY: number,
+  syncClientsBeforeUpdate?: (
+    m: D2KernMemory113c,
+    pOldRoom: number,
+    pPetUnit: number,
+    pGame: number,
+  ) => void,
 ): void {
   hitD2GameVa113c(0x6FCB71F0)
   const pOldRoom = UNITS_GetRoom113c(m, pPetUnit >>> 0) >>> 0
@@ -1851,6 +1857,9 @@ export function PETS_WarpPetUnitToRoomAndCoord_6FCB71F0_113c(
 
   if ((pTargetRoom >>> 0) !== pOldRoom) {
     UNITS_SetPathRoomRefreshFlag113c(m, pPetUnit >>> 0, 1)
+    if (syncClientsBeforeUpdate !== undefined) {
+      syncClientsBeforeUpdate(m, pOldRoom, pPetUnit >>> 0, pGame >>> 0)
+    }
     SUNIT_UpdateUnitPositionAndRoom113c(m, pOldRoom, pPetUnit >>> 0, pGame >>> 0)
   }
 

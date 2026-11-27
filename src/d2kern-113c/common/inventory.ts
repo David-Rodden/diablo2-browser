@@ -874,6 +874,7 @@ export function DATATBLS_GetInventoryTxtRecord113c(
   nInvId: number,
   bHigherRes: number,
   pOutRecord: number,
+  outSrcRef?: { addr: number },
 ): void {
   hitD2CommonVa113c(0x6FD632A0)
   const base = m.u32(G_INVENTORY_TXT_TABLE_VA_113C)
@@ -884,6 +885,10 @@ export function DATATBLS_GetInventoryTxtRecord113c(
   const idx = (imul32(bHigherRes | 0, 7) + (nInvId | 0)) | 0
   const src = (m.u32(G_INVENTORY_TXT_TABLE_VA_113C) + imul32(idx, 0x108)) >>> 0
   const dst = pOutRecord >>> 0
+  if (dst === 0 && outSrcRef !== undefined) {
+    outSrcRef.addr = src
+    return
+  }
   for (let i = 0; i < 0x108; i += 4) {
     m.setU32((dst + i) >>> 0, m.u32((src + i) >>> 0))
   }
@@ -1359,7 +1364,7 @@ export function ITEMS_CheckItemFlagCompactSaveByClassId113c(
  * Looks up `pItemsTxt[nItemId]` (asserting `(nItemId >>> 0) < nItemsTxtRecordCount` at `line 0x907`
  * and `pItemsTxt != 0` at `line 0x1EF`) and returns `m.u8(pRec + 0x11C)` (`2handed` flag).
  */
-export function ITEMS_Is2HandedById113c(m: Memory113c, nItemId: number): number {
+export function ITEMS_GetInvWidthFromId113c(m: Memory113c, nItemId: number): number {
   hitD2CommonVa113c(0x6FD72E70)
   const id = nItemId >>> 0
   if (id >= (m.u32(D2COMMON_ITEMS_TXT_COUNT_VA_113C) >>> 0)) {
@@ -1376,7 +1381,7 @@ export function ITEMS_Is2HandedById113c(m: Memory113c, nItemId: number): number 
   return m.u8((pRec + 0x11c) >>> 0)
 }
 
-export const ITEMS_GetInvWidthFromId113c = ITEMS_Is2HandedById113c
+export const ITEMS_Is2HandedById113c = ITEMS_GetInvWidthFromId113c
 
 /**
  * `@va D2Common:0x6FD731E0` (`D2Common.#10505` `ITEMS_GetComponentFromItem`,
@@ -2965,11 +2970,9 @@ export function INVENTORY_GetBeltAutoPlaceSlot113c(
 
   const pBelt = getBodyLocItemMem113c(m, inv, 8)
   const nBeltType = pBelt !== 0 ? UNITS_GetBeltTypeFromItem113c(m, pBelt) : 2
-  const beltBase = m.u32(G_INVENTORY_TXT_TABLE_VA_113C)
-  if (((beltBase + imul32(nBeltType | 0, 0x108)) >>> 0) === 0) {
-    throw new D2CommonAssertError('..\\Source\\D2Common\\DATATBLS\\InvTbls.cpp', 0x83)
-  }
-  const nBoxes = m.u8((beltBase + imul32(nBeltType | 0, 0x108) + 0x04) >>> 0)
+  const invRecRef = { addr: 0 }
+  DATATBLS_GetInventoryTxtRecord113c(m, nBeltType | 0, 0, 0, invRecRef)
+  const nBoxes = m.u8((invRecRef.addr + 0x04) >>> 0)
 
   const pGrid1 = INVENTORY_GetOrInitGridMem113c(m, inv, 1, D2COMMON_GRID1_INFO_VA_113C)
   if (pGrid1 === 0) return 0

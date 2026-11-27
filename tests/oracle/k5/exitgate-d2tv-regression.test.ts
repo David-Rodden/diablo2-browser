@@ -6,10 +6,10 @@
  *   2. `EVENTWHEEL` (`eventwheel-113c.d2tv` — 256 multi-frame timer scenarios, 45,101 fired events)
  *   3. `DRLG`       (`drlg-digest-113c.d2tv.gz` 20,400 + `drlg-rooms-s12345.d2tv.gz` 20,807 + `drlg-coll-towns-s12345-d0.d2tv.gz` 169 + live s12345 d0 136-level sweep)
  *   4. `PATH`       (`path-vectors-113c.d2tv.gz` 6,924 Stage 1..4 `PATHTYPE 0..17` records + 65-page `PAGEIMG`)
- *   5. `MONSPAWN`   (`monspawn-113c.d2tv.gz` — 1,200 Act 1..5 / Diff 0..2 pack & boss spawn records)
+ *   5. `MONSPAWN`   (`monspawn-113c.d2tv.gz` — 2,448 all-136-level / Act 1..5 / Diff 0..2 pack & boss spawn records)
  *   6. `TCDROP`     (`tcdrop-113c.d2tv.gz` — 1,200 TreasureClassEx tree evaluation records)
- *   7. `ITEMGEN`    (`itemgen-113c.d2tv.gz` — 1,200 item quality/socket/ethereal/affix records)
- *   8. `SKILLCALC`  (`skillcalc-113c.d2tv.gz` — 1,470 7-class / 210-skill / 73-field-code records)
+ *   7. `ITEMGEN`    (`itemgen-113c.d2tv.gz` — 2,400 all-8-quality item generation + #10987 bitstream records)
+ *   8. `SKILLCALC`  (`skillcalc-113c.d2tv.gz` — 12,600 7-class / 210-skill × slvl 1..60 / 73-field-code records)
  *   9. `S2C`        (`s2c-113c.d2tv.gz` — 1,440 S2C payload, Fog Huffman & D2Net framing records)
  */
 
@@ -107,10 +107,10 @@ const PINNED_DIGESTS = {
   drlgDataTbls: DRLG_DATATBLS_RAW_SHA256,
   pathVectors: 'eb59554dc7b5d0bb4e79211c8042fa24ca1a5a6e61e56fd3a919c9ec7d9068dc',
   pathWorldImg: '7938797317be1ce51e911a6788ceb886fa8437d5c59bb0230a2b18520546123b',
-  monspawn: '281bf495e257a8482faad1e036f1cacc8c47c91c6b90bc51e08c43a94099edf6',
+  monspawn: '7d35dcb158a1748828a953ad5eb19972e881eca4503793761a775ec5c93a653f',
   tcdrop: 'bf091c145fad1d71dba1aa2d8794a09d3ba1746477f5ed7d4f257f3c9368c0e5',
-  itemgen: 'b1083a706519feb4915c9bc5f2f7c7aa23d6d129fd315dca6f918a02c4e3c723',
-  skillcalc: '4cbc24642477c779b2506b69d115a11c3759babe384220b309ca485672602cd9',
+  itemgen: '10c61d8fc4b1b4f97fcfc98a380df690d84caa31c21102dd636018afd3812ce9',
+  skillcalc: '336145e033b11206340f76113f34794e7631c6dc93c9e237f1bdec57d801d6c1',
   s2c: '330ed2d430ae232a3b204c17dd83e0890abfafcf8d03d69cbc76104c8a31ebb2',
 } as const
 
@@ -532,16 +532,16 @@ describe('[K5] Unified D2TV Binary Vector Regression Gate (PRNG, EVENTWHEEL, DRL
     expect(replay.matched).toBe(6924)
   })
 
-  it('5. MONSPAWN (monspawn-113c.d2tv.gz): 1,200/1,200 bit-exact records + PRNG seed parity', () => {
+  it('5. MONSPAWN (monspawn-113c.d2tv.gz): 2,448/2,448 bit-exact records across all 136 levels + PRNG seed parity', () => {
     const raw = new Uint8Array(gunzipSync(readFileSync(resolve(K2_DIR, 'monspawn-113c.d2tv.gz'))))
     expect(sha256Hex(raw)).toBe(PINNED_DIGESTS.monspawn)
     const parsed = parseMonSpawnVectors(raw)
     expect(parsed.header.magic).toBe(D2TV_MAGIC)
     expect(parsed.header.recordSize).toBe(MONSPAWN_RECORD_SIZE)
-    expect(parsed.records.length).toBe(1200)
+    expect(parsed.records.length).toBe(2448)
     const res = verifyMonSpawnVectors(raw)
     expect(res.mismatches).toEqual([])
-    expect(res.totalRecords).toBe(1200)
+    expect(res.totalRecords).toBe(2448)
   })
 
   it('6. TCDROP (tcdrop-113c.d2tv.gz): 1,200/1,200 bit-exact records + PRNG seed parity', () => {
@@ -556,29 +556,29 @@ describe('[K5] Unified D2TV Binary Vector Regression Gate (PRNG, EVENTWHEEL, DRL
     expect(res.totalRecords).toBe(1200)
   })
 
-  it('7. ITEMGEN (itemgen-113c.d2tv.gz): 1,200/1,200 bit-exact records + PRNG seed parity', () => {
+  it('7. ITEMGEN (itemgen-113c.d2tv.gz): 2,400/2,400 bit-exact all-8-quality + #10987 bitstream SHA-256 + PRNG seed parity', () => {
     const raw = new Uint8Array(gunzipSync(readFileSync(resolve(K2_DIR, 'itemgen-113c.d2tv.gz'))))
     expect(sha256Hex(raw)).toBe(PINNED_DIGESTS.itemgen)
     const parsed = parseItemGenVectors(raw)
     expect(parsed.header.magic).toBe(D2TV_MAGIC)
     expect(parsed.header.recordSize).toBe(ITEMGEN_RECORD_SIZE)
-    expect(parsed.records.length).toBe(1200)
+    expect(parsed.records.length).toBe(2400)
     const res = verifyItemGenVectors(raw)
     expect(res.mismatches).toEqual([])
-    expect(res.totalRecords).toBe(1200)
+    expect(res.totalRecords).toBe(2400)
   })
 
-  it('8. SKILLCALC (skillcalc-113c.d2tv.gz): 1,470/1,470 bit-exact records + negative-control tamper rejection', () => {
+  it('8. SKILLCALC (skillcalc-113c.d2tv.gz): 12,600/12,600 bit-exact 210-skill x slvl 1..60 records + negative-control tamper rejection', () => {
     const raw = new Uint8Array(gunzipSync(readFileSync(resolve(K3_DIR, 'skillcalc-113c.d2tv.gz'))))
     expect(sha256Hex(raw)).toBe(PINNED_DIGESTS.skillcalc)
     const parsed = parseSkillCalcVectors(raw)
     expect(parsed.header.magic).toBe(D2TV_MAGIC)
     expect(parsed.header.kind).toBe(D2TV_KIND_SKILLCALC)
     expect(parsed.header.recordSize).toBe(SKILLCALC_RECORD_SIZE)
-    expect(parsed.records.length).toBe(1470)
+    expect(parsed.records.length).toBe(12_600)
     const res = verifySkillCalcVectors(raw)
     expect(res.mismatches).toEqual([])
-    expect(res.totalRecords).toBe(1470)
+    expect(res.totalRecords).toBe(12_600)
 
     const corrupted = new Uint8Array(raw)
     corrupted[32 + 100 * SKILLCALC_RECORD_SIZE + 32] ^= 0x01

@@ -1361,23 +1361,7 @@ export function STATES_CheckUnitAnyActiveStateMask113c(m: Memory113c, pUnit: num
   hitD2CommonVa113c(0x6FD83F40)
   const sgpt = m.u32(SGPT_DATATABLES_VA_113C)
   const pMask = m.u32((sgpt + DATATABLES_FSTATEMASKS_PTR_OFF_113C) >>> 0)
-  const unitPtr = pUnit >>> 0
-  if (unitPtr === 0) return 0
-  const pListEx = m.get(unitPtr, D2UnitStrc.pStatListEx)
-  if (pListEx === 0) return 0
-  if ((m.get(pListEx, D2StatListExStrc.dwFlags) | 0) >= 0) return 0
-  const pStateFlags = m.get(pListEx, D2StatListExStrc.pStateFlags)
-  if (pStateFlags === 0) return 0
-  const nStates = m.u32((sgpt + DATATABLES_STATES_COUNT_OFF_113C) >>> 0) | 0
-  const plus31 = (nStates + 31) | 0
-  const nDwords = sar32((plus31 + ((plus31 >> 31) & 31)) | 0, 5)
-  for (let i = 0; i < nDwords; i++) {
-    const maskWord = m.u32((pMask + i * 4) >>> 0)
-    if (maskWord !== 0 && (m.u32((pStateFlags + i * 4) >>> 0) & maskWord) !== 0) {
-      return 1
-    }
-  }
-  return 0
+  return STATES_CheckStateMaskOnUnit113c(m, pUnit >>> 0, pMask)
 }
 
 /**
@@ -3030,18 +3014,7 @@ function evalSkillCalcRpnMem113c(
           } else if (fnIdx === 4) {
             push(MISSILE_EvaluateMissCalcFormula113c(m, 0, pOwner, a2, a1, nLevel))
           } else {
-            const sc = m.u32((sgpt + DATATABLES_ISC_COUNT_OFF_113C) >>> 0) | 0
-            if (pOwner === 0 || a1 < 0 || a1 >= sc) {
-              push(0)
-            } else if (a1 === 0x13) {
-              push(UNITS_GetPlayerBaseToHit113c(m, pOwner))
-            } else if (a2 === 1) {
-              push(statListGetUnitBaseStatMem113c(m, pOwner, a1, 0) | 0)
-            } else if (a2 === 2) {
-              push(STATLIST_GetUnitStatWithLayer113c(m, pOwner, a1, 0) | 0)
-            } else {
-              push(statListGetUnitStatMem113c(m, pOwner, a1, 0) | 0)
-            }
+            push(SKILLS_EvalUnitStatFormulaHelper113c(sm, a1, a2, 0, ctxAddr) | 0)
           }
         }
       } else if (op >= 4 && op <= 6) {
@@ -3465,9 +3438,7 @@ function fogEvalMissilePostFix113c(
           } else if (fnIdx === 2) {
             push(rollLimitedSeedPair113c(randSeed, a1, a2))
           } else {
-            const owner = pOwner >>> 0
-            const effLvl = owner !== 0 ? SKILLS_GetSkillLevelByIdWithBonus113c(m, owner, a1) : 0
-            push(evalSkillCalcFieldMem113c(m, owner, a2, a1, effLvl))
+            push(MISSILE_EvalCalcOwnerSkillFieldByCtx113c(sm, a1, a2, 0, ctxAddr) | 0)
           }
         }
       } else if (op >= 4 && op <= 6) {

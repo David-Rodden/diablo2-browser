@@ -6,8 +6,8 @@
  * data tables (D2Common.#10943), then executes real D2Common.dll skill
  * formula, skill level, mana cost, physical/elemental damage, elemental
  * length, and attack rating evaluators on real D2UnitStrc + D2StatListExStrc
- * + D2SkillListStrc units across 1,470 vectors (all 210 player skills across
- * all 7 classes x 7 level/synergy/bonus/mastery configurations):
+ * + D2SkillListStrc units across 12,600 vectors (all 210 player skills across
+ * all 7 classes x exact base slvl 1..60 with synergy/bonus/mastery sweeps):
  *
  *   1.  D2Common:0x6FDA05C0 (#10306) SKILLS_EvaluateSkillLevel
  *   2.  D2Common:0x6FDA0EA0 (#11008) SKILLS_GetSkillLevelByIdWithBonus
@@ -35,9 +35,9 @@
 
 #define D2COM_PREF_BASE  0x6FD50000u
 #define D2GAME_PREF_BASE 0x6FC20000u
-#define SKILLCALC_REPS   7u
+#define SKILLCALC_REPS   60u
 #define CLASS_SKILL_TOTAL 210u
-#define SKILLCALC_COUNT  (CLASS_SKILL_TOTAL * SKILLCALC_REPS) /* 1,470 */
+#define SKILLCALC_COUNT  (CLASS_SKILL_TOTAL * SKILLCALC_REPS) /* 12,600 */
 #define SKILLCALC_SEED   0x3334534B4C43414Cull
 
 #pragma pack(push, 1)
@@ -45,7 +45,7 @@ typedef struct {
   /* Inputs (22 bytes, +0..+21) */
   uint16_t skillId;             /* +0  (Skills.bin row ID across all 7 classes) */
   uint8_t  charClass;           /* +2  (0..6: Ama, Sor, Nec, Pal, Bar, Dru, Ass) */
-  uint8_t  baseSlvl;            /* +3  (1..30) */
+  uint8_t  baseSlvl;            /* +3  (1..60 exact per skill) */
   uint16_t synSkillId[3];       /* +4..+9  (synergy / cross-skill IDs or 0xFFFF) */
   uint8_t  synBaseLvl[3];       /* +10..+12 (0..20 hard points per synergy) */
   uint8_t  allSkillsBonus;      /* +13 (0..8 STAT_ITEM_ALLSKILLS = 127) */
@@ -446,48 +446,37 @@ int main(int argc, char **argv) {
       SkillCalcVectorRecord *rec = &records[idx];
       rec->skillId = skillId;
 
-      /* rep 6 tests cross-class oskill usage on every 3rd skill */
-      if (rep == 6u && (skIdx % 3u) == 0u) {
-        rec->charClass = (uint8_t)((nativeClass + 1u + (skIdx % 6u)) % 7u);
+      /* Every 15th slvl (15, 30, 45, 60) tests cross-class oskill usage on every 3rd skill */
+      if (((rep % 15u) == 14u) && (skIdx % 3u) == 0u) {
+        rec->charClass = (uint8_t)((nativeClass + 1u + ((skIdx + rep) % 6u)) % 7u);
       } else {
         rec->charClass = nativeClass;
       }
 
-      /* Cover all 5 progression bands (1, 2..8, 9..16, 17..22, 23..28, 29..30) across rep 0..6 */
-      if (rep == 0u) {
-        rec->baseSlvl = 1u;
-      } else if (rep == 1u) {
-        rec->baseSlvl = (uint8_t)(2u + (skIdx % 7u));
-      } else if (rep == 2u) {
-        rec->baseSlvl = (uint8_t)(9u + (skIdx % 8u));
-      } else if (rep == 3u) {
-        rec->baseSlvl = (uint8_t)(17u + (skIdx % 6u));
-      } else if (rep == 4u) {
-        rec->baseSlvl = (uint8_t)(23u + (skIdx % 6u));
-      } else if (rep == 5u) {
-        rec->baseSlvl = (uint8_t)(29u + (skIdx % 2u));
-      } else {
-        rec->baseSlvl = (uint8_t)(1u + ((skIdx * 5u + 11u) % 30u));
-      }
+      /* Exact exhaustive base slvl 1..60 for every one of the 210 player skills */
+      rec->baseSlvl = (uint8_t)(rep + 1u);
+
+      const uint32_t band = rep % 7u;
+      const int zeroBonusPoint = (rep == 0u || (rep % 10u) == 9u);
 
       for (int k = 0; k < 3; k++) {
         rec->synSkillId[k] = synRefs[k];
         if (synRefs[k] == 0xFFFFu || rep == 0u) {
           rec->synBaseLvl[k] = 0u;
-        } else if (rep == 1u) {
-          rec->synBaseLvl[k] = (uint8_t)(1u + ((skIdx + (uint32_t)k * 3u) % 5u));
-        } else if (rep == 2u) {
-          rec->synBaseLvl[k] = (uint8_t)(5u + ((skIdx * 2u + (uint32_t)k * 5u) % 8u));
-        } else if (rep == 3u) {
-          rec->synBaseLvl[k] = (uint8_t)(10u + ((skIdx + (uint32_t)k * 7u) % 8u));
-        } else if (rep == 4u) {
+        } else if (band == 1u) {
+          rec->synBaseLvl[k] = (uint8_t)(1u + ((skIdx + rep + (uint32_t)k * 3u) % 5u));
+        } else if (band == 2u) {
+          rec->synBaseLvl[k] = (uint8_t)(5u + ((skIdx * 2u + rep + (uint32_t)k * 5u) % 8u));
+        } else if (band == 3u) {
+          rec->synBaseLvl[k] = (uint8_t)(10u + ((skIdx + rep + (uint32_t)k * 7u) % 8u));
+        } else if (band == 4u) {
           rec->synBaseLvl[k] = 20u;
         } else {
           rec->synBaseLvl[k] = (uint8_t)(1u + ((idx * 7u + (uint32_t)k * 9u) % 20u));
         }
       }
 
-      if (rep == 0u) {
+      if (zeroBonusPoint) {
         rec->allSkillsBonus = 0u;
         rec->packedSkillBonuses = 0u;
         rec->elemMasteryPct = 0u;
@@ -501,19 +490,19 @@ int main(int argc, char **argv) {
       }
 
       uint8_t uFlags = 0u;
-      if (rep == 6u || ((rep == 3u) && (skIdx % 4u == 0u))) uFlags |= 0x01u; /* oskill */
-      if (rep == 2u || rep == 5u) uFlags |= 0x02u;                           /* skill shrine */
-      if ((idx % 5u) == 0u && rep != 0u) uFlags |= 0x04u;                    /* +2 fire skills */
-      if ((rep % 2u) == 1u || rep == 4u) uFlags |= 0x08u;                    /* bApplyMastery */
-      if (rep >= 2u && (rep % 2u) == 0u) uFlags |= 0x10u;                    /* bIncludeSrcDmg */
-      uFlags |= (uint8_t)(((idx * 5u + rep) & 0x07u) << 5);                  /* weapMaxDelta */
+      if (((rep % 15u) == 14u) || ((band == 3u) && (skIdx % 4u == 0u))) uFlags |= 0x01u; /* oskill */
+      if (!zeroBonusPoint && (band == 2u || band == 5u)) uFlags |= 0x02u;               /* skill shrine */
+      if (!zeroBonusPoint && (idx % 5u) == 0u) uFlags |= 0x04u;                         /* +2 fire skills */
+      if ((rep % 2u) == 1u || band == 4u) uFlags |= 0x08u;                              /* bApplyMastery */
+      if (band >= 2u && (rep % 2u) == 0u) uFlags |= 0x10u;                              /* bIncludeSrcDmg */
+      uFlags |= (uint8_t)(((idx * 5u + rep) & 0x07u) << 5);                             /* weapMaxDelta */
       rec->unitFlags = uFlags;
 
       /* Sweep all 73 SkillCalc.txt field codes (0..72) */
       rec->calcFieldCode = (uint8_t)((idx * 11u + rep * 3u) % 73u);
 
-      /* Prefer active RPN calc slots on rep 0..4, and sweep calc1..calc4 / aura / passive on rep 5..6 */
-      if (activeSlotCount > 0 && rep < 5u) {
+      /* Prefer active RPN calc slots on band 0..4, and sweep calc1..calc4 / aura / passive on band 5..6 */
+      if (activeSlotCount > 0 && band < 5u) {
         rec->calcSlotOff = activeSlots[(skIdx + rep) % (uint32_t)activeSlotCount];
       } else {
         rec->calcSlotOff = kAllCalcSlotOffs[(idx + rep * 3u) % NUM_CALC_SLOT_OFFS];

@@ -95,9 +95,12 @@ import {
 import { QUESTS_GuidListContains113c } from './k2-items-tc-w1-113c.ts';
 import { PLAYER_HandleDeathCorpseAndSave_6FC99730_113c } from './k2-w16b1-113c.ts';
 import { OBJ_TryOperateObjectIfInRange_6FC8A720_113c } from './k2-w4b3-113c.ts';
+import { PLAYER_CanInterruptCurrentSkillOrEvent113c } from './k2-combat-core-w1-113c.ts';
 import {
   MONAI_CheckLineOfWalkFreeCoordsBetweenUnits_6FCD0E90_113c,
   MONAI_ForEachPackMemberWithFilter_6FCD1320_113c,
+  MONAI_ForEachUnitInAdjacentRooms_6FCD0720_113c,
+  MONAI_ForEachUnitInNonTownAdjacentRoomsWithPlayer_6FCD0CE0_113c,
 } from './k2-w4b7-113c.ts';
 import { AI_WalkWanderAroundUnitOrSelf_6FD12870_113c } from './k2-w5b10-113c.ts';
 import { SUNIT_GetServerUnit113c } from './game-strc.ts';
@@ -723,6 +726,7 @@ export function QUESTS_StepQuestTimers113c(
   pGame: number,
   onQuestTimerCallback?: (m: Memory113c, pfnTimer: number, pGame: number, pQuestData: number) => number,
 ): void {
+  hitD2GameVa113c(0x6FC53B70);
   if (
     onQuestTimerCallback === undefined &&
     armedSliceQuestTimerDefer !== null &&
@@ -1416,9 +1420,9 @@ export function AITARGET_IterateRoomActiveClients113c(
 export { registerAiTargetModeCallback113c, type AiTargetModeCallback113c };
 
 const CB_ID_MODE_4 = 4;
-const CB_ID_MODE_8 = 8;
-const CB_ID_MODE_11 = 11;
-const CB_ID_MODE_12 = 12;
+const CB_ID_MODE_8 = 0x6fcd0df0;
+const CB_ID_MODE_11 = 0x6fcd1520;
+const CB_ID_MODE_12 = 0x6fcd0db0;
 
 function dispatchAiTargetCallback(
   m: Memory113c,
@@ -1540,61 +1544,28 @@ export function AITARGET_ScanUnitsByModeTable113c(
     return AITARGET_IterateRoomActiveClients113c(m, pGame, pOriginUnit, pCtx, pfnCb);
   }
   if (mode === 2) {
-    if (pOriginUnit === 0) {
-      return 0;
-    }
-    const uType = i32(m, pOriginUnit);
-    if (uType < 0 || uType > 1 || SUNIT_IsDeadOrDying113c(m, pOriginUnit) !== 0) {
-      return 0;
-    }
-    const pRoom = UNITS_GetRoom113c(m, pOriginUnit);
-    if (pRoom === 0) {
-      return 0;
-    }
-    const [ppRooms, numRooms] = withTownRuntimeGapStack(8, (ppRoomsPtr) => {
-      const pNumRoomsPtr = (ppRoomsPtr + 4) >>> 0;
-      DUNGEON_GetAdjacentRoomsListFromRoom113c(m, pRoom, ppRoomsPtr, pNumRoomsPtr);
-      return [m.u32(ppRoomsPtr), m.u32(pNumRoomsPtr)] as const;
-    });
-    for (let i = 0; i < numRooms; i++) {
-      const pAdjRoom = m.u32(ppRooms + i * 4);
-      if (DUNGEON_CheckRoomIsTownMemPort113c(m, pAdjRoom) === 0 && m.u32(pAdjRoom + 0x78) !== 0) {
-        let pUnit = m.u32(pAdjRoom + 0x74);
-        while (pUnit !== 0) {
-          const res = dispatchAiTargetCallback(m, pfnCb, pGame, pOriginUnit, pUnit, pCtx);
-          if (res !== 0) {
-            return res;
-          }
-          pUnit = m.u32(pUnit + 0xe8);
-        }
-      }
-    }
-    return 0;
+    return MONAI_ForEachUnitInNonTownAdjacentRoomsWithPlayer_6FCD0CE0_113c(
+      m,
+      pOriginUnit,
+      pfnCb,
+      pGame,
+      pCtx,
+      (mem, pg, origin, roomUnit, ctx) =>
+        dispatchAiTargetCallback(mem, pfnCb, pg, origin, roomUnit, ctx),
+    );
   }
   if (mode === 3) {
     return MONAI_ForEachPackMemberWithFilter_6FCD1320_113c(m, pOriginUnit, pGame, pfnCb, pCtx);
   }
-  const pRoom = UNITS_GetRoom113c(m, pOriginUnit);
-  if (pRoom === 0) {
-    return 0;
-  }
-  const [ppRooms, numRooms] = withTownRuntimeGapStack(8, (ppRoomsPtr) => {
-    const pNumRoomsPtr = (ppRoomsPtr + 4) >>> 0;
-    DUNGEON_GetAdjacentRoomsListFromRoom113c(m, pRoom, ppRoomsPtr, pNumRoomsPtr);
-    return [m.u32(ppRoomsPtr), m.u32(pNumRoomsPtr)] as const;
-  });
-  for (let i = 0; i < numRooms; i++) {
-    const pAdjRoom = m.u32(ppRooms + i * 4);
-    let pUnit = m.u32(pAdjRoom + 0x74);
-    while (pUnit !== 0) {
-      const res = dispatchAiTargetCallback(m, pfnCb, pGame, pOriginUnit, pUnit, pCtx);
-      if (res !== 0) {
-        return res;
-      }
-      pUnit = m.u32(pUnit + 0xe8);
-    }
-  }
-  return 0;
+  return MONAI_ForEachUnitInAdjacentRooms_6FCD0720_113c(
+    m,
+    pOriginUnit,
+    pfnCb,
+    pGame,
+    pCtx,
+    (mem, pg, origin, roomUnit, ctx) =>
+      dispatchAiTargetCallback(mem, pfnCb, pg, origin, roomUnit, ctx),
+  );
 }
 
 // @va D2Game:0x6FD11A90
@@ -1766,7 +1737,7 @@ export function AITHINK_CanPlayerSwitchToMode113c(
     case 15:
       return m.u32(pUnit + 4) !== 5 ? 1 : 0;
     case 18:
-      return checkSequenceSkillInterruptable(m, pUnit, pGame);
+      return PLAYER_CanInterruptCurrentSkillOrEvent113c(m, pUnit, pGame);
     default:
       return 1;
   }
@@ -2095,6 +2066,38 @@ export function SUNIT_FindValidNextRoomInAct113c(m: Memory113c, pUnit: number, p
   return 0;
 }
 
+let unitEnterClientRoomSyncHook113c:
+  | ((m: Memory113c, pClient: number, pUnit: number, pGame: number) => void)
+  | undefined;
+
+export function registerUnitEnterClientRoomSyncHook113c(
+  fn: (m: Memory113c, pClient: number, pUnit: number, pGame: number) => void,
+): void {
+  unitEnterClientRoomSyncHook113c = fn;
+}
+
+function resolveClientPlayerUnitForRoomDiff113c(m: Memory113c, pClient: number): number {
+  if (pClient === 0) {
+    return 0;
+  }
+  if ((m.u8(pClient + 0x3d4) & 1) !== 0) {
+    return m.u32(pClient + 0x174);
+  }
+  if (m.u32(pClient + 0x174) !== 0) {
+    const pPlr = SUNIT_GetServerUnit113c(
+      m,
+      m.u32(pClient + 0x1a8),
+      i32(m, pClient + 0x16c),
+      i32(m, pClient + 0x170),
+    );
+    if (pPlr === 0) {
+      m.setU32(pClient + 0x174, 0);
+    }
+    return pPlr;
+  }
+  return 0;
+}
+
 // @va D2Game:0x6FD01610
 export function SUNIT_UpdateUnitPositionAndRoom113c(
   m: Memory113c,
@@ -2140,6 +2143,12 @@ export function SUNIT_UpdateUnitPositionAndRoom113c(
     const pClientOld = m.u32(oldClients + idxOld * 4);
     const pClientNew = m.u32(newClients + idxNew * 4);
     if (pClientOld < pClientNew) {
+      if (unitEnterClientRoomSyncHook113c !== undefined && pClientOld !== 0 && m.u8(pUnit) === 3) {
+        const pPlayerOld = resolveClientPlayerUnitForRoomDiff113c(m, pClientOld);
+        if (pUnit !== pPlayerOld) {
+          unitEnterClientRoomSyncHook113c(m, pClientOld, pUnit, pGame ?? 0);
+        }
+      }
       idxOld++;
     } else if (pClientOld > pClientNew) {
       if (pClientNew === 0) {
@@ -2176,6 +2185,13 @@ export function SUNIT_UpdateUnitPositionAndRoom113c(
   while (idxOld < oldCount) {
     if (oldClients === 0) {
       throw new D2CommonAssertError('SUNIT_UpdateUnitPositionAndRoom113c: null oldClients tail', 0x11c);
+    }
+    const pClientOld = m.u32(oldClients + idxOld * 4);
+    if (unitEnterClientRoomSyncHook113c !== undefined && pClientOld !== 0 && m.u8(pUnit) === 3) {
+      const pPlayerOld = resolveClientPlayerUnitForRoomDiff113c(m, pClientOld);
+      if (pUnit !== pPlayerOld) {
+        unitEnterClientRoomSyncHook113c(m, pClientOld, pUnit, pGame ?? 0);
+      }
     }
     idxOld++;
   }

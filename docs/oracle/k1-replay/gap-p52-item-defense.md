@@ -8,8 +8,8 @@ execution across `runReplay113c('p52-item-defense')`.
 
 | Module | DLL executed | TS executed (`dll ∩ ts`) | TS total hit | manifest unported | manifest gap bytes | runtime exec gap (`dll - ts`) | runtime gap bytes |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| D2Common | 571 | 571 / 571 | 687 | 0 | 0 | 0 | 0 |
-| D2Game | 468 | 468 / 468 | 542 | 0 | 0 | 0 | 0 |
+| D2Common | 571 | 571 / 571 | 688 | 0 | 0 | 0 | 0 |
+| D2Game | 468 | 468 / 468 | 541 | 0 | 0 | 0 | 0 |
 
 ## D2Common Manifest Unported (0)
 

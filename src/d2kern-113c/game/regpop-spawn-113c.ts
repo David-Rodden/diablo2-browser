@@ -73,6 +73,7 @@ import {
   PATH_SetUnitCollisionPattern113c,
   PATH_SetVelocity113c,
 } from '../common/path.ts'
+import { OBJECTS_OperateGoldChestOrPile_6FC4F580_113c } from './k2-w4b1-113c.ts'
 import { UNITS_InitStaticPathCoords113c } from '../common/quest-record.ts'
 import {
   SKILLS_AllocSkillList113c,
@@ -4076,43 +4077,20 @@ function operateGoldChestOrPileExact_6FC4F580_113c(
   x: number,
   y: number,
 ): void {
-  hitD2GameVa113c(0x6FC4F580)
   if (pObject !== 0 && savedMode !== 0) {
     return
   }
-  UNITS_ChangeAnimMode113c(m, pObject, 2)
-  let checkBaseX = x | 0
-  let checkBaseY = y | 0
-  const roll0 = stepSeed64Inline(m, pObjControl >>> 0) >>> 0
-  const nPiles = ((roll0 % 9) + 1) | 0
   const sp = regpopStackPtr
-  regpopStackPtr = (sp + 0x10) >>> 0
+  regpopStackPtr = (sp + 0x20) >>> 0
   try {
-    for (let rem = nPiles; rem > 0; rem = (rem - 1) | 0) {
-      const dx = stepSeed64Inline(m, pObjControl >>> 0) & 3
-      const dy = stepSeed64Inline(m, pObjControl >>> 0) & 3
-      const checkX = (checkBaseX + dx) | 0
-      const checkY = (checkBaseY + dy) | 0
-      const pFoundRoom = ROOM_FindRoomContainingSubtile113c(m, pRoom, checkX, checkY) >>> 0
-      if (pFoundRoom === (pRoom >>> 0)) {
-        checkBaseX = ((x | 0) + dx) | 0
-        checkBaseY = ((y | 0) + dy) | 0
-        if (
-          (COLLISION_CheckMaskWithSizeXY113c(m, pFoundRoom, checkBaseX, checkBaseY, 1, 1, 0x3f11) &
-            0xffff) ===
-          0
-        ) {
-          m.setU32(sp, checkBaseX >>> 0)
-          m.setU32((sp + 4) >>> 0, checkBaseY >>> 0)
-          ITEMS_CreateGoldPileInRoomAtCoords_6FC320E0_113c(
-            m as SparseMemory113c,
-            sp,
-            pGame >>> 0,
-            pRoom >>> 0,
-          )
-        }
-      }
-    }
+    m.setU32(sp, pGame >>> 0)
+    m.setU32((sp + 0x04) >>> 0, pObject >>> 0)
+    m.setU32((sp + 0x08) >>> 0, pRoom >>> 0)
+    m.setU32((sp + 0x0c) >>> 0, pObjControl >>> 0)
+    m.setU32((sp + 0x10) >>> 0, 0)
+    m.setU32((sp + 0x14) >>> 0, x >>> 0)
+    m.setU32((sp + 0x18) >>> 0, y >>> 0)
+    OBJECTS_OperateGoldChestOrPile_6FC4F580_113c(m, sp)
   } finally {
     regpopStackPtr = sp
   }

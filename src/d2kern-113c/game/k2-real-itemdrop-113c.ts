@@ -1518,9 +1518,14 @@ export function ITEMS_GenerateMagicOrRareAffixes_6FC30A20_113c(
       ITEMS_RollAndApplySockets_6FC2EC90_113c(m, pFinalItem, drop, game)
     }
 
+    // Jump table 0x6FC31064 for (finalQual - 1) in 0..8: [0, 0, 0, 0, 1, 0, 1, 0, 0]
+    // All qualities 1..9 except Set (5) and Unique (7) roll wAutoPrefix automods in Expansion.
     if (
       finalFormat >= 100 &&
-      (finalQual === 3 || finalQual === 4 || finalQual === 6 || finalQual === 8 || finalQual === 9)
+      finalQual >= 1 &&
+      finalQual <= 9 &&
+      finalQual !== 5 &&
+      finalQual !== 7
     ) {
       const wAutoPrefixGrp = m.u16((pItemsTxt + 0xf8) >>> 0)
       if (wAutoPrefixGrp !== 0) {

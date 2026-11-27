@@ -114,6 +114,7 @@ import {
   STATES_CheckState113c,
   STATES_ToggleState113c,
   registerStatListFindSubListHook113c,
+  registerStatListRemoveProcHook113c,
 } from '../common/statlist.ts'
 import {
   INVENTORY_GetFirstItem113c,
@@ -217,6 +218,7 @@ import {
   QUESTS_StepQuestTimers113c,
   SPLAYER_BroadcastUnitMovementToClient113c,
   SUNIT_UpdateUnitPositionAndRoom113c,
+  registerUnitEnterClientRoomSyncHook113c,
 } from './town-runtime-gap-113c.ts'
 import {
   C2S_Packet01_WalkToLocation113c,
@@ -341,6 +343,7 @@ import {
   OBJECTS_SpawnDensityWithSecondaryTorch113c,
   ROOM_DeactivateAnyUnitInRoom113c,
   SUNIT_FreeUnit113c,
+  registerSecondaryTargetSpotObjectHook113c,
 } from './replay-final11-113c.ts'
 import {
   D2GAME_FP_REMOVE_TIMED_STATE_VA_113C,
@@ -383,7 +386,13 @@ import {
   SKILLS_SpawnBlazeTrailMissileOnStep_6FC639A0_113c,
   SKILLS_SrvDo_DruidChargeUpHit_6FC66000_113c,
 } from './k2-w3b4-113c.ts'
-import { MONSTER_StartGetHitOrScheduleAi_6FC965E0_113c } from './k2-w3b7-113c.ts'
+import {
+  MONSTER_ModeChangeKnockback_6FC95160_113c,
+  MONSTER_StartGetHitOrScheduleAi_6FC965E0_113c,
+} from './k2-w3b7-113c.ts'
+import { OBJECTS_TrySpawnTargetSpotObject67_6FC50E50_113c } from './k2-w3b2-113c.ts'
+import { registerQuestDefaultSeqFilterHook113c } from './k2-w3b5-113c.ts'
+import { QUESTS_DefaultSequenceFilter_6FC7AFB0_113c } from './k2-w8b1-113c.ts'
 import {
   AI_ThinkBurrowerSpawner_6FCA77B0_113c,
   AI_ThinkChargerRunOrAttack_6FCA2EC0_113c,
@@ -566,6 +575,8 @@ import {
   D2GAME_SUMMON_BroadcastPlayerPetsToClient113c,
   D2GAME_SUNIT_GetGameFromUnit113c,
   D2GAME_SUNIT_IterateAllLivingPlayers113c,
+  registerArenaGetFlagsHook113c,
+  registerSendPacket10BHook113c,
   type BootInitGapBCallees113c,
 } from './boot-init-gap-b-113c.ts'
 import {
@@ -617,6 +628,7 @@ import {
   SUNITDMG_ExecuteEvents113c,
   SUNITDMG_FillDamageValues113c,
   SUNITDMG_FindCombatDamageData113c,
+  registerMonsterModeKnockbackHook113c,
   SUNITDMG_RollDodgeAvoidEvadeBlock113c,
   SUNITDMG_RollMeleeToHitAndBlock_6FCFE5A0_113c,
   UNITS_GetDistanceToCoordinates113c,
@@ -629,6 +641,7 @@ import {
 } from './k2-real-s2c-combat-113c.ts'
 import {
   AITHINK_Fn146_UberMephistoNoop113c,
+  MONSTER_Event10_ClearMonsterFields34And38_113c,
   NET_SendUnitMovePacket0F113c,
 } from './k2-combat-core-w1-113c.ts'
 import {
@@ -653,10 +666,21 @@ import {
   ITEMS_EvaluateMonsterDropTableEntry_6FC3E900_113c,
 } from './k2-w14b1-113c.ts'
 import {
+  NET_SendPacket10B_UnitByteStat_6FCAB9B0_113c,
   NET_SendPacket98_UnitWordValue_6FCAA6C0_113c,
   NET_SendPacketA5_StateSkill_6FCABA10_113c,
 } from './k2-w2b3-113c.ts'
-import { MONAI_NoOpStub_6FCBC990_113c } from './k2-w2b4-113c.ts'
+import {
+  MONAI_NoOpStub_6FCBC990_113c,
+  STATES_ClearGfxStateFlagAndSetUpdate40_6FCB0F10_113c,
+  STATES_ClearGfxStateFlagCallback_6FCB0F00_113c,
+} from './k2-w2b4-113c.ts'
+import { SKILLS_StatListExpireClearState_6FC62290_113c } from './k2-laneK-0x6fc5-w1-113c.ts'
+import { STATES_OnTransformStateRemoved_6FC64A60_113c } from './k2-w5b1-113c.ts'
+import {
+  STATES_OnBuffStateRemovedRefreshAnim_6FC622B0_113c,
+  STATES_OnSkillStateRemovedRefreshAnim_6FC47190_113c,
+} from './k2-w10b1-113c.ts'
 import {
   MONAI_NoOpRet4_6FCC39D0_113c,
   MONAI_Stall200IfUnitHasRoom_6FCC5D40_113c,
@@ -707,6 +731,7 @@ import {
 } from './k2-w3b8-113c.ts'
 import {
   NET_SendPacket21_UpdateUnitSkill_6FCAD5F0_113c,
+  NET_SendPacketMonsterMoveCoord_6FCAD860_113c,
   SKILLS_RestoreConvertedMonsterAlignmentAndStats_6FCB14F0_113c,
   SKILLS_RestoreMindBlastConvertedMonster_6FCB8950_113c,
 } from './k2-w4b5-113c.ts'
@@ -1257,8 +1282,139 @@ export function STATLIST_FindSubListByStateAndFlags113c(
   return 0
 }
 
-registerInventoryCheckNotBrokenHook113c(ITEMS_CheckNotBrokenOrUnequipping113c)
-registerStatListFindSubListHook113c(STATLIST_FindSubListByStateAndFlags113c)
+const D2GAME_FP_REMOVE_BSS_GUARDS_113C = [
+  0x6fd31f90,
+  0x6fd18d10,
+  0x6fd31c3c,
+  0x6fd31c20,
+  0x6fd31c1c,
+  0x6fd286a0,
+  0x6fd31d14,
+] as const
+
+function isByteKnownInMemReplay113c(m: Memory113c, va: number): boolean {
+  const known = (m as unknown as { known?: Map<number, Uint8Array> }).known
+  if (known !== undefined) {
+    for (let i = 0; i < 4; i++) {
+      const a = (va + i) >>> 0
+      const kp = known.get(a >>> 12)
+      if (kp === undefined || kp[a & 0xfff] === 0) return false
+    }
+    return true
+  }
+  const sm = m as { hasByte?: (addr: number) => boolean }
+  if (typeof sm.hasByte === 'function') {
+    return sm.hasByte(va >>> 0)
+  }
+  return true
+}
+
+function dispatchKernelCustomStatListRemoveProc113c(
+  m: Memory113c,
+  fpRemove: number,
+  pUnit: number,
+  stateNo: number,
+  pStatList: number,
+): void {
+  const fn = fpRemove >>> 0
+  if (
+    fn !== 0x6fc622b0 &&
+    fn !== 0x6fc47190 &&
+    fn !== 0x6fc62290 &&
+    fn !== 0x6fc64a60 &&
+    fn !== 0x6fcb0f00 &&
+    fn !== 0x6fcb0f10 &&
+    fn !== 0x6fcbf7a0
+  ) {
+    return
+  }
+  const unit = pUnit >>> 0
+  if (unit === 0) return
+  if (
+    (fn === 0x6fc622b0 || fn === 0x6fc47190 || fn === 0x6fcbf7a0) &&
+    (!isByteKnownInMemReplay113c(m, (unit + 0x80) >>> 0) || m.u32((unit + 0x80) >>> 0) === 0)
+  ) {
+    return
+  }
+  if (
+    (fn === 0x6fc64a60 || fn === 0x6fcbf7a0) &&
+    (!isByteKnownInMemReplay113c(m, D2COMMON_SGPT_DATATABLES_VA_113C) ||
+      m.u32(D2COMMON_SGPT_DATATABLES_VA_113C) === 0)
+  ) {
+    return
+  }
+  const savedBssVals = [0, 0, 0, 0, 0, 0, 0]
+  const savedBssLoaded = [false, false, false, false, false, false, false]
+  for (let i = 0; i < D2GAME_FP_REMOVE_BSS_GUARDS_113C.length; i++) {
+    const addr = D2GAME_FP_REMOVE_BSS_GUARDS_113C[i]!
+    if (isByteKnownInMemReplay113c(m, addr)) {
+      savedBssLoaded[i] = true
+      savedBssVals[i] = m.u32(addr) >>> 0
+    }
+  }
+  const sm = m as SparseMemory113c
+  try {
+    if (fn === 0x6fc622b0) {
+      STATES_OnBuffStateRemovedRefreshAnim_6FC622B0_113c(sm, unit, stateNo | 0, pStatList >>> 0)
+    } else if (fn === 0x6fc47190) {
+      STATES_OnSkillStateRemovedRefreshAnim_6FC47190_113c(sm, unit, stateNo | 0, pStatList >>> 0)
+    } else if (fn === 0x6fc62290) {
+      SKILLS_StatListExpireClearState_6FC62290_113c(m, unit, stateNo | 0, pStatList >>> 0)
+    } else if (fn === 0x6fc64a60) {
+      STATES_OnTransformStateRemoved_6FC64A60_113c(sm, unit, stateNo | 0, pStatList >>> 0)
+    } else if (fn === 0x6fcb0f00) {
+      STATES_ClearGfxStateFlagCallback_6FCB0F00_113c(m, unit, stateNo | 0, pStatList >>> 0)
+    } else if (fn === 0x6fcb0f10) {
+      STATES_ClearGfxStateFlagAndSetUpdate40_6FCB0F10_113c(m, unit, stateNo | 0, pStatList >>> 0)
+    } else if (fn === 0x6fcbf7a0) {
+      STATES_OnTimedStateRemoved113c(m, unit, stateNo | 0, pStatList >>> 0)
+    }
+  } finally {
+    for (let i = 0; i < D2GAME_FP_REMOVE_BSS_GUARDS_113C.length; i++) {
+      if (!savedBssLoaded[i] || savedBssVals[i] === 0) continue
+      const addr = D2GAME_FP_REMOVE_BSS_GUARDS_113C[i]!
+      const cur = m.u32(addr) >>> 0
+      if (cur === 0 || (addr === 0x6fd31f90 && cur < savedBssVals[i]!)) {
+        m.setU32(addr, savedBssVals[i]!)
+      }
+    }
+  }
+}
+
+let kernelRuntimeHooksRegistered113c = false
+
+export function ensureKernelRuntimeHooksRegistered113c(): void {
+  if (kernelRuntimeHooksRegistered113c) return
+  kernelRuntimeHooksRegistered113c = true
+  registerInventoryCheckNotBrokenHook113c(ITEMS_CheckNotBrokenOrUnequipping113c)
+  registerStatListFindSubListHook113c(STATLIST_FindSubListByStateAndFlags113c)
+  registerStatListRemoveProcHook113c(dispatchKernelCustomStatListRemoveProc113c)
+  registerMonsterModeKnockbackHook113c((m, pGame, pModeChangeArgs) =>
+    MONSTER_ModeChangeKnockback_6FC95160_113c(m, pGame, pModeChangeArgs),
+  )
+  registerArenaGetFlagsHook113c((m, pPlayer) => ARENA_GetPlayerArenaFlags113c(m, pPlayer))
+  registerSendPacket10BHook113c((m, wStatId, pClient, bPacketId, dwUnitGuid, dwStatVal) =>
+    NET_SendPacket10B_UnitByteStat_6FCAB9B0_113c(
+      m,
+      wStatId,
+      pClient,
+      bPacketId,
+      dwUnitGuid,
+      dwStatVal,
+    ),
+  )
+  registerSecondaryTargetSpotObjectHook113c((m, pUnit, pGame) =>
+    OBJECTS_TrySpawnTargetSpotObject67_6FC50E50_113c(m, pUnit, pGame),
+  )
+  registerQuestDefaultSeqFilterHook113c((m, pRefQuest, onChain) =>
+    QUESTS_DefaultSequenceFilter_6FC7AFB0_113c(m as SparseMemory113c, pRefQuest, (m2, pChained) =>
+      onChain(m2, pChained),
+    ),
+  )
+  registerUnitEnterClientRoomSyncHook113c((m, pClient, pUnit, pGame) => {
+    UNIT_SendFullUnitSyncToClient113c(m, pClient, pUnit, 0, undefined, pGame)
+  })
+}
 
 /**
  * `@va D2Game:0x6FC572C0` (`PLAYER_GetEquippedWeapon`):
@@ -1741,6 +1897,7 @@ function killMonsterWithQuestAfterDeath113c(
 }
 
 function attachSliceWorldCallbacks113c(world: FallenSliceWorld113c): void {
+  ensureKernelRuntimeHooksRegistered113c()
   if (world.onTownNpcAi === undefined) {
     world.onTownNpcAi = (_w, pMonster) => {
       AI_TownNpc113c(world, pMonster)
@@ -2340,10 +2497,8 @@ export function SUNITDMG_ExecuteMissileOrMeleeDmg113c(
     if (attType === UNIT_PLAYER) {
       SUNITDMG_FillDamageValues113c(m, pGame, pAttacker, pDefender, pDmg, 0, 128, 1)
     }
-    if ((resFlags & 0x8190) !== 0) {
-      SUNITDMG_AllocCombat113c(m, pGame, pAttacker, pDefender, pDmg, 128)
-      SUNITDMG_ExecuteEvents113c(m, pGame, pAttacker, pDefender, 1, 0, hooks)
-    }
+    SUNITDMG_AllocCombat113c(m, pGame, pAttacker, pDefender, pDmg, 128)
+    SUNITDMG_ExecuteEvents113c(m, pGame, pAttacker, pDefender, 1, 0, hooks)
     return false
   }
 
@@ -4319,6 +4474,8 @@ export function stepFallenSliceFrame113c(
               pruneRemovedUnitsFromWorld113c(world)
             } else if (ev === 8) {
               SKILLS_Event08_AuraPulseTick113c(mem, pg, pMon, a1, a2)
+            } else if (ev === 10) {
+              MONSTER_Event10_ClearMonsterFields34And38_113c(mem, pg, pMon, a1, a2)
             } else if (ev === 12) {
               MONSTER_Event12_ExpireTimedStats113c(mem, pg, pMon, a1, a2, k2MeleeDotHooks)
             }
@@ -4577,89 +4734,77 @@ function deactivateUnusedRoomsTickWithItemBitstream113c(
   onRoomDeactivated: (pRoom: number) => void,
   onUnitRemoved: (pUnit: number, dwUnitType: number, dwUnitId: number) => void,
 ): void {
-  hitD2GameVa113c(0x6FC4CF30)
   const useBitstreamItems = hasHydratedItemTables113c(m)
   const scratchCoords = 0x7fef9d80 >>> 0
-  for (let actIdx = 0; actIdx < 5; actIdx++) {
-    const pAct = m.u32((pGame + 0xbc + actIdx * 4) >>> 0) >>> 0
-    if (pAct === 0) continue
-    let pRoom = DUNGEON_GetRoomExFromRoom113c(m, pAct) >>> 0
-    while (pRoom !== 0) {
-      const pNext = m.u32((pRoom + 0x7c) >>> 0) >>> 0
-      const idleCount = DUNGEON_UpdateRoomIdleCounter113c(m, pRoom)
-      if (idleCount > 10 && DUNGEON_CanFreeActiveRoom113c(m, pAct, pRoom) !== 0) {
-        let pUnit = m.u32((pRoom + 0x74) >>> 0) >>> 0
-        while (pUnit !== 0) {
-          const pUnitNext = m.u32((pUnit + 0xe8) >>> 0) >>> 0
-          const dwUnitType = m.u32(pUnit >>> 0) >>> 0
-          if (useBitstreamItems && dwUnitType === 4) {
-            hitD2GameVa113c(0x6FC409B0)
-            const uRoom = UNITS_GetRoom113c(m, pUnit) >>> 0
-            const dwUnitId = m.u32((pUnit + 0x0c) >>> 0) >>> 0
-            const nLevelId = DUNGEON_GetLevelIdFromRoom113c(m, uRoom)
-            if (uRoom !== 0) {
-              hitD2GameVa113c(0x6FC404E0)
-              const actNo = DRLG_GetActNoFromLevelId113c(m, nLevelId) & 0xff
-              if (actNo < 5) {
-                DUNGEON_GetRoomCoordinates113c(m, uRoom, scratchCoords)
-                const roomX = m.u32(scratchCoords) | 0
-                const roomY = m.u32((scratchCoords + 0x04) >>> 0) | 0
-                const pRoomNode = MONREG_FindOrAllocActRoomNode113c(
-                  m,
-                  pGame,
-                  actNo,
-                  roomX,
-                  roomY,
-                  1,
-                )
-                if (pRoomNode !== 0) {
-                  ITEMS_SaveItemToNodeAndFree_6FC403D0_113c(
-                    m as SparseMemory113c,
-                    pGame,
-                    pUnit,
-                    pRoomNode,
-                    0,
-                  )
-                  onUnitRemoved(pUnit, 4, dwUnitId)
-                }
-              }
-            }
-          } else {
-            let bKeptPetInHash = 0
-            if (dwUnitType === 1 && (m.u32((pUnit + 0xc4) >>> 0) >>> 31) !== 0) {
-              const pMonDataPet = m.u32((pUnit + 0x14) >>> 0) >>> 0
-              const pAiGenPet = pMonDataPet !== 0 ? (m.u32((pMonDataPet + 0x28) >>> 0) >>> 0) : 0
-              const pAiGamePet = pAiGenPet !== 0 ? (m.u32((pAiGenPet + 0x28) >>> 0) >>> 0) : 0
-              if (pAiGamePet !== 0) {
-                const ownerGuid = m.u32((pAiGenPet + 0x2c) >>> 0) >>> 0
-                const ownerType = m.u32((pAiGenPet + 0x30) >>> 0) | 0
-                const pOwner = SUNIT_GetServerUnit113c(m, pAiGamePet, ownerType, ownerGuid) >>> 0
-                if (pOwner !== 0 && (m.u32(pOwner) | 0) === 0) {
-                  bKeptPetInHash =
-                    PETS_UnsummonPetAndCheckNodeStillExists_6FCB8070_113c(
-                      m as SparseMemory113c,
-                      pUnit,
-                      pOwner,
-                      pGame,
-                    ) | 0
-                }
-              }
-            }
-            if (bKeptPetInHash !== 0) {
-              m.setU32((pUnit + 0xc8) >>> 0, (m.u32((pUnit + 0xc8) >>> 0) | 0x100) >>> 0)
-              UNITROOM_ClearUnitRoom113c(m, pUnit)
-            } else {
-              ROOM_DeactivateAnyUnitInRoom113c(m, pUnit, pGame, onUnitRemoved)
+  GAME_DeactivateUnusedRoomsTick113c(
+    m,
+    pGame,
+    onRoomDeactivated,
+    onUnitRemoved,
+    (mem, pUnit, pg, onRem) => {
+      const dwUnitType = mem.u32(pUnit >>> 0) >>> 0
+      if (useBitstreamItems && dwUnitType === 4) {
+        hitD2GameVa113c(0x6FC409B0)
+        const uRoom = UNITS_GetRoom113c(mem, pUnit) >>> 0
+        const dwUnitId = mem.u32((pUnit + 0x0c) >>> 0) >>> 0
+        const nLevelId = DUNGEON_GetLevelIdFromRoom113c(mem, uRoom)
+        if (uRoom !== 0) {
+          hitD2GameVa113c(0x6FC404E0)
+          const actNo = DRLG_GetActNoFromLevelId113c(mem, nLevelId) & 0xff
+          if (actNo < 5) {
+            DUNGEON_GetRoomCoordinates113c(mem, uRoom, scratchCoords)
+            const roomX = mem.u32(scratchCoords) | 0
+            const roomY = mem.u32((scratchCoords + 0x04) >>> 0) | 0
+            const pRoomNode = MONREG_FindOrAllocActRoomNode113c(
+              mem,
+              pg,
+              actNo,
+              roomX,
+              roomY,
+              1,
+            )
+            if (pRoomNode !== 0) {
+              ITEMS_SaveItemToNodeAndFree_6FC403D0_113c(
+                mem as SparseMemory113c,
+                pg,
+                pUnit,
+                pRoomNode,
+                0,
+              )
+              onRem?.(pUnit, 4, dwUnitId)
             }
           }
-          pUnit = pUnitNext
         }
-        DUNGEON_FreeActiveRoom113c(m, pAct, pRoom)
-        onRoomDeactivated(pRoom)
+      } else {
+        let bKeptPetInHash = 0
+        if (dwUnitType === 1 && (mem.u32((pUnit + 0xc4) >>> 0) >>> 31) !== 0) {
+          const pMonDataPet = mem.u32((pUnit + 0x14) >>> 0) >>> 0
+          const pAiGenPet = pMonDataPet !== 0 ? (mem.u32((pMonDataPet + 0x28) >>> 0) >>> 0) : 0
+          const pAiGamePet = pAiGenPet !== 0 ? (mem.u32((pAiGenPet + 0x28) >>> 0) >>> 0) : 0
+          if (pAiGamePet !== 0) {
+            const ownerGuid = mem.u32((pAiGenPet + 0x2c) >>> 0) >>> 0
+            const ownerType = mem.u32((pAiGenPet + 0x30) >>> 0) | 0
+            const pOwner = SUNIT_GetServerUnit113c(mem, pAiGamePet, ownerType, ownerGuid) >>> 0
+            if (pOwner !== 0 && (mem.u32(pOwner) | 0) === 0) {
+              bKeptPetInHash =
+                PETS_UnsummonPetAndCheckNodeStillExists_6FCB8070_113c(
+                  mem as SparseMemory113c,
+                  pUnit,
+                  pOwner,
+                  pg,
+                ) | 0
+            }
+          }
+        }
+        if (bKeptPetInHash !== 0) {
+          mem.setU32((pUnit + 0xc8) >>> 0, (mem.u32((pUnit + 0xc8) >>> 0) | 0x100) >>> 0)
+          UNITROOM_ClearUnitRoom113c(mem, pUnit)
+        } else {
+          ROOM_DeactivateAnyUnitInRoom113c(mem, pUnit, pg, onRem)
+        }
       }
-      pRoom = pNext
-    }
-  }
+    },
+  )
 }
 
 function emitPlayer0DPacket113c(
@@ -5002,6 +5147,21 @@ function buildClientRoomSyncCallees113c(
       if (op === 0x67) {
         const outStep = a7 & 0xff
         const maxDistOvr = a8 !== 0 || a9 !== 0 ? (a8 & 0xff) : -1
+        if ((a8 !== 0 || a9 !== 0) && extraVel === 0) {
+          NET_SendPacketMonsterMoveCoord_6FCAD860_113c(
+            mem,
+            pCl,
+            0x67,
+            dwUnitId,
+            nAction,
+            nPosOrTypeX,
+            nPosOrGuidY,
+            outStep,
+            a8,
+            a9,
+          )
+          return
+        }
         D2NET_SendUnitPosSync0x15ToClient113c(
           mem,
           dwUnitId,

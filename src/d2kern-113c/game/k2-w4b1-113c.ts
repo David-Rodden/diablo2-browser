@@ -2826,7 +2826,7 @@ export function OBJECTS_OperateGoldChestOrPile_6FC4F580_113c(
   }
 
   UNITS_ChangeAnimMode113c(m, pObject, 2)
-  const baseY = m.u32((pOperateArgs + 0x18) >>> 0) | 0
+  let checkBaseY = m.u32((pOperateArgs + 0x18) >>> 0) | 0
   let checkBaseX = m.u32((pOperateArgs + 0x14) >>> 0) | 0
   let pSeed = m.u32((pOperateArgs + 0x0c) >>> 0) >>> 0
   const roll0 = stepSeed64At113c(m, pSeed) >>> 0
@@ -2844,18 +2844,19 @@ export function OBJECTS_OperateGoldChestOrPile_6FC4F580_113c(
 
       const pRoom = m.u32((pOperateArgs + 0x08) >>> 0) >>> 0
       const checkX = (checkBaseX + dx) | 0
+      const checkY = (checkBaseY + dy) | 0
       const pFoundRoom = ROOM_FindRoomContainingSubtile113c(
         m,
         pRoom,
         checkX,
-        (baseY + dy) | 0,
+        checkY,
       ) >>> 0
       if (pFoundRoom === pRoom) {
         checkBaseX = ((m.u32((pOperateArgs + 0x14) >>> 0) | 0) + dx) | 0
-        const targetY = ((m.u32((pOperateArgs + 0x18) >>> 0) | 0) + dy) | 0
-        if ((COLLISION_CheckMaskWithSizeXY113c(m, pFoundRoom, checkBaseX, targetY, 1, 1, 0x3f11) & 0xffff) === 0) {
+        checkBaseY = ((m.u32((pOperateArgs + 0x18) >>> 0) | 0) + dy) | 0
+        if ((COLLISION_CheckMaskWithSizeXY113c(m, pFoundRoom, checkBaseX, checkBaseY, 1, 1, 0x3f11) & 0xffff) === 0) {
           m.setU32(pCoords + 0x00, checkBaseX >>> 0)
-          m.setU32(pCoords + 0x04, targetY >>> 0)
+          m.setU32(pCoords + 0x04, checkBaseY >>> 0)
           ITEMS_CreateGoldPileInRoomAtCoords_6FC320E0_113c(
             m,
             pCoords,

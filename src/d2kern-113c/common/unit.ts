@@ -60,7 +60,10 @@ import {
 } from './inline-helpers.ts'
 import { imul32, sar32, sdiv32 } from './int-math.ts'
 import { MONSTERS_GetCompCode113c } from './monsters.ts'
-import { STATLIST_GetStatListFromUnitAndStateMemPort113c } from './k0-d2common-memports.ts'
+import {
+  INVENTORY_GetActiveWeaponMemPort113c,
+  STATLIST_GetStatListFromUnitAndStateMemPort113c,
+} from './k0-d2common-memports.ts'
 import { fogGetLinkIndex113c } from './inventory.ts'
 import {
   STATES_CheckState113c,
@@ -2941,7 +2944,9 @@ export function UNITS_GetEquippedWeaponAdder113c(m: Memory113c, pUnit: number): 
   }
   const uType = m.u32(esi) | 0
   if (uType === 0) {
-    const pWeapon = INVENTORY_GetActiveWeaponMem113c(m, m.u32((esi + 0x60) >>> 0))
+    const activeRef = { weapon: 0, bodyLoc: 0, isActive: 0 }
+    INVENTORY_GetActiveWeaponMemPort113c(m, m.u32((esi + 0x60) >>> 0), 0, 0, 0, activeRef)
+    const pWeapon = activeRef.weapon
     if (pWeapon === 0) return 0
     return ITEMS_GetRangeAdder113c(m, pWeapon) & 0xff
   }

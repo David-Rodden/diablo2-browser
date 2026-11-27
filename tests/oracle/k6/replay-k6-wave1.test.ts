@@ -27,6 +27,7 @@ import {
   runK6Replay113c,
   type K6ReplayScenarioName113c,
 } from '../../../tools/oracle/k6/k6-replay.ts'
+import { computeK6SteppedRuntimeExecSummary113c } from '../../../tools/oracle/k6/k6-runtime-exec-exemptions.ts'
 import {
   REPO_ROOT_113C,
   bootFromSnapshot113c,
@@ -305,6 +306,8 @@ describe('[K6] Wave 1 full-horizon zero-divergence multi-subsystem gate (k6-town
 
     expect(exec.d2CommonDll).toBe(578)
     expect(exec.d2GameDll).toBe(413)
+    expect(exec.d2CommonRuntimeExecGap).toBe(0)
+    expect(exec.d2GameRuntimeExecGap).toBe(0)
 
     // Verify genuine Rogue Encampment town NPC interact, stash deposit, vendor stock/purchase, and waypoint state across F2..F275
     const golden = loadK6Golden113c(name)
@@ -422,6 +425,16 @@ describe('[K6] Wave 1 7-scenario F2 boot hydration, ratchet horizons, and real-D
       }
       expect(cCount).toBe(spec.d2CommonExecuted)
       expect(gCount).toBe(spec.d2GameExecuted)
+
+      const stepped = computeK6SteppedRuntimeExecSummary113c(spec.name, cov, r.tsExecutedVas, 2)
+      expect(
+        stepped.d2CommonUnexemptedGap,
+        `${spec.name}: unexempted F3+ D2Common runtime gap: ${stepped.missingSteppedD2CommonVas.join(', ')}`,
+      ).toBe(0)
+      expect(
+        stepped.d2GameUnexemptedGap,
+        `${spec.name}: unexempted F3+ D2Game runtime gap: ${stepped.missingSteppedD2GameVas.join(', ')}`,
+      ).toBe(0)
     })
   }
 

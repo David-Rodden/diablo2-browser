@@ -143,12 +143,15 @@ import {
 } from './a1c-post150-f786-f1040-113c.ts'
 import {
   MONSTER_StartMode113c,
-  rollPassiveAvoidanceMask0x6FCFB030,
   SUNITDMG_ApplyDamage113c,
   SUNITDMG_ApplySideEffectsAndKill113c,
+  SUNITDMG_CheckToHit113c,
+  SUNITDMG_RollDodgeAvoidEvadeBlock113c,
+  SUNITDMG_RollPassiveWeaponBlockOrShieldBlock113c,
   SUNITDMG_SelectDeathOverlayFlag113c,
   type SUnitDmgHooks113c,
 } from './k2-real-s2c-combat-113c.ts'
+import { MISSILES_ConsumePierceStat_6FC58F40_113c } from './k2-laneK-0x6fc5-w1-113c.ts'
 import {
   AIGENERAL_GetPackLeaderUnit113c,
   MONSTER_ApplyCritDamage113c,
@@ -555,14 +558,7 @@ function checkMonTypeSubFlag0x6FC21620(
 
 /** Internal `0x6FC58F40` (`esi = pMissile` -> `2` if pierce charge consumed, else `3`). */
 function consumeMissilePierce0x6FC58F40(m: Memory113c, pMissile: number): number {
-  const pMisTxt = pMissile !== 0 ? MISSILES_GetTxtRecordFast113c(m, m.u32((pMissile + 4) >>> 0) | 0) : 0
-  if (pMisTxt === 0) return 3
-  const dl = m.u8((pMisTxt + 4) >>> 0)
-  if ((readGdwBitMaskU8_113c(m, 0x08) & dl) === 0) return 3
-  const count = STATLIST_GetUnitStat113c(m, pMissile, 0x148, 0) | 0
-  if (count === 0) return 3
-  STATLIST_SetUnitStat113c(m, pMissile, 0x148, (count - 1) | 0, 0)
-  return 2
+  return MISSILES_ConsumePierceStat_6FC58F40_113c(m, pMissile) | 0
 }
 
 /** Internal `0x6FC5AD70`: collide filter for `nCollideType == 1` (players + alignment-2 monsters). */
@@ -800,7 +796,7 @@ function rollPassiveAvoidOrWeaponBlock0x6FCFB030(
   bRanged: number,
 ): number {
   if (pAttacker === 0) return 0
-  return rollPassiveAvoidanceMask0x6FCFB030(m, pDefender, bRanged)
+  return SUNITDMG_RollDodgeAvoidEvadeBlock113c(m, pAttacker, pDefender, bRanged)
 }
 
 /** Internal `0x6FCFB790` (`eax = bHasPhysDmg`, `ecx = pAttacker`, `esi = pDefender`, `[esp+4] = pGame`, `[esp+8] = bAllowWeaponBlock`). */
@@ -817,25 +813,27 @@ function rollBlock0x6FCFB790(
     return hooks.rollBlock(m, pAttacker, pDefender, bHasPhysDmg, pGame, bAllowWeaponBlock) | 0
   }
   if (bHasPhysDmg === 0) {
-    return rollPassiveAvoidOrWeaponBlock0x6FCFB030(m, pAttacker, pDefender, bAllowWeaponBlock)
+    return SUNITDMG_RollPassiveWeaponBlockOrShieldBlock113c(
+      m,
+      pDefender,
+      pGame,
+      1,
+      bAllowWeaponBlock,
+      pAttacker,
+      0,
+    )
   }
-  const bExpansion = pGame !== 0 ? m.u32((pGame + 0x70) >>> 0) : 0
-  let blockChance = UNITS_GetBlockChance113c(m, pDefender, bExpansion) | 0
-  if (blockChance <= 0) {
-    return rollPassiveAvoidOrWeaponBlock0x6FCFB030(m, pAttacker, pDefender, bAllowWeaponBlock)
-  }
-  if (pDefender !== 0 && m.u32(pDefender >>> 0) === 0) {
-    const mode = m.u32((pDefender + 0x10) >>> 0) | 0
-    if (mode === 3) {
-      blockChance = Math.trunc(blockChance / 3) | 0
-    }
-  }
-  if (pAttacker === 0) {
-    throw new D2CommonAssertError('SUnitDmg.cpp', 0xa2a)
-  }
-  const roll = (stepSeed64At113c(m, (pDefender + 0x20) >>> 0) >>> 0) % 100
-  if (roll < (blockChance >>> 0)) {
-    return 1
+  const blk = SUNITDMG_RollPassiveWeaponBlockOrShieldBlock113c(
+    m,
+    pDefender,
+    pGame,
+    1,
+    bAllowWeaponBlock,
+    pAttacker,
+    1,
+  )
+  if (blk !== 0) {
+    return blk
   }
   return rollPassiveAvoidOrWeaponBlock0x6FCFB030(m, pAttacker, pDefender, bAllowWeaponBlock)
 }
@@ -852,62 +850,7 @@ function checkToHit0x6FCFDE90(
   if (hooks !== undefined && hooks.checkToHit !== undefined) {
     return hooks.checkToHit(m, pAttacker, pDefender, nArBonus, bIsMissile) | 0
   }
-  const att = pAttacker >>> 0
-  const def = pDefender >>> 0
-  if (att === 0 || def === 0) return 0
-
-  const defLvl = STATLIST_GetUnitStat113c(m, def, 0x0c, 0) | 0
-  const attLvl = STATLIST_GetUnitStat113c(m, att, 0x0c, 0) | 0
-  const baseAc = STATLIST_GetUnitStat113c(m, def, 0x1f, 0) | 0
-  const vsBonusStat = bIsMissile !== 0 ? 0x20 : 0x21
-  let totalDef = (baseAc + (STATLIST_GetUnitStat113c(m, def, vsBonusStat, 0) | 0)) | 0
-  if (totalDef < 0) totalDef = 0
-
-  let ar = 0
-  let arPct = STATLIST_GetUnitStatWithLayer113c(m, att, 0x77, 0) | 0
-  if (m.u32(att) === 0) {
-    const dex = STATLIST_GetUnitStat113c(m, att, 0x02, 0) | 0
-    const rawToHit = STATLIST_GetUnitStat113c(m, att, 0x13, 0) | 0
-    ar = (dex * 5 - 35 + rawToHit) | 0
-    arPct = (arPct + (nArBonus | 0)) | 0
-  } else {
-    const rawToHit = STATLIST_GetUnitStat113c(m, att, 0x13, 0) | 0
-    const dex = STATLIST_GetUnitStat113c(m, att, 0x02, 0) | 0
-    ar = (rawToHit + dex * 5 + (nArBonus | 0)) | 0
-  }
-
-  if (m.u32(def) === 1) {
-    const pMonTxt = MONSTATS_GetRecordPtr113c(m, m.u32((def + 4) >>> 0) | 0)
-    if (pMonTxt !== 0) {
-      const monType = s16SignExt113c(m.u16((pMonTxt + 0x1c) >>> 0))
-      if (monType > 0) {
-        const pExtScratch = allocStackScratch113c(m, 0x400)
-        try {
-          const cnt = STATLIST_GetExtendedUnitStatsById113c(m, att, 0xb3, pExtScratch, 0x80) | 0
-          for (let i = 0; i < cnt; i++) {
-            const param = m.u16((pExtScratch + i * 8) >>> 0)
-            if (checkMonTypeSubFlag0x6FC21620(m, monType, param) !== 0) {
-              arPct = (arPct + (m.u32((pExtScratch + i * 8 + 4) >>> 0) | 0)) | 0
-            }
-          }
-        } finally {
-          freeStackScratch113c(0x400)
-        }
-      }
-    }
-  }
-
-  ar = (ar + mulDiv113c(arPct, ar, 100)) | 0
-  if (ar < 0) ar = 0
-  const denomArDef = (ar + totalDef) | 0
-  const factor = denomArDef === 0 ? 100 : sdiv32(Math.imul(ar, 100), denomArDef)
-  const lvlSum = (attLvl + defLvl) | 0
-  let chance = lvlSum > 0 ? sdiv32(Math.imul(factor, attLvl) << 1, lvlSum) : 100
-  if (chance <= 5) chance = 5
-  else if (chance > 95) chance = 95
-
-  const roll = (stepSeed64At113c(m, (att + 0x20) >>> 0) >>> 0) % 100
-  return roll < (chance >>> 0) ? 1 : 0
+  return SUNITDMG_CheckToHit113c(m, pAttacker, pDefender, nArBonus, bIsMissile, true) | 0
 }
 
 /**

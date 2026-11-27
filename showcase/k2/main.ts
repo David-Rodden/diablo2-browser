@@ -11,6 +11,7 @@
  * from repo files and live kernel replays, so the page stays correct as the gap closes.
  */
 
+import { renderKNavStripHtml } from '../shared/k-nav.ts'
 import { fetchJson, fmtInt, fmtPct, type K2GapResponse, type K2OverviewResponse, type K2ZoneController } from './types.ts'
 import { mountZone1Replay } from './zone1-replay.ts'
 import { mountZone2Gap } from './zone2-gap.ts'
@@ -108,9 +109,11 @@ export function mountK2ShowcaseApp(root: HTMLElement): void {
           </div>
         </div>
 
+        ${renderKNavStripHtml('K2', 'k2')}
+
         <div class="k2-sidebar-links">
-          <a href="/k1-showcase.html" class="k2-btn k2-btn--block">K1 展厅 (D2Common)</a>
           <a href="/" class="k2-btn k2-btn--block">庇护之地门户 (Portal)</a>
+          <a href="/play.html" class="k2-btn k2-btn--block">进入完整游戏 (Play)</a>
         </div>
       </aside>
 

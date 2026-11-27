@@ -1986,6 +1986,13 @@ export function NPCS_RepairPlayerItemOrAllItems_6FCDDE60_113c(
         nCurDiff,
         pCurQuestFlags,
         pfnRepairWrapper,
+        (mem, pg, pItem, plr) =>
+          NPCS_RepairAndRechargePlayerItemWrapper_6FCDDE50_113c(
+            mem as SparseMemory113c,
+            pg,
+            plr,
+            pItem,
+          ),
       )
     }
     const pClient =

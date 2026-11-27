@@ -162,6 +162,8 @@ import {
   D2GAME_PARTY_GetPartyIdForUnit113c,
 } from './boot-init-gap-b-113c.ts';
 import {
+  ITEMS_SendDropToGroundPacket02_6FCAE030_113c,
+  ITEMS_SendGroundItemPacket03_6FCADFD0_113c,
   PARTY_FindSubPartyById_6FCBBD00_113c,
 } from './k2-w2b4-113c.ts';
 import { UNITMSG_QueuePacketA3AuraTargetFx_6FC9A190_113c } from './k2-w3b8-113c.ts';
@@ -2679,7 +2681,17 @@ export function UNITROOM_SendDroppedGroundItemToClient113c(
   if (dwMode !== 3) {
     return;
   }
-  const bAction = ((dwFlags >>> 12) & 1) !== 0 ? 2 : 3;
+  const pPlayer = CLIENTS_GetPlayerUnit113c(m, pClient, 0) >>> 0;
+  const isDropToGround = ((dwFlags >>> 12) & 1) !== 0;
+  if (pPlayer !== 0) {
+    if (isDropToGround) {
+      ITEMS_SendDropToGroundPacket02_6FCAE030_113c(m, pPlayer, pClient, pItem, 0);
+    } else {
+      ITEMS_SendGroundItemPacket03_6FCADFD0_113c(m, pPlayer, pClient, pItem, 0);
+    }
+    return;
+  }
+  const bAction = isDropToGround ? 2 : 3;
   S2C_SendPacket9C_ItemActionWorld113c(m, pClient, pItem, bAction, 0, 0);
 }
 

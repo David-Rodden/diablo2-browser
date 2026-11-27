@@ -112,6 +112,14 @@ import {
   UNITS_GetField7C_113c,
   UNITS_GetPlayerData113c,
 } from '../common/composit'
+import { NET_SendPacket26_ChatMessage_6FCAB470_113c } from './k2-w4b4-113c'
+import {
+  INVENTORY_FreeAllItems_6FCAF470_113c,
+  NET_SendPacket75_PartyUnitRosterUpdate_6FCAD120_113c,
+  PETS_WarpPetUnitToRoomAndCoord_6FCB71F0_113c,
+  SKILLS_AddProgressiveChargeStage_6FCB5370_113c,
+} from './k2-w4b5-113c'
+import { SKILLS_GetUnitTargetOrFirstPathCoords_6FCBFA30_113c } from './k2-w4b6-113c'
 import type { Memory113c } from '../mem/sparse-memory'
 import { SEED_InitLowSeed113c } from '../prng'
 import {
@@ -147,6 +155,7 @@ import {
   SUNITDMG_ApplyDamage113c,
   SUNITDMG_ApplySideEffectsAndKill113c,
   SUNITDMG_CheckToHit113c,
+  SUNITDMG_DistributeExperience113c,
   SUNITDMG_ExecuteEvents113c,
   SUNITDMG_FillDamageValues113c,
   SUNITDMG_FindCombatDamageData113c,
@@ -425,24 +434,7 @@ function sunitdmgKillUnit_6FCFEEE0(
   pGame: number,
   pDefender: number,
 ): void {
-  const def = pDefender >>> 0
-  const game = pGame >>> 0
-  if (def === 0) return
-  const defType = m.u32(def) | 0
-  if (defType === 1) {
-    const curMode = m.u32((def + 0x10) >>> 0) | 0
-    if (curMode === 0 || curMode === 0x0c) return
-    if ((MONSTATS_CheckFlagBit113c(m, m.u32((def + 4) >>> 0) | 0, 0x0f) | 0) === 0) return
-    hitD2GameVa113c(0x6FCFEEE0)
-    MONSTER_StartMode113c(m, game, def, 0, 0, 0, 0, 0x64, 1)
-  } else if (defType === 0) {
-    const curMode = m.u32((def + 0x10) >>> 0) | 0
-    if (curMode === 0 || curMode === 0x11) return
-    SUNITDMG_FreeAttackerCombatList113c(m, def, game)
-    MONSTER_ClearModeEvents113c(m, game, def)
-    UNITS_ChangeAnimMode113c(m, def, 0)
-    m.setU32((def + 0xc4) >>> 0, (m.u32((def + 0xc4) >>> 0) | 0x10000) >>> 0)
-  }
+  SUNITDMG_DistributeExperience113c(m, pGame >>> 0, pDefender >>> 0, 0, 0, true)
 }
 
 function partyIteratePartyMembers_6FCBC160(
@@ -1516,7 +1508,7 @@ export function SUNIT_SendHoverMsgOrClearPacketToClient_6FC9ACB0_113c(
     m.setU32((pChat + 4) >>> 0, dwUnitId)
     m.setU8((pChat + 0x0a) >>> 0, 0)
     CHAT_CopyHoverMsg113c(m, pHoverMsg, (pChat + 0x1a) >>> 0)
-    netSendChatHoverOrMessagePacket26_6FCAB470(m, pChat, esiClient)
+    NET_SendPacket26_ChatMessage_6FCAB470_113c(m, pChat, esiClient)
   } finally {
     k2W5B2StackPtr = pChat
   }
@@ -1645,19 +1637,7 @@ function inventoryFreeAllItems_6FCAF470(
   pInventory: number,
   pGame: number,
 ): void {
-  hitD2GameVa113c(0x6FCAF470)
-  if (pInventory === 0) return
-  let pItem = INVENTORY_GetFirstItem113c(m, pInventory >>> 0) >>> 0
-  while (pItem !== 0) {
-    const pValidItem = INVENTORY_UnitIsItem113c(m, pItem) >>> 0
-    const pNextItem = INVENTORY_GetNextItem113c(m, pItem) >>> 0
-    if (pValidItem === 0) {
-      throw new D2CommonAssertError('SUnitNpc.cpp', 0x1c6)
-    }
-    INVENTORY_GetItemNodePositionOther113c(m, pItem)
-    SUNIT_FreeUnit113c(m, pGame >>> 0, pValidItem)
-    pItem = pNextItem
-  }
+  INVENTORY_FreeAllItems_6FCAF470_113c(m, pInventory, pGame)
 }
 
 /**
@@ -1781,7 +1761,7 @@ export function NET_SendPacket59_AssignPlayerAndPartyRoster_6FCAD710_113c(
   let pTargetPlayer = m.u32((pGame + 0x1120 + bucketIdx * 4) >>> 0) >>> 0
   while (pTargetPlayer !== 0) {
     if ((m.u32((pTargetPlayer + 0x0c) >>> 0) >>> 0) === (dwPlayerGuid >>> 0)) {
-      netSendPacket75_PartyUnitRosterUpdate_6FCAD120(m, pTargetPlayer, pRecipientPlayer)
+      NET_SendPacket75_PartyUnitRosterUpdate_6FCAD120_113c(m, pTargetPlayer, pRecipientPlayer)
       return
     }
     pTargetPlayer = m.u32((pTargetPlayer + 0xe4) >>> 0) >>> 0
@@ -3082,6 +3062,46 @@ function petsSendPacket7A_UnsummonPet_6FCB6810(
   })
 }
 
+function syncWarpedPetClientsBeforeUpdate113c(
+  m: D2KernMemory113c,
+  pOldRoom: number,
+  pPetUnit: number,
+  pGame: number,
+): void {
+  const pCurrRoomSync = UNITS_GetRoom113c(m, pPetUnit >>> 0) >>> 0
+  const pPrevRoomSync = pOldRoom >>> 0
+  if (pCurrRoomSync !== pPrevRoomSync) {
+    const currClients = pCurrRoomSync !== 0 ? (m.u32((pCurrRoomSync + 0x48) >>> 0) >>> 0) : 0
+    const currCount = pCurrRoomSync !== 0 ? (m.u32((pCurrRoomSync + 0x78) >>> 0) >>> 0) : 0
+    const prevClients = pPrevRoomSync !== 0 ? (m.u32((pPrevRoomSync + 0x48) >>> 0) >>> 0) : 0
+    const prevCount = pPrevRoomSync !== 0 ? (m.u32((pPrevRoomSync + 0x78) >>> 0) >>> 0) : 0
+    let iCurr = 0
+    let iPrev = 0
+    while (iCurr < currCount && iPrev < prevCount && currClients !== 0 && prevClients !== 0) {
+      const pClCurr = m.u32((currClients + iCurr * 4) >>> 0) >>> 0
+      const pClPrev = m.u32((prevClients + iPrev * 4) >>> 0) >>> 0
+      if (pClCurr < pClPrev) {
+        if (pClCurr !== 0 && (CLIENTS_GetPlayerUnit113c(m, pClCurr, 0) >>> 0) !== (pPetUnit >>> 0)) {
+          UNIT_SendFullUnitSyncToClient113c(m, pClCurr, pPetUnit >>> 0, 0, undefined, pGame >>> 0)
+        }
+        iCurr++
+      } else if (pClCurr > pClPrev) {
+        iPrev++
+      } else {
+        iCurr++
+        iPrev++
+      }
+    }
+    while (iCurr < currCount && currClients !== 0) {
+      const pClCurr = m.u32((currClients + iCurr * 4) >>> 0) >>> 0
+      if (pClCurr !== 0 && (CLIENTS_GetPlayerUnit113c(m, pClCurr, 0) >>> 0) !== (pPetUnit >>> 0)) {
+        UNIT_SendFullUnitSyncToClient113c(m, pClCurr, pPetUnit >>> 0, 0, undefined, pGame >>> 0)
+      }
+      iCurr++
+    }
+  }
+}
+
 function petsWarpPetUnitToRoomAndCoord_6FCB71F0(
   m: D2KernMemory113c,
   pPetUnit: number,
@@ -3090,84 +3110,15 @@ function petsWarpPetUnitToRoomAndCoord_6FCB71F0(
   nX: number,
   nY: number,
 ): void {
-  const pOldRoom = UNITS_GetRoom113c(m, pPetUnit >>> 0) >>> 0
-  if (pTargetRoom !== 0) {
-    const nTargetLevel = DUNGEON_GetLevelIdFromRoom113c(m, pTargetRoom >>> 0) | 0
-    const bTargetAct = DRLG_GetActNoFromLevelId113c(m, nTargetLevel) & 0xff
-    if (m.u8((pPetUnit + 0x18) >>> 0) !== bTargetAct) {
-      PATH_WarpUnitToRoomAndCoord113c(
-        m,
-        m.u32((pPetUnit + 0x2c) >>> 0) >>> 0,
-        pPetUnit >>> 0,
-        0,
-        0,
-        0,
-      )
-    }
-  }
-
-  PATH_WarpUnitToRoomAndCoord113c(
+  PETS_WarpPetUnitToRoomAndCoord_6FCB71F0_113c(
     m,
-    m.u32((pPetUnit + 0x2c) >>> 0) >>> 0,
-    pPetUnit >>> 0,
-    pTargetRoom >>> 0,
-    nX | 0,
-    nY | 0,
+    pPetUnit,
+    pTargetRoom,
+    pGame,
+    nX,
+    nY,
+    syncWarpedPetClientsBeforeUpdate113c,
   )
-
-  if ((pTargetRoom >>> 0) !== pOldRoom) {
-    UNITS_SetPathRoomRefreshFlag113c(m, pPetUnit >>> 0, 1)
-    const pCurrRoomSync = UNITS_GetRoom113c(m, pPetUnit >>> 0) >>> 0
-    const pPrevRoomSync = pOldRoom >>> 0
-    if (pCurrRoomSync !== pPrevRoomSync) {
-      const currClients = pCurrRoomSync !== 0 ? (m.u32((pCurrRoomSync + 0x48) >>> 0) >>> 0) : 0
-      const currCount = pCurrRoomSync !== 0 ? (m.u32((pCurrRoomSync + 0x78) >>> 0) >>> 0) : 0
-      const prevClients = pPrevRoomSync !== 0 ? (m.u32((pPrevRoomSync + 0x48) >>> 0) >>> 0) : 0
-      const prevCount = pPrevRoomSync !== 0 ? (m.u32((pPrevRoomSync + 0x78) >>> 0) >>> 0) : 0
-      let iCurr = 0
-      let iPrev = 0
-      while (iCurr < currCount && iPrev < prevCount && currClients !== 0 && prevClients !== 0) {
-        const pClCurr = m.u32((currClients + iCurr * 4) >>> 0) >>> 0
-        const pClPrev = m.u32((prevClients + iPrev * 4) >>> 0) >>> 0
-        if (pClCurr < pClPrev) {
-          if (pClCurr !== 0 && (CLIENTS_GetPlayerUnit113c(m, pClCurr, 0) >>> 0) !== (pPetUnit >>> 0)) {
-            UNIT_SendFullUnitSyncToClient113c(m, pClCurr, pPetUnit >>> 0, 0, undefined, pGame >>> 0)
-          }
-          iCurr++
-        } else if (pClCurr > pClPrev) {
-          iPrev++
-        } else {
-          iCurr++
-          iPrev++
-        }
-      }
-      while (iCurr < currCount && currClients !== 0) {
-        const pClCurr = m.u32((currClients + iCurr * 4) >>> 0) >>> 0
-        if (pClCurr !== 0 && (CLIENTS_GetPlayerUnit113c(m, pClCurr, 0) >>> 0) !== (pPetUnit >>> 0)) {
-          UNIT_SendFullUnitSyncToClient113c(m, pClCurr, pPetUnit >>> 0, 0, undefined, pGame >>> 0)
-        }
-        iCurr++
-      }
-    }
-    SUNIT_UpdateUnitPositionAndRoom113c(m, pOldRoom, pPetUnit >>> 0, pGame >>> 0)
-  }
-
-  const pNewRoom = UNITS_GetRoom113c(m, pPetUnit >>> 0) >>> 0
-  const nNewLevel = DUNGEON_GetLevelIdFromRoom113c(m, pNewRoom) | 0
-  const bNewAct = DRLG_GetActNoFromLevelId113c(m, nNewLevel) & 0xff
-  m.setU8((pPetUnit + 0x18) >>> 0, bNewAct)
-  m.setU32((pPetUnit + 0x1c) >>> 0, m.u32((pGame + bNewAct * 4 + 0xbc) >>> 0) >>> 0)
-  UNITROOM_RefreshUnit113c(m, pPetUnit >>> 0)
-  m.setU32((pPetUnit + 0xc8) >>> 0, (m.u32((pPetUnit + 0xc8) >>> 0) | 0x10000) >>> 0)
-  UNITROOM_RefreshUnit113c(m, pPetUnit >>> 0)
-  MONSTER_ScheduleInitialAiEvent113c(m, pGame >>> 0, pPetUnit >>> 0)
-
-  if ((MONSTERS_IsDead113c(m, pPetUnit >>> 0) | 0) === 0) {
-    const pPath = m.u32((pPetUnit + 0x2c) >>> 0) >>> 0
-    if (pPath !== 0) {
-      PATH_SetCollisionMask113c(m, pPath, 0x100)
-    }
-  }
 }
 
 function skillsRollUnitWeaponBasePhysicalDamage256ths_6FCB87D0(
@@ -3267,8 +3218,13 @@ export function SKILLS_SrvDo_SpawnChargeScaledAreaRainMissiles_6FCB4970_113c(
 
     const pCoords = allocW5B2Stack(m, 8) >>> 0
     if (
-      skillsGetUnitTargetOrFirstPathCoords_6FCBFA30(m, caster, game, pCoords, (pCoords + 4) >>> 0) ===
-      0
+      SKILLS_GetUnitTargetOrFirstPathCoords_6FCBFA30_113c(
+        m,
+        caster,
+        game,
+        pCoords,
+        (pCoords + 4) >>> 0,
+      ) === 0
     ) {
       return 0
     }
@@ -3382,7 +3338,7 @@ export function SKILLS_SrvDo_AllocProgressiveChargeAttack_6FCB5690_113c(
     if (pCombatDmg !== 0 && (m.u8((pCombatDmg + 0x04) >>> 0) & 1) !== 0) {
       const nStat = (m.u16((pSkillsTxt + 0x54) >>> 0) << 16) >> 16
       const nState = (m.u16((pSkillsTxt + 0x80) >>> 0) << 16) >> 16
-      skillsAddProgressiveChargeStage_6FCB5370(
+      SKILLS_AddProgressiveChargeStage_6FCB5370_113c(
         m,
         attacker,
         game,
@@ -3989,8 +3945,13 @@ export function SKILLS_SrvDo_SpawnLeapOrChargeProjectile_6FCB94C0_113c(
 
     const pCoords = allocW5B2Stack(m, 8) >>> 0
     if (
-      skillsGetUnitTargetOrFirstPathCoords_6FCBFA30(m, caster, game, pCoords, (pCoords + 4) >>> 0) ===
-      0
+      SKILLS_GetUnitTargetOrFirstPathCoords_6FCBFA30_113c(
+        m,
+        caster,
+        game,
+        pCoords,
+        (pCoords + 4) >>> 0,
+      ) === 0
     ) {
       return 0
     }

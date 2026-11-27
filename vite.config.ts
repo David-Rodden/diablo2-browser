@@ -12,8 +12,13 @@ import {
 } from './src/baker/io/server-status-probe.ts'
 import { createSidecarAssetHttpMiddleware } from './src/baker/io/sidecar-compression.ts'
 import type { AssetManifest } from './src/common/pack-contract/index.ts'
+import { createK0ShowcaseHttpMiddleware } from './tools/oracle/k0-showcase-server.ts'
 import { createK1ShowcaseHttpMiddleware } from './tools/oracle/k1-showcase-server.ts'
 import { createK2ShowcaseHttpMiddleware } from './tools/oracle/k2-showcase-server.ts'
+import { createK3ShowcaseHttpMiddleware } from './tools/oracle/k3-showcase-server.ts'
+import { createK4ShowcaseHttpMiddleware } from './tools/oracle/k4-showcase-server.ts'
+import { createK5ShowcaseHttpMiddleware } from './tools/oracle/k5-showcase-server.ts'
+import { createK6ShowcaseHttpMiddleware } from './tools/oracle/k6-showcase-server.ts'
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url))
 const PUBLIC_DIR = process.env.D2_VITE_PUBLIC_DIR
@@ -98,6 +103,15 @@ export default defineConfig({
       },
     },
     {
+      name: 'd2-k0-showcase-api',
+      configureServer(server) {
+        server.middlewares.use(createK0ShowcaseHttpMiddleware({ rootDir: __dirname }))
+      },
+      configurePreviewServer(server) {
+        server.middlewares.use(createK0ShowcaseHttpMiddleware({ rootDir: __dirname }))
+      },
+    },
+    {
       name: 'd2-k1-showcase-api',
       configureServer(server) {
         server.middlewares.use(createK1ShowcaseHttpMiddleware({ rootDir: __dirname }))
@@ -113,6 +127,42 @@ export default defineConfig({
       },
       configurePreviewServer(server) {
         server.middlewares.use(createK2ShowcaseHttpMiddleware({ rootDir: __dirname }))
+      },
+    },
+    {
+      name: 'd2-k3-showcase-api',
+      configureServer(server) {
+        server.middlewares.use(createK3ShowcaseHttpMiddleware({ rootDir: __dirname }))
+      },
+      configurePreviewServer(server) {
+        server.middlewares.use(createK3ShowcaseHttpMiddleware({ rootDir: __dirname }))
+      },
+    },
+    {
+      name: 'd2-k4-showcase-api',
+      configureServer(server) {
+        server.middlewares.use(createK4ShowcaseHttpMiddleware({ rootDir: __dirname }))
+      },
+      configurePreviewServer(server) {
+        server.middlewares.use(createK4ShowcaseHttpMiddleware({ rootDir: __dirname }))
+      },
+    },
+    {
+      name: 'd2-k5-showcase-api',
+      configureServer(server) {
+        server.middlewares.use(createK5ShowcaseHttpMiddleware({ rootDir: __dirname }))
+      },
+      configurePreviewServer(server) {
+        server.middlewares.use(createK5ShowcaseHttpMiddleware({ rootDir: __dirname }))
+      },
+    },
+    {
+      name: 'd2-k6-showcase-api',
+      configureServer(server) {
+        server.middlewares.use(createK6ShowcaseHttpMiddleware({ rootDir: __dirname }))
+      },
+      configurePreviewServer(server) {
+        server.middlewares.use(createK6ShowcaseHttpMiddleware({ rootDir: __dirname }))
       },
     },
     {
@@ -164,10 +214,20 @@ export default defineConfig({
             req.url = `/plugins/drop-tracker/index.html${req.url.slice('/drops.html'.length)}`
           } else if (req.url === '/trade.html' || req.url?.startsWith('/trade.html?')) {
             req.url = `/plugins/trade-hall/index.html${req.url.slice('/trade.html'.length)}`
+          } else if (req.url === '/k0-showcase.html' || req.url?.startsWith('/k0-showcase.html?')) {
+            req.url = `/showcase/k0/index.html${req.url.slice('/k0-showcase.html'.length)}`
           } else if (req.url === '/k1-showcase.html' || req.url?.startsWith('/k1-showcase.html?')) {
             req.url = `/showcase/k1/index.html${req.url.slice('/k1-showcase.html'.length)}`
           } else if (req.url === '/k2-showcase.html' || req.url?.startsWith('/k2-showcase.html?')) {
             req.url = `/showcase/k2/index.html${req.url.slice('/k2-showcase.html'.length)}`
+          } else if (req.url === '/k3-showcase.html' || req.url?.startsWith('/k3-showcase.html?')) {
+            req.url = `/showcase/k3/index.html${req.url.slice('/k3-showcase.html'.length)}`
+          } else if (req.url === '/k4-showcase.html' || req.url?.startsWith('/k4-showcase.html?')) {
+            req.url = `/showcase/k4/index.html${req.url.slice('/k4-showcase.html'.length)}`
+          } else if (req.url === '/k5-showcase.html' || req.url?.startsWith('/k5-showcase.html?')) {
+            req.url = `/showcase/k5/index.html${req.url.slice('/k5-showcase.html'.length)}`
+          } else if (req.url === '/k6-showcase.html' || req.url?.startsWith('/k6-showcase.html?')) {
+            req.url = `/showcase/k6/index.html${req.url.slice('/k6-showcase.html'.length)}`
           } else if (req.url === '/ui/fonts/D2Exocet.ttf' || req.url?.startsWith('/ui/fonts/D2Exocet.ttf?')) {
             req.url = '/ui/fonts/ExocetBlizzardMedium.otf'
           } else if (req.url === '/ui/fonts/D2Formal436.ttf' || req.url?.startsWith('/ui/fonts/D2Formal436.ttf?')) {
@@ -185,10 +245,20 @@ export default defineConfig({
             req.url = `/plugins/drop-tracker/index.html${req.url.slice('/drops.html'.length)}`
           } else if (req.url === '/trade.html' || req.url?.startsWith('/trade.html?')) {
             req.url = `/plugins/trade-hall/index.html${req.url.slice('/trade.html'.length)}`
+          } else if (req.url === '/k0-showcase.html' || req.url?.startsWith('/k0-showcase.html?')) {
+            req.url = `/showcase/k0/index.html${req.url.slice('/k0-showcase.html'.length)}`
           } else if (req.url === '/k1-showcase.html' || req.url?.startsWith('/k1-showcase.html?')) {
             req.url = `/showcase/k1/index.html${req.url.slice('/k1-showcase.html'.length)}`
           } else if (req.url === '/k2-showcase.html' || req.url?.startsWith('/k2-showcase.html?')) {
             req.url = `/showcase/k2/index.html${req.url.slice('/k2-showcase.html'.length)}`
+          } else if (req.url === '/k3-showcase.html' || req.url?.startsWith('/k3-showcase.html?')) {
+            req.url = `/showcase/k3/index.html${req.url.slice('/k3-showcase.html'.length)}`
+          } else if (req.url === '/k4-showcase.html' || req.url?.startsWith('/k4-showcase.html?')) {
+            req.url = `/showcase/k4/index.html${req.url.slice('/k4-showcase.html'.length)}`
+          } else if (req.url === '/k5-showcase.html' || req.url?.startsWith('/k5-showcase.html?')) {
+            req.url = `/showcase/k5/index.html${req.url.slice('/k5-showcase.html'.length)}`
+          } else if (req.url === '/k6-showcase.html' || req.url?.startsWith('/k6-showcase.html?')) {
+            req.url = `/showcase/k6/index.html${req.url.slice('/k6-showcase.html'.length)}`
           } else if (req.url === '/ui/fonts/D2Exocet.ttf' || req.url?.startsWith('/ui/fonts/D2Exocet.ttf?')) {
             req.url = '/ui/fonts/ExocetBlizzardMedium.otf'
           } else if (req.url === '/ui/fonts/D2Formal436.ttf' || req.url?.startsWith('/ui/fonts/D2Formal436.ttf?')) {
@@ -218,21 +288,15 @@ export default defineConfig({
             source: tradeHtmlAsset.source,
           })
         }
-        const k1ShowcaseHtmlAsset = bundle['showcase/k1/index.html']
-        if (k1ShowcaseHtmlAsset && k1ShowcaseHtmlAsset.type === 'asset') {
-          this.emitFile({
-            type: 'asset',
-            fileName: 'k1-showcase.html',
-            source: k1ShowcaseHtmlAsset.source,
-          })
-        }
-        const k2ShowcaseHtmlAsset = bundle['showcase/k2/index.html']
-        if (k2ShowcaseHtmlAsset && k2ShowcaseHtmlAsset.type === 'asset') {
-          this.emitFile({
-            type: 'asset',
-            fileName: 'k2-showcase.html',
-            source: k2ShowcaseHtmlAsset.source,
-          })
+        for (const kId of ['k0', 'k1', 'k2', 'k3', 'k4', 'k5', 'k6'] as const) {
+          const asset = bundle[`showcase/${kId}/index.html`]
+          if (asset && asset.type === 'asset') {
+            this.emitFile({
+              type: 'asset',
+              fileName: `${kId}-showcase.html`,
+              source: asset.source,
+            })
+          }
         }
       },
     },
@@ -277,8 +341,13 @@ export default defineConfig({
         index: resolve(__dirname, 'index.html'),
         play: resolve(__dirname, 'play.html'),
         ...discoverPluginHtmlEntries(__dirname),
+        'showcase-k0': resolve(__dirname, 'showcase/k0/index.html'),
         'showcase-k1': resolve(__dirname, 'showcase/k1/index.html'),
         'showcase-k2': resolve(__dirname, 'showcase/k2/index.html'),
+        'showcase-k3': resolve(__dirname, 'showcase/k3/index.html'),
+        'showcase-k4': resolve(__dirname, 'showcase/k4/index.html'),
+        'showcase-k5': resolve(__dirname, 'showcase/k5/index.html'),
+        'showcase-k6': resolve(__dirname, 'showcase/k6/index.html'),
         sw: resolve(__dirname, 'src/client/sw/sw.ts'),
       },
       output: {

@@ -1817,6 +1817,22 @@ export const STATLIST_RemoveStatListFromUnit113c = STATLIST_UnlinkSubList113c
  * `op 4/5` dynamic stats on `pSubList`, and subtracts each sub-list entry from parent `FullStats`
  * via `0x6FD89F70`.
  */
+export type StatListRemoveProcHook113c = (
+  m: Memory113c,
+  fpRemove: number,
+  pUnit: number,
+  nState: number,
+  pStatList: number,
+) => void
+
+let statListRemoveProcHook113c: StatListRemoveProcHook113c | null = null
+
+export function registerStatListRemoveProcHook113c(
+  fn: StatListRemoveProcHook113c | null,
+): void {
+  statListRemoveProcHook113c = fn
+}
+
 export function STATLIST_RemoveSubList113c(
   m: Memory113c,
   pSubList: number,
@@ -1827,6 +1843,7 @@ export function STATLIST_RemoveSubList113c(
   const pParentEx = m.get(pSubList, D2StatListStrc.pParent)
   const subFlags = m.get(pSubList, D2StatListStrc.dwFlags)
   const wasMerged = (subFlags & STATLIST_FLAG_MERGED) !== 0
+  const savedUnit = m.get(pSubList, D2StatListStrc.pUnit) >>> 0
 
   const prev = m.get(pSubList, D2StatListStrc.pPrevLink)
   const next = m.get(pSubList, D2StatListStrc.pNextLink)
@@ -1868,6 +1885,15 @@ export function STATLIST_RemoveSubList113c(
         registry,
         pItem,
       )
+    }
+  }
+
+  // 0x6FD8A59D..0x6FD8A5B8: invoke `pSubList->fpRemove(savedUnit, dwStateNo, pSubList)` when linked to a unit.
+  if (savedUnit !== 0 && statListRemoveProcHook113c !== null) {
+    const fpRemove = m.get(pSubList, D2StatListStrc.fpRemove) >>> 0
+    if (fpRemove !== 0) {
+      const stateNo = m.get(pSubList, D2StatListStrc.dwStateNo) | 0
+      statListRemoveProcHook113c(m, fpRemove, savedUnit, stateNo, pSubList >>> 0)
     }
   }
 }
@@ -2634,6 +2660,7 @@ export function STATLIST_CopyUnitFullStatsToBuffer113c(
   pUnit: number,
   pOutStats: number,
   nMaxStats: number,
+  outKeys?: number[],
 ): number {
   hitD2CommonVa113c(0x6FD88410)
   const u = pUnit >>> 0
@@ -2649,13 +2676,20 @@ export function STATLIST_CopyUnitFullStatsToBuffer113c(
   let src = m.get(pListEx, D2StatListExStrc.pFullStat) >>> 0
   const end = (src + imul32(count, 8)) >>> 0
   if (src < end) {
-    let dst = pOutStats >>> 0
-    do {
-      m.setU32(dst, m.u32(src))
-      m.setU32((dst + 4) >>> 0, m.u32((src + 4) >>> 0))
-      src = (src + 8) >>> 0
-      dst = (dst + 8) >>> 0
-    } while (src < end)
+    if (outKeys !== undefined && (pOutStats >>> 0) === 0) {
+      do {
+        outKeys.push(m.u32(src))
+        src = (src + 8) >>> 0
+      } while (src < end)
+    } else {
+      let dst = pOutStats >>> 0
+      do {
+        m.setU32(dst, m.u32(src))
+        m.setU32((dst + 4) >>> 0, m.u32((src + 4) >>> 0))
+        src = (src + 8) >>> 0
+        dst = (dst + 8) >>> 0
+      } while (src < end)
+    }
   }
   return count >>> 0
 }

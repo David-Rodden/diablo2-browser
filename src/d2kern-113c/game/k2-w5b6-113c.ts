@@ -2211,7 +2211,8 @@ export function SKILLS_CalcKickAndProgressiveFinishDamage_6FCB2360_113c(
     const pBootPct = sp
     m.setU32(pBootMin, 0)
     m.setU32(pBootMax, 0)
-    m.setU32(pBootPct, 0)
+    // 0x6FCB24E1: `mov dword ptr [esp+0x20], esi` seeds `*pBootPct = physPct` before `#10323` adds boot/stat ED%
+    m.setU32(pBootPct, physPct >>> 0)
     SKILLS_CalcKickBootDamage113c(m, pAttacker >>> 0, pBootMin, pBootMax, pBootPct)
     bootMin = (rdI32(m, pBootMin) << 8) | 0
     bootMax = (rdI32(m, pBootMax) << 8) | 0

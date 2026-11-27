@@ -368,6 +368,16 @@ const SECONDARY_TORCH_DENSITY_HOOKS_113C: RegpopSpawnHooks113c = {
   },
 }
 
+let secondaryTargetSpotObjectHook113c:
+  | ((m: Memory113c, pUnit: number, pGame: number) => void)
+  | undefined
+
+export function registerSecondaryTargetSpotObjectHook113c(
+  fn: (m: Memory113c, pUnit: number, pGame: number) => void,
+): void {
+  secondaryTargetSpotObjectHook113c = fn
+}
+
 export function OBJECTS_SpawnDensityWithSecondaryTorch113c(
   m: Memory113c,
   pGame: number,
@@ -389,6 +399,10 @@ export function OBJECTS_SpawnDensityWithSecondaryTorch113c(
     activeHooks,
   ) >>> 0
   if (pObj !== 0) {
+    if (secondaryTargetSpotObjectHook113c !== undefined) {
+      secondaryTargetSpotObjectHook113c(m, pObj, pGame)
+      return pObj
+    }
     const pObjRoom = UNITS_GetRoom113c(m, pObj) >>> 0
     const pObjCtrl = m.u32((pGame + 0x10f0) >>> 0) >>> 0
     if (pObjCtrl !== 0) {
@@ -489,84 +503,17 @@ function setPlayerCurrentRoomWithSync113c(
   pNewRoom: number,
   syncCallees: BootInitGapBCallees113c,
 ): void {
-  hitD2GameVa113c(0x6FC6B1D0)
-  if (pClient === 0) return
-  const pPlayer = (m.u32((pClient + 0x174) >>> 0) || m.u32((pClient + 0x1a8) >>> 0)) >>> 0
-  if (pPlayer === 0) return
-  const pOldRoom = m.u32((pClient + 0x1b4) >>> 0) >>> 0
-  if (pOldRoom === (pNewRoom >>> 0)) return
-
-  DUNGEON_SyncActiveRoomStatusChange113c(m, pOldRoom, pNewRoom)
-  DUNGEON_UpdateRoomLevelChange113c(m, pOldRoom, pNewRoom)
-
-  const sp = replayFinal11StackPtr
-  replayFinal11StackPtr = (sp + 0x20) >>> 0
-  try {
-    let ppNew = 0
-    let nNew = 0
-    if (pNewRoom !== 0) {
-      DUNGEON_GetAdjacentRoomsListFromRoom113c(m, pNewRoom, sp, (sp + 0x04) >>> 0)
-      ppNew = m.u32(sp) >>> 0
-      nNew = m.u32((sp + 0x04) >>> 0) | 0
-    }
-    let ppOld = 0
-    let nOld = 0
-    if (pOldRoom !== 0) {
-      DUNGEON_GetAdjacentRoomsListFromRoom113c(m, pOldRoom, (sp + 0x08) >>> 0, (sp + 0x0c) >>> 0)
-      ppOld = m.u32((sp + 0x08) >>> 0) >>> 0
-      nOld = m.u32((sp + 0x0c) >>> 0) | 0
-    }
-
-    for (let i = 0; i < nNew; i++) {
-      const rNew = m.u32((ppNew + i * 4) >>> 0) >>> 0
-      let inOld = false
-      for (let j = 0; j < nOld; j++) {
-        if ((m.u32((ppOld + j * 4) >>> 0) >>> 0) === rNew) {
-          inOld = true
-          break
+  CLIENTS_SetPlayerCurrentRoom113c(
+    m,
+    pClient,
+    pNewRoom,
+    syncCallees.syncPlayerUnitToClient !== undefined
+      ? (mem, cl, _rOld, pClientGame) => {
+          const pSyncPlr = CLIENTS_GetPlayerUnit113c(mem, cl, 0) >>> 0
+          syncCallees.syncPlayerUnitToClient!(mem, pSyncPlr, pClientGame, cl, 0)
         }
-      }
-      if (!inOld) {
-        ROOM_ActivateRoomForClient113c(m, pClient, rNew, pPlayer)
-      }
-    }
-
-    for (let j = 0; j < nOld; j++) {
-      const rOld = m.u32((ppOld + j * 4) >>> 0) >>> 0
-      let inNew = false
-      for (let i = 0; i < nNew; i++) {
-        if ((m.u32((ppNew + i * 4) >>> 0) >>> 0) === rOld) {
-          inNew = true
-          break
-        }
-      }
-      if (!inNew) {
-        const pClientGame = m.u32((pClient + 0x1a8) >>> 0) >>> 0
-        ROOM_DeactivateRoomForClient113c(m, rOld, pClientGame, pClient)
-        if (rOld === pOldRoom && syncCallees.syncPlayerUnitToClient !== undefined) {
-          const pSyncPlr = CLIENTS_GetPlayerUnit113c(m, pClient, 0) >>> 0
-          syncCallees.syncPlayerUnitToClient(m, pSyncPlr, pClientGame, pClient, 0)
-        }
-      }
-    }
-
-    m.setU32((pClient + 0x1b4) >>> 0, pNewRoom >>> 0)
-    const pClientUnit174 = m.u32((pClient + 0x174) >>> 0) >>> 0
-    const pPortalPlayer = pClientUnit174 !== 0 ? pClientUnit174 : pPlayer
-    if (
-      pNewRoom !== 0 &&
-      pPortalPlayer !== 0 &&
-      m.u32(pPortalPlayer) === 0 &&
-      m.u32((pPortalPlayer + 0x14) >>> 0) !== 0
-    ) {
-      const newLevelId = DUNGEON_GetLevelIdFromRoom113c(m, pNewRoom) | 0
-      const curWeaponFlags = UNITS_GetPlayerActiveWeaponFlags113c(m, pPortalPlayer) >>> 0
-      const portalBit = DUNGEON_GetPortalLevelBit113c(m, newLevelId) >>> 0
-      UNITS_SetPlayerActiveWeaponFlags113c(m, pPortalPlayer, (curWeaponFlags | portalBit) >>> 0)
-    }
-  } finally {
-    replayFinal11StackPtr = sp
-  }
+      : undefined,
+  )
 }
 
 /**

@@ -52,9 +52,10 @@ done
 
 CFLAGS_COMMON=(-m32 -Wall -Wextra -Werror -Wno-cast-function-type -static-libgcc -I"$SCRIPT_DIR")
 
-echo "[run-skillcalc-emitter] Compiling skillcalc-emitter.c (-O2 and -O2 -fno-omit-frame-pointer)..."
+echo "[run-skillcalc-emitter] Compiling skillcalc-emitter.c (-O2, -O2 -fno-omit-frame-pointer, and -O1)..."
 "$CC" "${CFLAGS_COMMON[@]}" -O2 "$SCRIPT_DIR/skillcalc-emitter.c" -o "$PFX/drive_c/D2/skillcalc-emitter-o2.exe"
 "$CC" "${CFLAGS_COMMON[@]}" -O2 -fno-omit-frame-pointer "$SCRIPT_DIR/skillcalc-emitter.c" -o "$PFX/drive_c/D2/skillcalc-emitter-fp.exe"
+"$CC" "${CFLAGS_COMMON[@]}" -O1 "$SCRIPT_DIR/skillcalc-emitter.c" -o "$PFX/drive_c/D2/skillcalc-emitter-o1.exe"
 
 export WINEPREFIX="$PFX"
 export WINEDEBUG=-all
@@ -71,15 +72,21 @@ run_wine skillcalc-emitter-o2.exe "C:\\D2\\skillcalc-o2.d2tv"
 echo "[run-skillcalc-emitter] Running skillcalc-emitter (-O2 -fno-omit-frame-pointer)..."
 run_wine skillcalc-emitter-fp.exe "C:\\D2\\skillcalc-fp.d2tv"
 
+echo "[run-skillcalc-emitter] Running skillcalc-emitter (-O1)..."
+run_wine skillcalc-emitter-o1.exe "C:\\D2\\skillcalc-o1.d2tv"
+
 SHA_O2="$(sha256sum "$PFX/drive_c/D2/skillcalc-o2.d2tv" | awk '{print $1}')"
 SHA_FP="$(sha256sum "$PFX/drive_c/D2/skillcalc-fp.d2tv" | awk '{print $1}')"
-rm -f "$PFX/drive_c/D2/skillcalc-fp.d2tv" "$PFX/drive_c/D2/skillcalc-emitter-o2.exe" "$PFX/drive_c/D2/skillcalc-emitter-fp.exe"
+SHA_O1="$(sha256sum "$PFX/drive_c/D2/skillcalc-o1.d2tv" | awk '{print $1}')"
+rm -f "$PFX/drive_c/D2/skillcalc-fp.d2tv" "$PFX/drive_c/D2/skillcalc-o1.d2tv" \
+      "$PFX/drive_c/D2/skillcalc-emitter-o2.exe" "$PFX/drive_c/D2/skillcalc-emitter-fp.exe" "$PFX/drive_c/D2/skillcalc-emitter-o1.exe"
 
 echo "  SKILLCALC -O2: $SHA_O2"
 echo "  SKILLCALC -fp: $SHA_FP"
+echo "  SKILLCALC -O1: $SHA_O1"
 
-if [ "$SHA_O2" != "$SHA_FP" ]; then
-  echo "[run-skillcalc-emitter] ERROR: -O2 and -O2 -fno-omit-frame-pointer outputs differ!" >&2
+if [ "$SHA_O2" != "$SHA_FP" ] || [ "$SHA_O2" != "$SHA_O1" ]; then
+  echo "[run-skillcalc-emitter] ERROR: 3-way compiler-flag outputs differ!" >&2
   exit 1
 fi
 

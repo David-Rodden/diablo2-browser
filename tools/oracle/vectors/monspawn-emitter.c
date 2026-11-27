@@ -4,8 +4,11 @@
  * Loads the real Diablo II v1.13c DLLs (Storm.dll, Fog.dll, D2Lang.dll,
  * D2Common.dll @ 0x6FD50000, D2Net.dll, D2Game.dll @ 0x6FC20000) and MPQ
  * data tables (D2Common.#10943), then executes real D2Game.dll monster
- * population routines across 1,200 vectors spanning Acts 1..5, difficulties
- * 0..2, Classic & Expansion modes, player counts 1..8, and 64-bit seeds:
+ * population routines across 2,448 vectors spanning ALL 136 levels (1..136,
+ * including all 38 Act 1 wilderness/dungeon levels 2..39, all 126 monster-
+ * populated levels across Acts 1..5, and all 10 town/special empty levels),
+ * difficulties 0..2, bossModes 0..2, Classic & Expansion modes, player counts
+ * 1..8, and 64-bit seeds:
  *
  *   1. D2Game:0x6FCEA760  REGIONS_SelectLevelMonsters
  *   2. D2Game:0x6FCFF080  MONSTER_RollPackRarityType
@@ -26,7 +29,9 @@
 
 #define D2COM_PREF_BASE  0x6FD50000u
 #define D2GAME_PREF_BASE 0x6FC20000u
-#define MONSPAWN_COUNT   1200u
+#define MONSPAWN_LEVELS  136u
+#define MONSPAWN_ROUNDS  18u
+#define MONSPAWN_COUNT   (MONSPAWN_LEVELS * MONSPAWN_ROUNDS) /* 2,448 */
 #define MONSPAWN_SEED    0x33334D4F4E535057ull
 
 #pragma pack(push, 1)
@@ -233,19 +238,7 @@ static int open_mpq_if_exists(SFileOpenArchive_t fnOpen, const char *name, DWORD
   return 1;
 }
 
-/* 60 monster-populated levels across Acts 1..5 (excluding towns & Flying Scimitar lvl 74). */
-static const uint16_t kSpawnLevels[60] = {
-  /* Act 1 (16) */
-  2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 17, 21, 28, 35, 39,
-  /* Act 2 (12) */
-  41, 42, 43, 44, 45, 46, 47, 51, 56, 59, 62, 66,
-  /* Act 3 (12) */
-  76, 77, 78, 79, 80, 81, 82, 83, 84, 88, 94, 101,
-  /* Act 4 (5) */
-  104, 105, 106, 107, 108,
-  /* Act 5 (15) */
-  110, 111, 112, 113, 115, 117, 118, 119, 121, 122, 126, 128, 129, 130, 131
-};
+/* Covers ALL 136 v1.13c levels (levelId 1..136) directly via `(i % 136u) + 1u`. */
 
 int main(int argc, char **argv) {
   const char *outPath = argc > 1 ? argv[1] : "monspawn-113c.d2tv";
@@ -353,15 +346,16 @@ int main(int argc, char **argv) {
       if (rec->initSeedLo == 0 && rec->initSeedHi == 0) rec->initSeedHi = 666u;
     }
 
-    uint16_t levelId = kSpawnLevels[i % 60u];
-    uint8_t diff = (uint8_t)((i / 60u) % 3u);
-    /* Act 5 levels (>= 109) require Expansion; Acts 1..4 test both Classic and Expansion. */
-    uint8_t bExp = (levelId >= 109u) ? 1u : (uint8_t)((i % 5u == 4u) ? 0u : 1u);
+    uint16_t levelId = (uint16_t)((i % MONSPAWN_LEVELS) + 1u);
+    uint32_t round = i / MONSPAWN_LEVELS;
+    uint8_t diff = (uint8_t)(round % 3u);
+    uint8_t bossMode = (uint8_t)((round / 3u) % 3u);
+    /* Act 5 levels (>= 109) require Expansion; Acts 1..4 test both Expansion and Classic. */
+    uint8_t bExp = (levelId >= 109u) ? 1u : (uint8_t)((round >= 9u && (round % 2u == 0u)) ? 0u : 1u);
     uint8_t nPlayers = (uint8_t)((s1 % 8u) + 1u);
     uint8_t totalRooms = (uint8_t)(((s1 >> 8) % 24u) + 4u);
     uint8_t roomsVisited = (uint8_t)(((s1 >> 16) % (uint32_t)totalRooms) + 1u);
     uint8_t spawnedBosses = (uint8_t)((s1 >> 24) % 8u);
-    uint8_t bossMode = (uint8_t)(i % 3u);
     uint8_t superPct = (uint8_t)(((s1 >> 32) % 5u) * 20u);
 
     rec->levelId = levelId;

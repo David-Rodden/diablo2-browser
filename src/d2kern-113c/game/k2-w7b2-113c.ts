@@ -189,6 +189,7 @@ import {
   SKILLS_RollMonsterConversionChance_6FCB1610_113c,
 } from './k2-w6b2-113c'
 import { NET_BroadcastSystemChatMessage_6FCEBE70_113c } from './k2-w6b3-113c'
+import { SKILLS_CalcKickAndProgressiveFinishDamage_6FCB2360_113c } from './k2-w5b6-113c'
 import {
   ACT1Q2_TimerPromoteState3_6FC83A80_113c,
   ACT1Q3_CompleteCharsiImbueQuestGlobal_6FC83350_113c,
@@ -196,6 +197,7 @@ import {
   ACT1Q5_TimerPromoteState0D_6FC83210_113c,
   ACT2Q2_SpawnCubeDropItemAndRemoveOld_6FC8B070_113c,
   PLAYER_DestroyPlayerTownPortalPair_6FC586F0_113c,
+  SKILLS_SrvDo067_DragonTalonKickHit_6FCB2940_113c,
 } from './k2-w6b4-113c'
 import {
   ACT4Q1_OnPlainsOfDespairEntered_6FCDA080_113c,
@@ -2737,94 +2739,15 @@ export function calcKickAndProgressiveFinishDamageFixed113c(
   nSkillId: number,
   nSkillLevel: number,
 ): void {
-  hitD2GameVa113c(0x6FCB2360)
-  SKILLS_ApplyProgressiveAttackRatingAndPhysBonuses113c(m, pAttacker >>> 0, pDmg >>> 0)
-  m.setU32(pDmg >>> 0, (m.u32(pDmg >>> 0) | 3) >>> 0)
-
-  const skillId = nSkillId | 0
-  const slvl = nSkillLevel | 0
-  let skillMin = SKILLS_GetSkillPhysMinDamage113c(m, pAttacker >>> 0, skillId, slvl, 0) | 0
-  let skillMax = SKILLS_GetSkillPhysMaxDamage113c(m, pAttacker >>> 0, skillId, slvl, 0) | 0
-  const physPct = m.u32((pDmg + 0x0c) >>> 0) | 0
-  skillMin = (skillMin + calcPctBonus100KickK2(skillMin, physPct)) | 0
-  skillMax = (skillMax + calcPctBonus100KickK2(skillMax, physPct)) | 0
-
-  const sp = allocScratch(m, 0x18)
-  let bootMin = 0
-  let bootMax = 0
-  let bootPct = 0
-  try {
-    const pBootMin = (sp + 0x04) >>> 0
-    const pBootMax = (sp + 0x08) >>> 0
-    const pBootPct = sp
-    m.setU32(pBootMin, 0)
-    m.setU32(pBootMax, 0)
-    // 0x6FCB24E1: `mov dword ptr [esp+0x20], esi` seeds `*pBootPct = physPct` before `#10323` adds boot/stat ED%
-    m.setU32(pBootPct, physPct >>> 0)
-    SKILLS_CalcKickBootDamage113c(m, pAttacker >>> 0, pBootMin, pBootMax, pBootPct)
-    bootMin = ((m.u32(pBootMin) | 0) << 8) | 0
-    bootMax = ((m.u32(pBootMax) | 0) << 8) | 0
-    bootPct = m.u32(pBootPct) | 0
-  } finally {
-    freeScratch(0x18)
-  }
-
-  bootMin = (bootMin + calcPctBonus100KickK2(bootMin, bootPct)) | 0
-  const totalMax = (bootMax + calcPctBonus100KickK2(bootMax, bootPct) + skillMax) | 0
-  const totalMin = (bootMin + skillMin) | 0
-  const range = (totalMax - totalMin) | 0
-  let roll = 0
-  if (range > 0) {
-    const lo = stepSeed64AtKickK2(m, (pAttacker + 0x20) >>> 0) >>> 0
-    if ((range & ((range - 1) | 0)) === 0) {
-      roll = (lo & ((range - 1) >>> 0)) | 0
-    } else {
-      roll = (lo % (range >>> 0)) | 0
-    }
-  }
-  m.setU32((pDmg + 0x08) >>> 0, ((m.u32((pDmg + 0x08) >>> 0) | 0) + totalMin + roll) >>> 0)
-  SKILLS_RollAndAddSkillElemDamage_6FCBF210_113c(m, skillId, pAttacker >>> 0, pDmg >>> 0, slvl)
-
-  const pInv = m.u32((pAttacker + 0x60) >>> 0) >>> 0
-  if (pInv === 0) return
-  let pWeap1 = INVENTORY_GetCompositWeaponMemPort113c(m, pInv) >>> 0
-  let pWeap2 = 0
-  if (pWeap1 !== 0) {
-    const loc = ITEMS_GetBodyLocation113c(m, pWeap1) & 0xff
-    const otherLoc = ((loc === 4 ? 1 : 0) + 4) | 0
-    pWeap2 = INVENTORY_GetItemFromBodyLocMemPort113c(m, pInv, otherLoc) >>> 0
-  }
-  if (
-    (ITEMS_CheckItemTypeIdMemPort113c(m, pWeap1, 0x2d) | 0) !== 0 &&
-    (ITEMS_CheckNotBrokenOrUnequipping113c(m, pWeap1) | 0) !== 0 &&
-    (STATLIST_GetOwnerAndDynamicFlag113c(m, pWeap1, 0) | 0) !== 0
-  ) {
-    STATLIST_SetWeaponStatListActive113c(m, pAttacker >>> 0, pWeap1, 0)
-  } else {
-    pWeap1 = 0
-  }
-  if (
-    pWeap2 !== 0 &&
-    pWeap2 !== pWeap1 &&
-    (ITEMS_CheckItemTypeIdMemPort113c(m, pWeap2, 0x2d) | 0) !== 0 &&
-    (ITEMS_CheckNotBrokenOrUnequipping113c(m, pWeap2) | 0) !== 0 &&
-    (STATLIST_GetOwnerAndDynamicFlag113c(m, pWeap2, 0) | 0) !== 0
-  ) {
-    STATLIST_SetWeaponStatListActive113c(m, pAttacker >>> 0, pWeap2, 0)
-  }
-  SUNITDMG_FillDamageValues113c(
+  SKILLS_CalcKickAndProgressiveFinishDamage_6FCB2360_113c(
     m,
-    pGame >>> 0,
-    pAttacker >>> 0,
-    pDefender >>> 0,
-    pDmg >>> 0,
-    1,
-    0x80,
+    pAttacker,
+    pGame,
+    pDmg,
+    pDefender,
+    nSkillId,
+    nSkillLevel,
   )
-  SKILLS_ApplyProgressiveChargesToDamage113c(m, pAttacker >>> 0, pDmg >>> 0)
-  if (pWeap1 !== 0) {
-    STATLIST_SetWeaponStatListActive113c(m, pAttacker >>> 0, pWeap1, 1)
-  }
 }
 
 export function rollHitAndAllocKickProgressiveCombatFixed113c(
@@ -3353,44 +3276,7 @@ export function dragonTailKickHitFixed113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
-  hitD2GameVa113c(0x6FCB2940)
-  const game = pGame >>> 0
-  const att = pAttacker >>> 0
-  const skillId = nSkillId | 0
-  const slvl = nSkillLevel | 0
-  if (skillId < 0) return 0
-  const pTables = getSgptDataTablesPtr(m)
-  if (pTables === 0 || skillId >= (m.u32((pTables + 0xba0) >>> 0) | 0)) return 0
-  const pSkillsTxt = (m.u32((pTables + 0xb98) >>> 0) + imul32(skillId, 0x23c)) >>> 0
-  if (pSkillsTxt === 0) return 0
-
-  SKILLS_ApplyVelocityStatListAndRefreshAnimMode_6FCBE7B0_113c(
-    m,
-    att,
-    m.u32((pSkillsTxt + 0x154) >>> 0) | 0,
-  )
-  SUNIT_ValidatePathTargetUnit113c(m, att, game)
-  const def = PATH_GetTargetUnit113c(m, m.u32((att + 0x2c) >>> 0) >>> 0) >>> 0
-  if (def === att || def === 0) return 0
-
-  const nToHitBonus =
-    ((SKILLS_GetSkillToHitBonus113c(m, att, skillId, slvl) | 0) +
-      (STATLIST_GetUnitStat113c(m, att, 0x145, 0) | 0)) |
-    0
-  const pDmg = allocScratch(m, 0x70)
-  try {
-    const wResultFlags =
-      SUNITDMG_RollMeleeToHitAndBlock_6FCFE5A0_113c(m, att, def, game, nToHitBonus, 0, 0) & 0xffff
-    m.setU16((pDmg + 0x04) >>> 0, wResultFlags & 0xffff)
-    if ((wResultFlags & 1) === 0) return 0
-    calcKickAndProgressiveFinishDamageFixed113c(m, att, game, pDmg, def, skillId, slvl)
-    let bSrcDam = m.u8((pSkillsTxt + 0x1a5) >>> 0)
-    if (bSrcDam === 0) bSrcDam = 0x80
-    SUNITDMG_AllocCombat113c(m, game, att, def, pDmg, bSrcDam)
-    return 1
-  } finally {
-    freeScratch(0x70)
-  }
+  return SKILLS_SrvDo067_DragonTalonKickHit_6FCB2940_113c(m, pGame, pAttacker, nSkillId, nSkillLevel)
 }
 
 export function dragonFlightStrikeFixed113c(
@@ -3400,7 +3286,6 @@ export function dragonFlightStrikeFixed113c(
   nSkillId: number,
   nSkillLevel: number,
 ): number {
-  hitD2GameVa113c(0x6FCB3680)
   const game = pGame >>> 0
   const att = pUnit >>> 0
   const skillId = nSkillId | 0

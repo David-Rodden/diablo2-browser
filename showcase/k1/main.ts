@@ -9,6 +9,7 @@
  *   - Zone 4: `D2Common.dll` `1,479 / 1,479 (100%)` Binary-Isomorphism Callgraph Explorer
  */
 
+import { renderKNavStripHtml } from '../shared/k-nav.ts'
 import type { ShowcaseOverviewResponse } from './types.ts'
 import { mountZone1Replay } from './zone1-replay.ts'
 import { mountZone2Drlg } from './zone2-drlg.ts'
@@ -103,6 +104,8 @@ export function mountK1ShowcaseApp(root: HTMLElement): void {
             <strong class="k1-mono" id="k1-m-rep">F2..F2000 (Δ=0)</strong>
           </div>
         </div>
+
+        ${renderKNavStripHtml('K1', 'k1')}
 
         <div class="k1-sidebar-links">
           <a href="/" class="k1-btn k1-btn--block">庇护之地门户 (Portal)</a>

@@ -60,6 +60,11 @@ import {
   STATLIST_GetUnitStatWithLayer113c,
 } from './statlist.ts'
 import { UNITS_SyncDualWieldWeaponStatLists113c } from './unit.ts'
+import {
+  ITEMS_GetDexBonusMemPort113c,
+  ITEMS_GetStrBonusMemPort113c,
+  SKILLS_GetWeaponMasteryBonusMemPort113c,
+} from './k0-d2common-memports.ts'
 import { hitD2CommonVa113c } from '../va-trace-113c.ts'
 
 const UNIT_MONSTER = 1
@@ -745,7 +750,7 @@ export function MISSILE_RollCriticalStrike113c(
     }
   }
   if (w !== 0) {
-    const masteryCritPct = SKILLS_GetWeaponMasteryBonusMem113c(m, u, w, 0, 2) | 0
+    const masteryCritPct = SKILLS_GetWeaponMasteryBonusMemPort113c(m, u, w, 0, 2) | 0
     if (masteryCritPct !== 0) {
       const r3 = rollUnitSeedMod100Mem113c(m, u)
       if (r3 < masteryCritPct) return 1
@@ -913,13 +918,13 @@ export function MISSILE_CalculateDamageData113c(
           srcDmg = sdiv32(srcDmg, 2)
         }
       }
-      slot14 = SKILLS_GetWeaponMasteryBonusMem113c(m, owner, pWeapon, 0, 1) | 0
-      const strPct = itemsGetStrOrDexBonusMem113c(m, pWeapon, 0x106)
+      slot14 = SKILLS_GetWeaponMasteryBonusMemPort113c(m, owner, pWeapon, 0, 1) | 0
+      const strPct = ITEMS_GetStrBonusMemPort113c(m, pWeapon) | 0
       if (strPct !== 0) {
         const strVal = STATLIST_GetUnitStatWithLayer113c(m, owner, 0x00, 0) | 0
         slot14 = (slot14 + mulRecip100MisMem113c(imul32(strVal, strPct))) | 0
       }
-      const dexPct = itemsGetStrOrDexBonusMem113c(m, pWeapon, 0x108)
+      const dexPct = ITEMS_GetDexBonusMemPort113c(m, pWeapon) | 0
       if (dexPct !== 0) {
         const dexVal = STATLIST_GetUnitStatWithLayer113c(m, owner, 0x02, 0) | 0
         slot14 = (slot14 + mulRecip100MisMem113c(imul32(dexVal, dexPct))) | 0

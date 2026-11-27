@@ -8,6 +8,7 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { gunzipSync } from 'node:zlib'
 import { beginVaTrace113c, endVaTrace113c } from '../../../src/d2kern-113c/va-trace-113c.ts'
+import { computeK6SteppedRuntimeExecSummary113c } from '../k6/k6-runtime-exec-exemptions.ts'
 import type { Coverage113c } from '../kern-replay/gap-report.ts'
 import {
   REPO_ROOT_113C,
@@ -284,12 +285,13 @@ function runCli(): void {
     results.push(r)
     const cov = loadK6S2Coverage113c(name)
     const exec = computeK6S2RuntimeExecSummary113c(cov, r.tsExecutedVas)
+    const stepped = computeK6SteppedRuntimeExecSummary113c(name, cov, r.tsExecutedVas, 2)
     const divStr =
       r.firstStrictDivergence === null
         ? 'FULL-HORIZON ZERO DIVERGENCE'
         : `firstStrict=F${r.firstStrictDivergence.frame} ${r.firstStrictDivergence.key}[${String(r.firstStrictDivergence.id ?? '-')}] .${r.firstStrictDivergence.field} (exp=${JSON.stringify(r.firstStrictDivergence.expected)} act=${JSON.stringify(r.firstStrictDivergence.actual)})`
     console.log(
-      `${name.padEnd(32)} boot=${r.bootCheck === null ? 'OK' : 'FAIL'} strict=F${String(r.strictHorizon).padStart(3)}/F${String(r.lastGoldenFrame).padStart(3)} pos=F${String(r.posHorizon).padStart(3)} dll=(C:${exec.d2CommonDll},G:${exec.d2GameDll}) gap=(C:${exec.d2CommonRuntimeExecGap},G:${exec.d2GameRuntimeExecGap}) | ${divStr}`,
+      `${name.padEnd(32)} boot=${r.bootCheck === null ? 'OK' : 'FAIL'} strict=F${String(r.strictHorizon).padStart(3)}/F${String(r.lastGoldenFrame).padStart(3)} pos=F${String(r.posHorizon).padStart(3)} dll=(C:${exec.d2CommonDll},G:${exec.d2GameDll}) f3Gap=(C:${stepped.d2CommonUnexemptedGap},G:${stepped.d2GameUnexemptedGap}) prebootGap=(C:${stepped.d2CommonPrebootExemptedGap},G:${stepped.d2GamePrebootExemptedGap}) | ${divStr}`,
     )
   }
 

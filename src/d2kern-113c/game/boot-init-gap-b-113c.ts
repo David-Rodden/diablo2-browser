@@ -54,6 +54,7 @@ import {
   SKILLS_SetLeftSkill113c,
   SKILLS_SetSkillLevelOnUnit113c,
 } from '../common/skills.js'
+import { MONSTER_GetMonStatsTxtFromUnit_6FC21540_113c } from './k2-laneH-0x6fc2-w1-113c.js'
 import { D2CommonAssertError } from '../common/inline-helpers.js'
 import {
   STATES_ApplyMonSkillIconToUnit113c,
@@ -1380,6 +1381,14 @@ export function D2GAME_ARENA_SyncClientKillCountsOnJoin113c(
   }
 }
 
+let arenaGetFlagsHook113c: ((mem: Memory113c, pPlayer: D2Ptr) => number) | undefined
+
+export function registerArenaGetFlagsHook113c(
+  fn: (mem: Memory113c, pPlayer: D2Ptr) => number,
+): void {
+  arenaGetFlagsHook113c = fn
+}
+
 // @va D2Game:0x6FCD2D90
 export function D2GAME_ARENA_SyncArenaJoinState113c(
   mem: Memory113c,
@@ -1401,9 +1410,15 @@ export function D2GAME_ARENA_SyncArenaJoinState113c(
   const pSpecialUnit =
     callees && callees.getSpecialUnit ? callees.getSpecialUnit(mem, pGame, 0) : 0
   if (pSpecialUnit !== 0) {
-    const pPlayerData = UNITS_GetPlayerData113c(mem, pSpecialUnit)
-    const pArenaUnit = pPlayerData !== 0 ? mem.u32(pPlayerData + 0x34) >>> 0 : 0
-    if (pArenaUnit !== 0 && (mem.u32(pArenaUnit + 4) >>> 0) !== 0) {
+    let arenaFlags = 0
+    if (arenaGetFlagsHook113c !== undefined) {
+      arenaFlags = arenaGetFlagsHook113c(mem, pSpecialUnit) >>> 0
+    } else {
+      const pPlayerData = UNITS_GetPlayerData113c(mem, pSpecialUnit)
+      const pArenaUnit = pPlayerData !== 0 ? mem.u32(pPlayerData + 0x34) >>> 0 : 0
+      arenaFlags = pArenaUnit !== 0 ? mem.u32(pArenaUnit + 4) >>> 0 : 0
+    }
+    if (arenaFlags !== 0) {
       D2GAME_PACKET_Send0x65PlayerKillCount113c(mem, pSpecialUnit, pClient, callees)
     }
   }
@@ -1526,6 +1541,30 @@ export function D2GAME_PLRMODES_BroadcastPlayerJoinNotification113c(
   }
 }
 
+let sendPacket10BHook113c:
+  | ((
+      mem: Memory113c,
+      wStatId: number,
+      pClient: D2Ptr,
+      bPacketId: number,
+      dwUnitGuid: number,
+      dwStatVal: number,
+    ) => number)
+  | undefined
+
+export function registerSendPacket10BHook113c(
+  fn: (
+    mem: Memory113c,
+    wStatId: number,
+    pClient: D2Ptr,
+    bPacketId: number,
+    dwUnitGuid: number,
+    dwStatVal: number,
+  ) => number,
+): void {
+  sendPacket10BHook113c = fn
+}
+
 // @va D2Game:0x6FCEC2F0
 export function D2GAME_PLRMODES_SendStatToClientOrParty113c(
   mem: Memory113c,
@@ -1553,6 +1592,20 @@ export function D2GAME_PLRMODES_SendStatToClientOrParty113c(
   }
   const dwUnitId = pSourceUnit !== 0 ? mem.u32(pSourceUnit + 0x0c) >>> 0 : 0xffffffff
   const valU32 = nStatValue >>> 0
+  if (
+    (callees === undefined || callees.sendPacketToClient === undefined) &&
+    sendPacket10BHook113c !== undefined
+  ) {
+    sendPacket10BHook113c(
+      mem,
+      nStatId & 0xffff,
+      pClient,
+      0x20,
+      dwUnitId,
+      valU32,
+    )
+    return
+  }
   const pkt = new Uint8Array(10)
   pkt[0] = 0x20
   pkt[1] = dwUnitId & 0xff
@@ -2071,7 +2124,7 @@ export function D2GAME_ITEMSTAT_OnStatChangedCallback113c(
         return
       }
       if ((mem.u32(pUnit) >>> 0) === 1) {
-        const pMonStatsTxt = getMonsterStatsTxtRecord113c(mem, pUnit)
+        const pMonStatsTxt = MONSTER_GetMonStatsTxtFromUnit_6FC21540_113c(mem, pUnit)
         if (pMonStatsTxt !== 0) {
           const nLifeRegen = i32(mem.u32(pMonStatsTxt + 0x1a0))
           if (nLifeRegen !== 0) {

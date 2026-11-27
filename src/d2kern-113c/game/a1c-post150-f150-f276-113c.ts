@@ -1948,26 +1948,32 @@ export function ACT3Q1_Callback03_LevelChanged113c(
   hooks?: Post150LaneI1Hooks113c,
 ): void {
   hitD2GameVa113c(0x6FCDA1E0)
+  if (pQuest === 0 || pArg === 0) return
   if (m.u32((pArg + 0x14) >>> 0) === 0x67) {
     const pUnit = m.u32((pArg + 0x0c) >>> 0) >>> 0
     const dwGuid = pUnit !== 0 ? m.u32((pUnit + 0x0c) >>> 0) : 0xffffffff
     if (m.u16((pQuest + 0x9c) >>> 0) > 0) {
       QUESTS_GuidListRemove113c(m, (pQuest + 0x1c) >>> 0, dwGuid)
     }
+    if (m.u8((pQuest + 0x0c) >>> 0) !== 2) return
     const pPlayerData = UNITS_GetPlayerData113c(m, pUnit)
     const pGame = m.u32(pArg >>> 0) >>> 0
     const diffIdx = m.u8((pGame + 0x6d) >>> 0)
     const pQuestFlags = m.u32((pPlayerData + diffIdx * 4 + 0x10) >>> 0) >>> 0
+    const questId = m.u32((pQuest + 0xe0) >>> 0) | 0
     if (
-      DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 0x15, 0) !== 1 &&
-      DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, 0x15, 1) !== 1 &&
-      m.u8((pQuest + 0x0a) >>> 0) === 1
+      DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, questId, 0) === 1 ||
+      DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, questId, 1) === 1
     ) {
-      const pQuestData = m.u32((pQuest + 0x18) >>> 0) >>> 0
-      if (m.u8((pQuestData + 0x02) >>> 0) !== 1) {
-        m.setU8((pQuest + 0x0b) >>> 0, 1)
-        m.setU32((pQuest + 0x0c) >>> 0, 1)
-      }
+      return
+    }
+    if (hooks?.onQuestSetMainState !== undefined) {
+      hooks.onQuestSetMainState(m, pQuest, 3)
+    } else {
+      m.setU8((pQuest + 0x0c) >>> 0, 3)
+    }
+    if (hooks?.onForEachPlayerUnit !== undefined) {
+      hooks.onForEachPlayerUnit(m, m.u32((pQuest + 0x04) >>> 0) >>> 0, 0, 0x6fcd8e80)
     }
   }
 }

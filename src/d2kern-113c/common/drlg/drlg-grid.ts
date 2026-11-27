@@ -65,24 +65,22 @@ function applyCellOp(
   const v = uVal >>> 0;
   switch (eFlagOp | 0) {
     case 0:
-      m.setU32(addr, (m.u32(addr) | v) >>> 0);
+      DRLGGRID_OpOr113c(m, addr, v);
       break;
     case 1:
-      m.setU32(addr, (m.u32(addr) & v) >>> 0);
+      DRLGGRID_OpAnd113c(m, addr, v);
       break;
     case 2:
-      m.setU32(addr, (m.u32(addr) ^ v) >>> 0);
+      DRLGGRID_OpXor113c(m, addr, v);
       break;
     case 3:
-      m.setU32(addr, v);
+      DRLGGRID_OpOverwrite113c(m, addr, v);
       break;
-    case 4: {
-      const cur = m.u32(addr);
-      m.setU32(addr, cur === 0 ? v : cur);
+    case 4:
+      DRLGGRID_OpOverwriteIfZero113c(m, addr, v);
       break;
-    }
     case 5:
-      m.setU32(addr, (m.u32(addr) & (~v >>> 0)) >>> 0);
+      DRLGGRID_OpAndNegated113c(m, addr, v);
       break;
     default:
       throw new Error(`DRLGGRID applyCellOp: invalid eFlagOp=${eFlagOp}`);

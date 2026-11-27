@@ -5187,6 +5187,7 @@ export function PATH_MarkUnitDeadCollision113c(
   pUnit: number,
   bIsCorpse: number,
 ): void {
+  hitD2CommonVa113c(0x6FD865A0)
   const unit = pUnit >>> 0
   if (skipDeadCollisionUnit113c !== 0 && unit === skipDeadCollisionUnit113c && (bIsCorpse | 0) === 1) {
     return

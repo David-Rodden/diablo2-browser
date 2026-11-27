@@ -21,6 +21,7 @@ export class CopyOnWritePageMemory113c implements Memory113c {
   private static readonly PAGE_SIZE = 1 << CopyOnWritePageMemory113c.PAGE_BITS
   private readonly basePages = new Map<number, Uint8Array>()
   private readonly overlayPages = new Map<number, Uint8Array>()
+  private frozenAllocTop = 0x38000000
   private allocTop = 0x38000000
 
   loadBaseImageFile(gzPath: string): void {
@@ -44,11 +45,12 @@ export class CopyOnWritePageMemory113c implements Memory113c {
       this.basePages.set(page, data)
     }
     this.overlayPages.clear()
+    this.frozenAllocTop = this.allocTop
   }
 
   resetOverlay(): void {
     this.overlayPages.clear()
-    this.allocTop = 0x38000000
+    this.allocTop = this.frozenAllocTop
   }
 
   alloc(size: number): number {

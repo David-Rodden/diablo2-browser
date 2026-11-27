@@ -72,11 +72,11 @@ import {
   SGPT_ITEMS_TXT_PTR_VA,
 } from '../tables/datatbls-113c.ts'
 import { DATATBLS_GetItemDataTables113c } from '../tables/item-tbls-113c.ts'
-import { hitD2GameVa113c } from '../va-trace-113c.ts'
 import {
-  QUESTS_GuidListRemove113c,
+  ACT3Q1_Callback03_LevelChanged113c,
   registerK4QuestCallbackDispatcher113c,
 } from './a1c-post150-f150-f276-113c.ts'
+import { AI_FallenShamanCorpseFilter113c } from './ai-fallen-113c.ts'
 import { D2GAME_ARENA_FindPlayerSlotByUnit113c } from './boot-init-gap-b-113c.ts'
 import {
   SUNIT_GetServerUnit113c,
@@ -358,6 +358,7 @@ import {
   ACT4Prologue_InitQuestDescriptor_6FCD9D80_113c,
   ACT4Q2_InitHadrielQuestDescriptor_6FCD97D0_113c,
   ITEMS_UseTimedStateBuffPotion_6FCCE4D0_113c,
+  MONAI_FindClosestWalkableHostileMeleeTargetCallback_6FCD1520_113c,
   registerDefaultSpellIconHandler113c,
 } from './k2-w5b3-113c.ts'
 import {
@@ -1287,31 +1288,19 @@ function runAct4Q2LevelChanged6FCDA1E0_113c(
   pQuest: number,
   pArg: number,
 ): void {
-  hitD2GameVa113c(0x6FCDA1E0)
-  if (pQuest === 0 || pArg === 0) return
-  if ((m.u32((pArg + 0x14) >>> 0) | 0) !== 0x67) return
-  if (m.u16((pQuest + 0x9c) >>> 0) > 0) {
-    const pUnit = m.u32((pArg + 0x0c) >>> 0) >>> 0
-    const dwGuid = pUnit !== 0 ? (m.u32((pUnit + 0x0c) >>> 0) >>> 0) : 0xffffffff
-    QUESTS_GuidListRemove113c(m, (pQuest + 0x1c) >>> 0, dwGuid)
-  }
-  if (m.u8((pQuest + 0x0c) >>> 0) !== 2) return
-  const pUnit = m.u32((pArg + 0x0c) >>> 0) >>> 0
-  const pGame = m.u32(pArg >>> 0) >>> 0
-  const pPlayerData = UNITS_GetPlayerData113c(m, pUnit) >>> 0
-  const diffIdx = m.u8((pGame + 0x6d) >>> 0)
-  const pQuestFlags = m.u32((pPlayerData + diffIdx * 4 + 0x10) >>> 0) >>> 0
-  const questId = m.u32((pQuest + 0xe0) >>> 0) | 0
-  if (DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, questId, 0) === 1) return
-  if (DRLGWARP_TestRoomTileBit113c(m, pQuestFlags, questId, 1) === 1) return
-  QUESTS_Act2RadamentSetStateAndDebugPrint_6FC55EB0_113c(m, pQuest, 3)
-  SUNIT_FindFirstLivingPlayerOrMonsterMatching_6FCFFCC0_113c(
-    m,
-    m.u32((pQuest + 0x04) >>> 0) >>> 0,
-    ACT4Q2_SyncPlayerQuest1BState_6FCD8E80_113c,
-    0,
-    0,
-  )
+  ACT3Q1_Callback03_LevelChanged113c(m, pQuest, pArg, {
+    onQuestSetMainState: (mem, pq, st) =>
+      QUESTS_Act2RadamentSetStateAndDebugPrint_6FC55EB0_113c(mem as SparseMemory113c, pq, st),
+    onForEachPlayerUnit: (mem, pg) => {
+      SUNIT_FindFirstLivingPlayerOrMonsterMatching_6FCFFCC0_113c(
+        mem as SparseMemory113c,
+        pg,
+        ACT4Q2_SyncPlayerQuest1BState_6FCD8E80_113c,
+        0,
+        0,
+      )
+    },
+  })
 }
 
 /**
@@ -1325,7 +1314,6 @@ export function SUNITNPC_BuildVendorStaticTable_6FCAF1B0_113c(
   m: Memory113c,
   nVendorIdx: number,
 ): void {
-  hitD2GameVa113c(0x6FCAF1B0)
   const vIdx = nVendorIdx | 0
   const pItemTables = DATATBLS_GetItemDataTables113c(m) >>> 0
   if (m.u8((0x6fd301f0 + vIdx) >>> 0) !== 0) {
@@ -2690,106 +2678,7 @@ export function tryApplyQuestAndNpcC2SPacketK4_113c(
   } else if (op === 0x34) {
     C2S_Packet34_CainIdentifyItems_6FCEF070_113c(sm, pGame, pPlayer, pPkt, nLen)
   } else if (op === 0x35) {
-    let handledRepairAll = false
-    if (nLen === 0x11 && (m.u32((pPkt + 0x0d) >>> 0) | 0) < 0 && pGame !== 0 && pPlayer !== 0) {
-      const dwNpcGuid = m.u32((pPkt + 0x01) >>> 0) >>> 0
-      const bInteracting = m.u8((pPlayer + 0x6c) >>> 0)
-      const dwInteractId = m.u32((pPlayer + 0x64) >>> 0) >>> 0
-      const dwInteractType = m.u32((pPlayer + 0x68) >>> 0) >>> 0
-      const pInteractingUnit =
-        bInteracting !== 0 ? SUNIT_GetServerUnit113c(m, pGame, dwInteractType, dwInteractId) : 0
-      const pNpcUnit = SUNIT_GetServerUnit113c(m, pGame, 1, dwNpcGuid) >>> 0
-      if (pNpcUnit !== 0 && pInteractingUnit === pNpcUnit) {
-        const nNpcClassId = m.u32((pNpcUnit + 0x04) >>> 0) >>> 0
-        if (
-          nNpcClassId === 0x101 ||
-          nNpcClassId === 0x9a ||
-          nNpcClassId === 0xb2 ||
-          nNpcClassId === 0x1ff ||
-          nNpcClassId === 0xfd
-        ) {
-          handledRepairAll = true
-          hitD2GameVa113c(0x6FCEF0A0)
-          hitD2GameVa113c(0x6FCDDE60)
-          const nDiff = m.u8((pGame + 0x6d) >>> 0)
-          const pPlrData = UNITS_GetPlayerData113c(m, pPlayer) >>> 0
-          const pQuestFlags = m.u32((pPlrData + nDiff * 4 + 0x10) >>> 0) >>> 0
-          const pClient = m.u32(pPlayer) === 0 ? (m.u32((pPlrData + 0x9c) >>> 0) >>> 0) : 0
-          const nTotalCost = ITEMS_GetRepairAllCost113c(
-            m,
-            pGame,
-            pPlayer,
-            nNpcClassId,
-            nDiff,
-            pQuestFlags,
-            0,
-          )
-          if (nTotalCost !== 0) {
-            if (NPC_DeductPlayerGoldAndStash_6FCDCC60_113c(sm, pPlayer, nTotalCost) === 0) {
-              const nGoldFail = STATLIST_GetUnitStat113c(m, pPlayer, 0x0e, 0)
-              NET_SendPacket15B_TransactionResult_6FCAAC90_113c(
-                sm,
-                0x2a,
-                0x0c,
-                nGoldFail,
-                pClient,
-                0xffffffff,
-                0,
-              )
-            } else {
-              const pCurQuestFlags = PLAYER_GetQuestRecordForDifficulty_6FC21020_113c(
-                sm,
-                pPlayer,
-                pGame,
-              )
-              const nCurDiff = m.u8((pGame + 0x6d) >>> 0)
-              ITEMS_GetRepairAllCost113c(
-                m,
-                pGame,
-                pPlayer,
-                nNpcClassId,
-                nCurDiff,
-                pCurQuestFlags,
-                0x6fcdde50,
-                (mem, pg, pItem, plr) => {
-                  hitD2GameVa113c(0x6FCDDE50)
-                  NPCS_RepairAndRechargeUnitItem_6FCDD9B0_113c(
-                    mem as SparseMemory113c,
-                    plr,
-                    pItem,
-                    pg,
-                  )
-                },
-              )
-              const nGoldOk = STATLIST_GetUnitStat113c(m, pPlayer, 0x0e, 0)
-              NET_SendPacket15B_TransactionResult_6FCAAC90_113c(
-                sm,
-                0x2a,
-                0x02,
-                nGoldOk,
-                pClient,
-                0xffffffff,
-                1,
-              )
-            }
-          } else {
-            const nGoldZero = STATLIST_GetUnitStat113c(m, pPlayer, 0x0e, 0)
-            NET_SendPacket15B_TransactionResult_6FCAAC90_113c(
-              sm,
-              0x2a,
-              0x02,
-              nGoldZero,
-              pClient,
-              0xffffffff,
-              1,
-            )
-          }
-        }
-      }
-    }
-    if (!handledRepairAll) {
-      C2S_Packet35_NpcRepair_6FCEF0A0_113c(sm, pGame, pPlayer, pPkt, nLen)
-    }
+    C2S_Packet35_NpcRepair_6FCEF0A0_113c(sm, pGame, pPlayer, pPkt, nLen)
   } else if (op === 0x36) {
     C2S_Packet_HireMercenary_6FCF0060_113c(sm, pGame, pPlayer, pPkt, nLen)
   } else if (op === 0x37) {
@@ -3226,6 +3115,12 @@ function registerK4MonsterAltThinkHandlers113c(): void {
   registerAiTargetModeCallback113c(0x6fcd0df0, (m, pGame, pOrigin, pCand, pCtx) =>
     MONAI_FindClosestClosedDoorCallback_6FCD0DF0_113c(m, pGame, pOrigin, pCand, pCtx),
   )
+  registerAiTargetModeCallback113c(0x6fcd1520, (m, pGame, pOrigin, pCand, pCtx) =>
+    MONAI_FindClosestWalkableHostileMeleeTargetCallback_6FCD1520_113c(m, pGame, pOrigin, pCand, pCtx),
+  )
+  registerAiTargetModeCallback113c(0x6fc9bd50, (m, _pGame, pOrigin, pCand, pCtx) =>
+    AI_FallenShamanCorpseFilter113c(m, pOrigin, pCand, pCtx),
+  )
   registerAiTargetModeCallback113c(0x6fcd12b0, (m, pGame, pOrigin, pCand, pCtx) =>
     MONAI_TrackPackCorpseInRangeCallback_6FCD12B0_113c(m, pGame, pOrigin, pCand, pCtx),
   )
@@ -3347,7 +3242,6 @@ function flushK4ConsumedRoomRestores113c(m: Memory113c, pGame: number): void {
                 (m.u32((pPath + 0x0c) >>> 0) | 0) === spec.posX &&
                 (m.u32((pPath + 0x10) >>> 0) | 0) === spec.posY
               ) {
-                hitD2GameVa113c(0x6fd012d0)
                 m.setU32((pUnit + 0xc4) >>> 0, (m.u32((pUnit + 0xc4) >>> 0) | 0x03000000) >>> 0)
               }
             }

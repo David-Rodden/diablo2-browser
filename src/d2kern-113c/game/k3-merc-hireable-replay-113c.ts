@@ -33,6 +33,7 @@ import {
 } from '../mem/layout.generated.ts'
 import type { Memory113c, SparseMemory113c } from '../mem/sparse-memory.ts'
 import { DATATBLS_GetHirelingTxtRecordFromIdAndLevel113c } from '../tables/monster-tbls-113c.ts'
+import { MONSTER_SpawnSiegeBeastStompProjectiles_6FC95A40_113c } from './k2-w7b2-113c.ts'
 import {
   ARENA_ProcessKillScoreUpdate113c,
   QUESTS_OnMonsterKill113c,
@@ -577,6 +578,14 @@ export function stepMonsterAttackOrSkillActionK3_113c(
           0,
           0,
           1,
+        )
+      },
+      onPostModeMissile(mem, pUnit, pg, mid) {
+        MONSTER_SpawnSiegeBeastStompProjectiles_6FC95A40_113c(
+          mem as SparseMemory113c,
+          pUnit,
+          pg,
+          mid,
         )
       },
     })

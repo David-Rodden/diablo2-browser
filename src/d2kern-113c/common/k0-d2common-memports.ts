@@ -265,6 +265,7 @@ export function INVENTORY_GetActiveWeaponMemPort113c(
   ppWeapon: number,
   pBodyLoc: number,
   pbIsActive: number,
+  outRef?: { weapon: number; bodyLoc: number; isActive: number },
 ): number {
   hitD2CommonVa113c(0x6FD70700)
   const inv = pInventory >>> 0
@@ -272,7 +273,19 @@ export function INVENTORY_GetActiveWeaponMemPort113c(
   const outWeapon = ppWeapon >>> 0
   const outBodyLoc = pBodyLoc >>> 0
   const outActive = pbIsActive >>> 0
-  m.setU32(outActive, 0)
+  const writeWeapon = (v: number): void => {
+    if (outWeapon !== 0) m.setU32(outWeapon, v >>> 0)
+    else if (outRef !== undefined) outRef.weapon = v >>> 0
+  }
+  const writeBodyLoc = (v: number): void => {
+    if (outBodyLoc !== 0) m.setU32(outBodyLoc, v >>> 0)
+    else if (outRef !== undefined) outRef.bodyLoc = v >>> 0
+  }
+  const writeActive = (v: number): void => {
+    if (outActive !== 0) m.setU32(outActive, v >>> 0)
+    else if (outRef !== undefined) outRef.isActive = v >>> 0
+  }
+  writeActive(0)
   const pComp = INVENTORY_GetCompositWeaponMemPort113c(m, inv)
   if (m.u32(inv) === INV_SIGNATURE_113C) {
     const pGridA = INVENTORY_GetOrInitGridMemPort113c(
@@ -288,10 +301,10 @@ export function INVENTORY_GetActiveWeaponMemPort113c(
         isItemNotBrokenInvMem113c(m, pRight) !== 0 &&
         ITEMS_CheckItemTypeIdMemPort113c(m, pRight, ITYPE_WEAPON_113C) !== 0
       ) {
-        m.setU32(outWeapon, pRight)
-        m.setU32(outBodyLoc, BODYLOC_RARM)
+        writeWeapon(pRight)
+        writeBodyLoc(BODYLOC_RARM)
         if (pRight === pComp) {
-          m.setU32(outActive, 1)
+          writeActive(1)
         }
         return 1
       }
@@ -313,14 +326,14 @@ export function INVENTORY_GetActiveWeaponMemPort113c(
     isItemNotBrokenInvMem113c(m, pLeft) !== 0 &&
     ITEMS_CheckItemTypeIdMemPort113c(m, pLeft, ITYPE_WEAPON_113C) !== 0
   ) {
-    m.setU32(outWeapon, pLeft)
-    m.setU32(outBodyLoc, BODYLOC_LARM)
+    writeWeapon(pLeft)
+    writeBodyLoc(BODYLOC_LARM)
     if (pLeft === pComp) {
-      m.setU32(outActive, 1)
+      writeActive(1)
     }
     return 1
   }
-  m.setU32(outWeapon, 0)
+  writeWeapon(0)
   return 0
 }
 

@@ -29,9 +29,10 @@ fi
 
 CFLAGS_COMMON=(-m32 -Wall -Wextra -Werror -Wno-cast-function-type -static-libgcc -I"$SCRIPT_DIR")
 
-echo "[run-itemgen-emitter] Compiling itemgen-emitter.c (-O2 and -O2 -fno-omit-frame-pointer)..."
+echo "[run-itemgen-emitter] Compiling itemgen-emitter.c (-O2, -O2 -fno-omit-frame-pointer, -O1)..."
 "$CC" "${CFLAGS_COMMON[@]}" -O2 "$SCRIPT_DIR/itemgen-emitter.c" -o "$PFX/drive_c/D2/itemgen-emitter-o2.exe"
 "$CC" "${CFLAGS_COMMON[@]}" -O2 -fno-omit-frame-pointer "$SCRIPT_DIR/itemgen-emitter.c" -o "$PFX/drive_c/D2/itemgen-emitter-fp.exe"
+"$CC" "${CFLAGS_COMMON[@]}" -O1 "$SCRIPT_DIR/itemgen-emitter.c" -o "$PFX/drive_c/D2/itemgen-emitter-o1.exe"
 
 export WINEPREFIX="$PFX"
 export WINESERVER="$WINE_DIR/wineserver"
@@ -50,15 +51,21 @@ run_wine itemgen-emitter-o2.exe "C:\\D2\\itemgen-o2.d2tv"
 echo "[run-itemgen-emitter] Running itemgen-emitter (-O2 -fno-omit-frame-pointer)..."
 run_wine itemgen-emitter-fp.exe "C:\\D2\\itemgen-fp.d2tv"
 
+echo "[run-itemgen-emitter] Running itemgen-emitter (-O1)..."
+run_wine itemgen-emitter-o1.exe "C:\\D2\\itemgen-o1.d2tv"
+
 SHA_O2="$(sha256sum "$PFX/drive_c/D2/itemgen-o2.d2tv" | awk '{print $1}')"
 SHA_FP="$(sha256sum "$PFX/drive_c/D2/itemgen-fp.d2tv" | awk '{print $1}')"
-rm -f "$PFX/drive_c/D2/itemgen-fp.d2tv" "$PFX/drive_c/D2/itemgen-emitter-o2.exe" "$PFX/drive_c/D2/itemgen-emitter-fp.exe"
+SHA_O1="$(sha256sum "$PFX/drive_c/D2/itemgen-o1.d2tv" | awk '{print $1}')"
+rm -f "$PFX/drive_c/D2/itemgen-fp.d2tv" "$PFX/drive_c/D2/itemgen-o1.d2tv" \
+      "$PFX/drive_c/D2/itemgen-emitter-o2.exe" "$PFX/drive_c/D2/itemgen-emitter-fp.exe" "$PFX/drive_c/D2/itemgen-emitter-o1.exe"
 
 echo "  ITEMGEN -O2: $SHA_O2"
 echo "  ITEMGEN -fp: $SHA_FP"
+echo "  ITEMGEN -O1: $SHA_O1"
 
-if [ "$SHA_O2" != "$SHA_FP" ]; then
-  echo "[run-itemgen-emitter] ERROR: -O2 and -O2 -fno-omit-frame-pointer outputs differ!" >&2
+if [ "$SHA_O2" != "$SHA_FP" ] || [ "$SHA_O2" != "$SHA_O1" ]; then
+  echo "[run-itemgen-emitter] ERROR: Compiler-flag parity failed (-O2 vs -fp vs -O1)!" >&2
   exit 1
 fi
 

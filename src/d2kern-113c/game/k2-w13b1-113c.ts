@@ -1164,7 +1164,6 @@ export function findTargetForPlayerOrPet6FCD1C90W13B1(
   pnOutDist: number,
   pbOutInMelee: number,
 ): number {
-  hitD2GameVa113c(0x6FCD1C90)
   if (pnOutDist !== 0) m.setU32(pnOutDist >>> 0, 0)
   if (pbOutInMelee !== 0) m.setU32(pbOutInMelee >>> 0, 0)
   if (pOriginUnit === 0) return 0

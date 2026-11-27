@@ -137,6 +137,7 @@ import {
 import { NET_SendPacket59_AssignPlayerAndPartyRoster_6FCAD710_113c } from './k2-w5b2-113c.ts'
 import {
   ITEMS_ExpireTimedStatSubListsEvent_6FCF1780_113c,
+  MONSTER_SpawnAtCoords_6FD0F450_113c,
   SUNIT_ClearPlayerTimeoutEvent_6FD00410_113c,
 } from './k2-w2b8-113c.ts'
 import {
@@ -225,8 +226,6 @@ import {
 import {
   PLAYERSAVE_SaveAllClientCharactersInGame_6FC4C830_113c,
   QUESTS_ObjectEvent07_FastcallThunk_6FC8F510_113c,
-  STATES_OnBuffStateRemovedRefreshAnim_6FC622B0_113c,
-  STATES_OnSkillStateRemovedRefreshAnim_6FC47190_113c,
 } from './k2-w10b1-113c.ts'
 import {
   ITEMS_LoadItemAndSocketsFromBitstream_6FC3F9F0_113c,
@@ -1177,28 +1176,33 @@ export function MONREG_RestoreRoomMonstersFromNode113c(
             wSpawnFlags |= 0x80
           }
           const dwSavedGuid = m.u32((pMon + 0x0c) >>> 0) >>> 0
-          const spRestore = bootInitGapStackPtr
-          bootInitGapStackPtr = (spRestore + 0x30) >>> 0
-          let pSpawned = 0
-          try {
-            m.fill(spRestore, 0x28, 0)
-            m.setU32(spRestore, pGame >>> 0)
-            m.setU32((spRestore + 0x04) >>> 0, pRoom >>> 0)
-            m.setU32((spRestore + 0x08) >>> 0, 0)
-            m.setU32((spRestore + 0x0c) >>> 0, nClassId >>> 0)
-            m.setU32((spRestore + 0x10) >>> 0, nAnimMode >>> 0)
-            m.setU32((spRestore + 0x14) >>> 0, dwSavedGuid)
-            m.setU32((spRestore + 0x18) >>> 0, posX >>> 0)
-            m.setU32((spRestore + 0x1c) >>> 0, posY >>> 0)
-            m.setU32((spRestore + 0x20) >>> 0, 0xffffffff)
-            m.setU16((spRestore + 0x24) >>> 0, wSpawnFlags & 0xffff)
-            pSpawned = MONSTER_Create113c(m, spRestore, hooks)
-            if (pSpawned === 0) {
-              m.setU32((spRestore + 0x20) >>> 0, 5)
-              pSpawned = MONSTER_Create113c(m, spRestore, hooks)
-            }
-          } finally {
-            bootInitGapStackPtr = spRestore
+          let pSpawned = MONSTER_SpawnAtCoords_6FD0F450_113c(
+            m,
+            dwSavedGuid,
+            nClassId,
+            nAnimMode,
+            pGame,
+            pRoom,
+            posX,
+            posY,
+            -1,
+            wSpawnFlags,
+            hooks,
+          )
+          if (pSpawned === 0) {
+            pSpawned = MONSTER_SpawnAtCoords_6FD0F450_113c(
+              m,
+              dwSavedGuid,
+              nClassId,
+              nAnimMode,
+              pGame,
+              pRoom,
+              posX,
+              posY,
+              5,
+              wSpawnFlags,
+              hooks,
+            )
           }
           let nAlignment = 0
           if ((dwFlags18 & 0x0100) !== 0) nAlignment = 2
@@ -3927,9 +3931,14 @@ export function UNIT_SendFullUnitSyncToClient113c(
       }
       case 3: {
         const pPath = m.u32((pUnit + 0x2c) >>> 0) >>> 0
-        if (pPath !== 0) {
-          PATH_GetVelocity113c(m, pPath)
-        }
+        const bIncTarget = pPath !== 0 ? (PATH_GetVelocity113c(m, pPath) | 0) : 0
+        MISSILE_SendSyncPacket73_6FC8F740_113c(
+          m as SparseMemory113c,
+          pGame,
+          pUnit,
+          pClient,
+          bIncTarget,
+        )
         if (callees.onUnitFullSyncPreSwitch !== undefined) {
           callees.onUnitFullSyncPreSwitch(m, dwUnitType, pClient, pUnit, dwFlags)
         }
@@ -4372,97 +4381,14 @@ function dispatchDefaultItemTimerEvent113c(
   }
 }
 
-function collectExpiringCustomFpRemoveSubLists113c(
-  m: Memory113c,
-  pGame: number,
-  pUnit: number,
-  evType: number,
-): Array<{ stateNo: number; fpRemove: number; sub: number }> | null {
-  if (evType !== 12 || pGame === 0 || pUnit === 0) return null
-  if (!isByteKnownInMem113c(m, (pUnit + 0x5c) >>> 0)) return null
-  const pEx = m.u32((pUnit + 0x5c) >>> 0) >>> 0
+function bindUnitGamePtrIfMissing113c(m: Memory113c, pGame: number, pUnit: number): void {
   if (
-    pEx === 0 ||
-    !isByteKnownInMem113c(m, (pEx + 0x10) >>> 0) ||
-    !isByteKnownInMem113c(m, (pEx + 0x3c) >>> 0) ||
-    (m.u32((pEx + 0x10) >>> 0) | 0) >= 0
+    pGame !== 0 &&
+    pUnit !== 0 &&
+    isByteKnownInMem113c(m, (pUnit + 0x80) >>> 0) &&
+    m.u32((pUnit + 0x80) >>> 0) === 0
   ) {
-    return null
-  }
-  const nFrame = isByteKnownInMem113c(m, (pGame + 0xa8) >>> 0) ? (m.u32((pGame + 0xa8) >>> 0) | 0) : 0
-  let out: Array<{ stateNo: number; fpRemove: number; sub: number }> | null = null
-  let sub = m.u32((pEx + 0x3c) >>> 0) >>> 0
-  let guard = 0
-  while (sub !== 0 && guard < 128 && isByteKnownInMem113c(m, (sub + 0x38) >>> 0)) {
-    const flags = m.u32((sub + 0x10) >>> 0) >>> 0
-    if ((flags & 0x02) !== 0 && (flags | 0) >= 0) {
-      const expFrame = m.u32((sub + 0x18) >>> 0) | 0
-      const due = nFrame !== 0 ? expFrame <= nFrame : ((expFrame - 1) | 0) <= 0
-      if (due) {
-        const fpRemove = m.u32((sub + 0x38) >>> 0) >>> 0
-        if (fpRemove === 0x6fc622b0 || fpRemove === 0x6fc47190 || fpRemove === 0x6fc62290) {
-          if (out === null) out = []
-          out.push({ stateNo: m.u32((sub + 0x14) >>> 0) | 0, fpRemove, sub })
-        }
-      }
-    }
-    sub = m.u32((sub + 0x2c) >>> 0) >>> 0
-    guard++
-  }
-  return out
-}
-
-function flushExpiringCustomFpRemoveSubLists113c(
-  m: Memory113c,
-  pGame: number,
-  pUnit: number,
-  expired: Array<{ stateNo: number; fpRemove: number; sub: number }> | null,
-): void {
-  if (expired === null || pUnit === 0) return
-  if (isByteKnownInMem113c(m, (pUnit + 0x80) >>> 0) && m.u32((pUnit + 0x80) >>> 0) === 0 && pGame !== 0) {
     m.setU32((pUnit + 0x80) >>> 0, pGame >>> 0)
-  }
-  const savedBssAddrs = [
-    0x6fd31f90,
-    0x6fd18d10,
-    0x6fd31c3c,
-    0x6fd31c20,
-    0x6fd31c1c,
-    0x6fd286a0,
-    0x6fd31d14,
-  ] as const
-  const savedBssVals = [0, 0, 0, 0, 0, 0, 0]
-  const savedBssLoaded = [false, false, false, false, false, false, false]
-  for (let i = 0; i < savedBssAddrs.length; i++) {
-    const addr = savedBssAddrs[i]!
-    if (isByteKnownInMem113c(m, addr)) {
-      savedBssLoaded[i] = true
-      savedBssVals[i] = m.u32(addr) >>> 0
-    }
-  }
-  const sm = m as SparseMemory113c
-  try {
-    for (let i = 0; i < expired.length; i++) {
-      const item = expired[i]!
-      if (STATLIST_GetStatListFromUnitAndStateMemPort113c(m, pUnit, item.stateNo) !== 0) continue
-      if (item.fpRemove === 0x6fc622b0) {
-        STATES_OnBuffStateRemovedRefreshAnim_6FC622B0_113c(sm, pUnit, item.stateNo, item.sub)
-      } else if (item.fpRemove === 0x6fc47190) {
-        STATES_OnSkillStateRemovedRefreshAnim_6FC47190_113c(sm, pUnit, item.stateNo, item.sub)
-      } else if (item.fpRemove === 0x6fc62290) {
-        STATES_ToggleGfxStateFlag113c(m, pUnit, item.stateNo, 0)
-        m.setU32((pUnit + 0xc4) >>> 0, (m.u32((pUnit + 0xc4) >>> 0) | 0x40) >>> 0)
-      }
-    }
-  } finally {
-    for (let i = 0; i < savedBssAddrs.length; i++) {
-      if (!savedBssLoaded[i] || savedBssVals[i] === 0) continue
-      const addr = savedBssAddrs[i]!
-      const cur = m.u32(addr) >>> 0
-      if (cur === 0 || (addr === 0x6fd31f90 && cur < savedBssVals[i]!)) {
-        m.setU32(addr, savedBssVals[i]!)
-      }
-    }
   }
 }
 
@@ -4482,7 +4408,6 @@ export function stepMonsterSequenceMode14_6FC96F20_113c(
   pGame: number,
   pMonster: number,
 ): number {
-  hitD2GameVa113c(0x6FC96F20)
   if ((UNITS_HasAnimFinished113c(m, pMonster >>> 0) | 0) !== 0) {
     hitD2GameVa113c(0x6FC96BF0)
     SKILLS_SetUsedSkillMemPort113c(m, pMonster >>> 0, 0)
@@ -4542,15 +4467,14 @@ export function EVENT_ExecutePlayerEvents113c(
     const arg18 = m.get(node, D2EventStrc.dwArg18)
     const pfn = m.get(node, D2EventStrc.pfnHandler) >>> 0
     firedCount++
-    const expPersist = collectExpiringCustomFpRemoveSubLists113c(m, pGame, pUnit, evType)
-    if (callees !== undefined && callees.dispatchPlayerEvent !== undefined) {
-      callees.dispatchPlayerEvent(m, pGame, pUnit, evType, arg14, arg18, node)
-    } else if (pfn === 0x6fd00410) {
+    bindUnitGamePtrIfMissing113c(m, pGame, pUnit)
+    if (pfn === 0x6fd00410) {
       SUNIT_ClearPlayerTimeoutEvent_6FD00410_113c(m, pGame, pUnit, evType, arg14, arg18)
+    } else if (callees !== undefined && callees.dispatchPlayerEvent !== undefined) {
+      callees.dispatchPlayerEvent(m, pGame, pUnit, evType, arg14, arg18, node)
     } else if (pfn === 0) {
       dispatchDefaultPlayerTimerEvent113c(m, pGame, pUnit, evType, arg14, arg18)
     }
-    flushExpiringCustomFpRemoveSubLists113c(m, pGame, pUnit, expPersist)
     const postFlags = m.get(node, D2EventStrc.fFlags) & ~EVENT_FLAG_FIRING
     m.set(node, D2EventStrc.fFlags, postFlags)
     if ((postFlags & EVENT_FLAG_DEFERRED_FREE) !== 0) {
@@ -4572,15 +4496,14 @@ export function EVENT_ExecutePlayerEvents113c(
       const arg18 = m.get(node, D2EventStrc.dwArg18)
       const pfn = m.get(node, D2EventStrc.pfnHandler) >>> 0
       firedCount++
-      const expTimed = collectExpiringCustomFpRemoveSubLists113c(m, pGame, pUnit, evType)
-      if (callees !== undefined && callees.dispatchPlayerEvent !== undefined) {
-        callees.dispatchPlayerEvent(m, pGame, pUnit, evType, arg14, arg18, node)
-      } else if (pfn === 0x6fd00410) {
+      bindUnitGamePtrIfMissing113c(m, pGame, pUnit)
+      if (pfn === 0x6fd00410) {
         SUNIT_ClearPlayerTimeoutEvent_6FD00410_113c(m, pGame, pUnit, evType, arg14, arg18)
+      } else if (callees !== undefined && callees.dispatchPlayerEvent !== undefined) {
+        callees.dispatchPlayerEvent(m, pGame, pUnit, evType, arg14, arg18, node)
       } else if (pfn === 0) {
         dispatchDefaultPlayerTimerEvent113c(m, pGame, pUnit, evType, arg14, arg18)
       }
-      flushExpiringCustomFpRemoveSubLists113c(m, pGame, pUnit, expTimed)
       const postFlags = m.get(node, D2EventStrc.fFlags) & ~EVENT_FLAG_FIRING
       m.set(node, D2EventStrc.fFlags, postFlags)
       EVENT_FreeNode113c(m, pGame, node)

@@ -198,6 +198,24 @@ function readQuestStateMsgTable113c(
   return idx >= 0 && idx < defaults.length ? (defaults[idx]! >>> 0) : 0xffffffff
 }
 
+let questDefaultSeqFilterHook113c:
+  | ((
+      m: D2KernMemory113c,
+      pRefQuest: number,
+      onChain: (m2: D2KernMemory113c, pChained: number) => number,
+    ) => number)
+  | undefined
+
+export function registerQuestDefaultSeqFilterHook113c(
+  fn: (
+    m: D2KernMemory113c,
+    pRefQuest: number,
+    onChain: (m2: D2KernMemory113c, pChained: number) => number,
+  ) => number,
+): void {
+  questDefaultSeqFilterHook113c = fn
+}
+
 function dispatchQuestSeqFilterF0_113c(
   m: D2KernMemory113c,
   pRefQuest: number,
@@ -206,6 +224,13 @@ function dispatchQuestSeqFilterF0_113c(
   const fnVa = m.u32((pRefQuest + 0xf0) >>> 0) >>> 0
   if (hooks !== undefined && hooks.invokeQuestSeqFilter !== undefined) {
     return hooks.invokeQuestSeqFilter(m, pRefQuest, fnVa) & 0xff
+  }
+  if (fnVa === 0x6fc7afb0 && questDefaultSeqFilterHook113c !== undefined) {
+    return (
+      questDefaultSeqFilterHook113c(m, pRefQuest, (m2, pChained) =>
+        dispatchQuestSeqFilterF0_113c(m2, pChained, hooks),
+      ) & 0xff
+    )
   }
   if (fnVa === 0x6fc767a0) {
     return ACT5Q6_SeqFilter_6FC767A0_113c(m, pRefQuest, hooks) & 0xff

@@ -40,7 +40,10 @@ import {
   D2CommonAssertError,
   DATATBLS_GetMonStatsTxtRecordInline113c,
 } from '../common/inline-helpers.ts'
-import { STATLIST_SetUnitStat113c } from '../common/statlist.ts'
+import {
+  STATES_CheckStateMask33OnUnit113c,
+  STATLIST_SetUnitStat113c,
+} from '../common/statlist.ts'
 import {
   DATATBLS_GetObjectsTxtRecord113c,
   UNIT_GetAlignment113c,
@@ -1236,6 +1239,7 @@ export function CLIENTS_SetPlayerCurrentRoom113c(
   m: Memory113c,
   pClient: number,
   pNewRoom: number,
+  onOldRoomDeactivated?: (m: Memory113c, pClient: number, rOld: number, pClientGame: number) => void,
 ): void {
   hitD2GameVa113c(0x6FC6B1D0)
   if (pClient === 0) return
@@ -1289,7 +1293,11 @@ export function CLIENTS_SetPlayerCurrentRoom113c(
         }
       }
       if (!inNew) {
-        ROOM_DeactivateRoomForClient113c(m, rOld, m.u32((pClient + 0x1a8) >>> 0) >>> 0, pClient)
+        const pClientGame = m.u32((pClient + 0x1a8) >>> 0) >>> 0
+        ROOM_DeactivateRoomForClient113c(m, rOld, pClientGame, pClient)
+        if (rOld === pOldRoom && onOldRoomDeactivated !== undefined) {
+          onOldRoomDeactivated(m, pClient, rOld, pClientGame)
+        }
       }
     }
 
@@ -1413,6 +1421,24 @@ export function ROOM_DeactivateMonsterInRoom113c(
   }
 
   if (isActive !== 0) {
+    const memKnownDeact = (m as unknown as { known?: Map<number, Uint8Array> }).known
+    const hasSgptForMask33 = (() => {
+      if (memKnownDeact !== undefined) {
+        const kp = memKnownDeact.get(0x6fde9e1c >>> 12)
+        if (kp === undefined || kp[0x6fde9e1c & 0xfff] === 0) return false
+      }
+      const sgpt = m.u32(0x6fde9e1c) >>> 0
+      if (sgpt === 0) return false
+      const maskSlot = (sgpt + 0x150) >>> 0
+      if (memKnownDeact !== undefined) {
+        const kp2 = memKnownDeact.get(maskSlot >>> 12)
+        if (kp2 === undefined || kp2[maskSlot & 0xfff] === 0) return false
+      }
+      return (m.u32(maskSlot) >>> 0) !== 0
+    })()
+    if (hasSgptForMask33 && STATES_CheckStateMask33OnUnit113c(m, pUnit) !== 0) {
+      bSave = 0
+    }
     if (UNIT_GetAlignment113c(m, pUnit) === 2) {
       bSave = 0
     }
@@ -1515,6 +1541,12 @@ export function GAME_DeactivateUnusedRoomsTick113c(
   pGame: number,
   onRoomDeactivated?: (pRoom: number) => void,
   onUnitRemoved?: (pUnit: number, dwUnitType: number, dwUnitId: number) => void,
+  deactivateUnit?: (
+    m: Memory113c,
+    pUnit: number,
+    pGame: number,
+    onUnitRemoved?: (pUnit: number, dwUnitType: number, dwUnitId: number) => void,
+  ) => void,
 ): void {
   hitD2GameVa113c(0x6FC4CF30)
   for (let actIdx = 0; actIdx < 5; actIdx++) {
@@ -1528,7 +1560,11 @@ export function GAME_DeactivateUnusedRoomsTick113c(
         let pUnit = m.u32((pRoom + 0x74) >>> 0) >>> 0
         while (pUnit !== 0) {
           const pUnitNext = m.u32((pUnit + 0xe8) >>> 0) >>> 0
-          ROOM_DeactivateAnyUnitInRoom113c(m, pUnit, pGame, onUnitRemoved)
+          if (deactivateUnit !== undefined) {
+            deactivateUnit(m, pUnit, pGame, onUnitRemoved)
+          } else {
+            ROOM_DeactivateAnyUnitInRoom113c(m, pUnit, pGame, onUnitRemoved)
+          }
           pUnit = pUnitNext
         }
         DUNGEON_FreeActiveRoom113c(m, pAct, pRoom)

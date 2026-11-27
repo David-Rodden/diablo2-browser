@@ -27,6 +27,7 @@ import { MONSTER_SpawnPresetOrEvilUrn113c } from './boot-init-gap-a-113c.ts'
 import { MONSTATS_FollowSubClassChain_6FC21D30_113c } from './k2-laneH-0x6fc2-w1-113c.ts'
 import { QUESTS_CheckNotIntro_6FC53970_113c } from './k2-laneJ-0x6fc4-w1-113c.ts'
 import { REGPOP_SpawnMonStatsGroupPackAtSubtile_6FC670F0_113c } from './k2-laneL-0x6fc6-w1-113c.ts'
+import { DATATBLS_GetSuperUniquesTxtRecordCount113c } from '../tables/monster-tbls-113c.ts'
 import { REGPOP_RemapDirectionalMonsterClassId113c } from './k2-sunit-spawn-w1-113c.ts'
 import { MONUMOD_PromoteToBossWithSingleUMod_6FC44BF0_113c } from './k2-w4b3-113c.ts'
 import { MONSTER_SpawnChampionPackMembers_6FC67880_113c } from './k2-w4b4-113c.ts'
@@ -658,7 +659,20 @@ export function ROOM_SpawnMonsterPreset113c(
   }
 
   const nMonStats = pTables !== 0 ? m.u32((pTables + 0xa80) >>> 0) | 0 : 0
-  const nSuperUniques = pTables !== 0 ? m.u32((pTables + 0xa74) >>> 0) | 0 : 0
+  const memKnownSuperUniq = (m as unknown as { known?: Map<number, Uint8Array> }).known
+  const hasSuperUniqCountGlobal =
+    memKnownSuperUniq === undefined ||
+    (() => {
+      const a = 0x6fdf09b4
+      const kp = memKnownSuperUniq.get(a >>> 12)
+      return kp !== undefined && kp[a & 0xfff] !== 0
+    })()
+  const nSuperUniques =
+    pTables !== 0
+      ? hasSuperUniqCountGlobal
+        ? (DATATBLS_GetSuperUniquesTxtRecordCount113c(m) | 0)
+        : (m.u32((pTables + 0xa74) >>> 0) | 0)
+      : 0
 
   if (resolvedId < nMonStats) {
     let cid = resolvedId

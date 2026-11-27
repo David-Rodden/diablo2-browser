@@ -25,6 +25,7 @@ import {
   runK6S2Replay113c,
   type K6S2ReplayScenarioName113c,
 } from '../../../tools/oracle/k6-s2/k6-s2-replay.ts'
+import { computeK6SteppedRuntimeExecSummary113c } from '../../../tools/oracle/k6/k6-runtime-exec-exemptions.ts'
 import {
   REPO_ROOT_113C,
   bootFromSnapshot113c,
@@ -199,6 +200,16 @@ describe('[K6] Wave 4 8-scenario F2 boot hydration, ratchet horizons, and real-D
       }
       expect(cCount).toBe(spec.d2CommonExecuted)
       expect(gCount).toBe(spec.d2GameExecuted)
+
+      const stepped = computeK6SteppedRuntimeExecSummary113c(spec.name, cov, r.tsExecutedVas, 2)
+      expect(
+        stepped.d2CommonUnexemptedGap,
+        `${spec.name}: unexempted F3+ D2Common runtime gap: ${stepped.missingSteppedD2CommonVas.join(', ')}`,
+      ).toBe(0)
+      expect(
+        stepped.d2GameUnexemptedGap,
+        `${spec.name}: unexempted F3+ D2Game runtime gap: ${stepped.missingSteppedD2GameVas.join(', ')}`,
+      ).toBe(0)
     })
   }
 
