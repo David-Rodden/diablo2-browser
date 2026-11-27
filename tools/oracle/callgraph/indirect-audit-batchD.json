@@ -1603,7 +1603,7 @@
       "va": "0x6FCEC550",
       "name": "C2S_Dispatch",
       "tsSymbol": "C2S_Dispatch113c",
-      "kernFile": "src/d2kern-113c/game/replay-kernel-113c.ts",
+      "kernFile": "src/d2kern-113c/game/c2s-dispatch-113c.ts",
       "size": 298,
       "category": "static_table",
       "tableBase": "0x6FD1A078",

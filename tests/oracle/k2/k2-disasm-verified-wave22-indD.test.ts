@@ -81,7 +81,7 @@ import {
   D2GAME_IAT_SGPT_DATATABLES_VA_113C,
   initD2GameGlobalsInMem113c,
 } from '../../../src/d2kern-113c/game/regpop-spawn-113c.ts'
-import { C2S_Dispatch113c } from '../../../src/d2kern-113c/game/replay-kernel-113c.ts'
+import { C2S_Dispatch113c } from '../../../src/d2kern-113c/game/c2s-dispatch-113c.ts'
 import {
   EVENT_InitTimerQueue113c,
   EVENT_SetEventFull113c,
@@ -191,7 +191,7 @@ const WAVE22_SPECS: readonly Wave22VaSpec[] = [
   { va: '0x6FCAEF20', size: 325, headHex: '85c0538b5c240c55', tailHex: 'e8d839f7ffcc', tsSymbol: 'EVENT_ExecuteObjectEvents113c', kernFile: 'src/d2kern-113c/game/boot-init-gap-a-113c.ts', category: 'static_table' },
   { va: '0x6FCBC070', size: 227, headHex: '558b6c240c568bf0', tailHex: 'e8ea68f6ffcc', tsSymbol: 'PARTY_ForEachPartyMemberInSameLevel113c', kernFile: 'src/d2kern-113c/game/a1c-post150-f786-f1040-113c.ts', category: 'caller_callback' },
   { va: '0x6FCBD230', size: 381, headHex: '83ec2853558bea6a', tailHex: 'e89056f6ffcc', tsSymbol: 'AI_InitMonsterAiThinkFn113c', kernFile: 'src/d2kern-113c/game/regpop-spawn-113c.ts', category: 'static_table' },
-  { va: '0x6FCEC550', size: 298, headHex: '8a0384c0558b6c24', tailHex: '00005dc20800', tsSymbol: 'C2S_Dispatch113c', kernFile: 'src/d2kern-113c/game/replay-kernel-113c.ts', category: 'static_table' },
+  { va: '0x6FCEC550', size: 298, headHex: '8a0384c0558b6c24', tailHex: '00005dc20800', tsSymbol: 'C2S_Dispatch113c', kernFile: 'src/d2kern-113c/game/c2s-dispatch-113c.ts', category: 'static_table' },
 ]
 
 function loadPeSectionMapper(dllPath: string, expectedBase: number) {
@@ -718,10 +718,28 @@ describe('Wave 22 — FINAL 32 Unaudited D2Game Functions (Batch D 31 indirect +
     // 0x41 (resurrect) requires dead mode 0x11 -> alive returns 0
     expect(C2S_Dispatch113c(m, pGame, pPlayer, new Uint8Array([0x41]))).toBe(0)
 
-    // Dead player (mode 0x11): standard op 0x01 returns 0, bypass op 0x15 returns 1
+    // Dead player (mode 0x11):
+    // - standard op 0x01 returns 0 without hitting handler 0x6FCEE0D0
+    // - bypass op 0x15 invokes 0x6FCEDBB0, where 3-byte [0x15, 0, 0] fails (msgLen + 4 >= nSize) -> returns 2
+    // - bypass op 0x66 invokes 0x6FCEB190 (always-noop) -> returns 0
     m.setU32((pPlayer + 0x10) >>> 0, 0x11)
+    beginVaTrace113c()
     expect(C2S_Dispatch113c(m, pGame, pPlayer, new Uint8Array([0x01, 0, 0, 0, 0]))).toBe(0)
-    expect(C2S_Dispatch113c(m, pGame, pPlayer, new Uint8Array([0x15, 0, 0]))).toBe(1)
+    const blockedHits = endVaTrace113c()
+    expect(hasD2GameHit(blockedHits, 0x6fcec550)).toBe(true)
+    expect(hasD2GameHit(blockedHits, 0x6fcee0d0)).toBe(false)
+
+    beginVaTrace113c()
+    expect(C2S_Dispatch113c(m, pGame, pPlayer, new Uint8Array([0x15, 0, 0]))).toBe(2)
+    const chatHits = endVaTrace113c()
+    expect(hasD2GameHit(chatHits, 0x6fcec550)).toBe(true)
+    expect(hasD2GameHit(chatHits, 0x6fcedbb0)).toBe(true)
+
+    beginVaTrace113c()
+    expect(C2S_Dispatch113c(m, pGame, pPlayer, new Uint8Array([0x66, 0]))).toBe(0)
+    const wardenHits = endVaTrace113c()
+    expect(hasD2GameHit(wardenHits, 0x6fcec550)).toBe(true)
+    expect(hasD2GameHit(wardenHits, 0x6fceb190)).toBe(true)
   })
 
   it('0x6FC4D9B0 invokes host pfnEnterGame hook and all 5 timer wheel executors dispatch 0x6FD00410 + defaults', () => {

@@ -52,7 +52,6 @@ import {
 } from '../../../src/d2kern-113c/game/boot-init-gap-a-113c.ts'
 import {
   C2S_CheckCoordDeltaExceeded113c,
-  C2S_DispatchPacketMem113c,
   C2S_ExecuteSkillOnLocation113c,
   C2S_ExecuteSkillOnUnit113c,
   C2S_Packet01_WalkToLocation113c,

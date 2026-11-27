@@ -38,19 +38,16 @@ import {
   UNITS_GetRoom113c,
   UNITS_SetSeqFrameFromLowByte113c,
 } from '../common/unit.ts'
-import { UNITS_SetTargetUnitForDynamicUnit113c } from '../common/waypoint.ts'
 import { D2UnitStrc } from '../mem/layout.generated.ts'
 import type { Memory113c, SparseMemory113c } from '../mem/sparse-memory.ts'
 import {
   registerSkillsSrvStDispatcher113c,
   SKILLS_DoUsedSkillAction113c,
   SKILLS_StartPlayerSkillAnimOrCast113c,
-  SKILLS_StartUsedSkill113c,
   SrvDoFunc_001_Attack113c,
 } from './a1c-post150-f786-f1040-113c.ts'
 import { flushPendingSavedObjectInitModes113c } from './objects-populate-113c.ts'
 import { runPostActRoomsUpdateHooks113c } from './monster-events.ts'
-import { SUNITDMG_FreeAttackerCombatList113c } from './ai-fallen-113c.ts'
 import {
   C2S_Packet0C_RightSkillOnLocation113c,
   C2S_Packet0D_RightSkillOnUnit113c,
@@ -483,14 +480,15 @@ import {
 import {
   MONSTER_ClearModeEvents113c,
   registerMonsterAiThinkVaHandler113c,
-  UNITS_ChangeAnimMode113c,
 } from './monster-events.ts'
 import {
   SKILLS_GetRecordPtrFast113c,
-  SUNIT_InitUnitAnimData113c,
   SUNIT_ValidatePathTargetUnit113c,
 } from './regpop-spawn-113c.ts'
-import { SUNIT_ScheduleModeAnimEvents113c } from './replay-kernel-113c.ts'
+import {
+  applyPlayerPacket113c,
+  SUNIT_ScheduleModeAnimEvents113c,
+} from './replay-kernel-113c.ts'
 import type { PureCharAnimClip113c } from './tables-bootstrap-113c.ts'
 import { EVENT_FreeNode113c, EVENT_SetEventFull113c } from './timer-wheel.ts'
 
@@ -773,9 +771,9 @@ export function ensureK3SkillsSrvStRegistered113c(): void {
 }
 
 /**
- * `@va D2Game:0x6FC987C0`: starts unit-targeted cast / sequence mode (`10` or `18`),
- * binds `pTargetUnit` via `D2Common.#11129`, initializes anim / sequence data (`0x6FCFFF10`),
- * schedules mode events (`0x6FCFF7B0`), clears `dwFlags & 0x40`, and runs `0x6FCC0830`.
+ * Delegates to canonical manifest-bound `applyPlayerPacket113c` (`D2Game:0x6FC987C0`) with
+ * K3 animation-sequence scheduling (`PLAYER_ScheduleModeAnimEventsK3_113c`), pre-skill target
+ * validation (`0x6FD007A0`), and K3 `SrvSt` dispatch (`dispatchSkillSrvStK3_113c`).
  */
 export function PLAYER_StartCastSkillOnUnitK3_113c(
   m: Memory113c,
@@ -784,17 +782,13 @@ export function PLAYER_StartCastSkillOnUnitK3_113c(
   nMode: number,
   pTargetUnit: number,
 ): void {
-  const game = pGame >>> 0
-  const plr = pPlayer >>> 0
-  SUNITDMG_FreeAttackerCombatList113c(m, plr, game)
-  UNITS_ChangeAnimMode113c(m, plr, nMode | 0)
-  UNITS_SetTargetUnitForDynamicUnit113c(m, plr, pTargetUnit >>> 0)
-  SUNIT_InitUnitAnimData113c(m, plr)
-  MONSTER_ClearModeEvents113c(m, game, plr)
-  PLAYER_ScheduleModeAnimEventsK3_113c(m, game, plr)
-  m.setU32((plr + 0xc4) >>> 0, (m.u32((plr + 0xc4) >>> 0) & 0xffffffbf) >>> 0)
-  SUNIT_ValidatePathTargetUnit113c(m, plr, game)
-  SKILLS_StartUsedSkill113c(m, plr, game, dispatchSkillSrvStK3_113c)
+  applyPlayerPacket113c(m, pGame, pPlayer, nMode, pTargetUnit, {
+    scheduleAnimEvents: PLAYER_ScheduleModeAnimEventsK3_113c,
+    onAfterClearFlag40: (mem, pg, plr) => {
+      SUNIT_ValidatePathTargetUnit113c(mem, plr, pg)
+    },
+    onSrvStFunc: dispatchSkillSrvStK3_113c,
+  })
 }
 
 /**

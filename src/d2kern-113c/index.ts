@@ -52,6 +52,7 @@ export * from './game/monster-events.ts'
 export * from './game/fallen-ai-113c.ts'
 export * from './game/town-npc-ai-113c.ts'
 export * from './game/c2s-packet-113c.ts'
+export * from './game/c2s-dispatch-113c.ts'
 export {
   AI_CalcApproxUnitDistSubtiles113c,
   AI_CastSkillMode14_113c,

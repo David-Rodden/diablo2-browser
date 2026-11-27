@@ -51,12 +51,16 @@ import {
 } from '../save/d2s-writer.ts'
 import { createAreaBootstrapResolver } from '../world/area-bootstrap.ts'
 import {
-  CLASS_SKILL_BASE_113C,
   D2GS_KERNEL_FRAME_MS_113C,
   D2gsKernelBridge113c,
   SERVER_ONLY_NPC_SPAWNER_OBJECT_IDS_113C,
   WAYPOINT_AREA_IDS_113C,
   areaIdToActIdx113c,
+  requireCharClassCode113c,
+  requireClassSkillBase113c,
+  requireTownAreaForAct113c,
+  requireValidCharClassId113c,
+  requireValidDifficulty113c,
   type D2gsBridgeClientHandle113c,
 } from './d2gs-kernel-bridge-113c.ts'
 
@@ -81,37 +85,20 @@ const CLASS_CODE_TO_ID_113C: Readonly<Record<string, CharClassId>> = {
   assassin: 6,
 }
 
-const CLASS_ID_TO_CODE_113C: Readonly<Record<number, CharacterClassCode>> = {
-  0: 'ama',
-  1: 'sor',
-  2: 'nec',
-  3: 'pal',
-  4: 'bar',
-  5: 'dru',
-  6: 'ass',
-}
-
-const ACT_TOWN_AREA_113C: Readonly<Record<number, number>> = {
-  0: 1,
-  1: 40,
-  2: 75,
-  3: 103,
-  4: 109,
-}
-
 function resolveCharClassId113c(
   raw: CharClassId | CharacterClassCode | number | string | undefined,
 ): CharClassId {
-  if (typeof raw === 'number' && Number.isInteger(raw) && raw >= 0 && raw <= 6) {
-    return raw as CharClassId
+  if (raw === undefined) return 0
+  if (typeof raw === 'number') {
+    return requireValidCharClassId113c(raw)
   }
-  if (typeof raw === 'string') {
-    const mapped = CLASS_CODE_TO_ID_113C[raw.trim().toLowerCase()]
-    if (mapped !== undefined) return mapped
-    const num = Number(raw)
-    if (Number.isInteger(num) && num >= 0 && num <= 6) return num as CharClassId
+  const trimmed = raw.trim().toLowerCase()
+  const mapped = CLASS_CODE_TO_ID_113C[trimmed]
+  if (mapped !== undefined) return mapped
+  if (/^[0-6]$/.test(trimmed)) {
+    return Number(trimmed) as CharClassId
   }
-  return 0
+  throw new RangeError(`Invalid 1.13c character class specifier: "${raw}"`)
 }
 
 function isWaypointUnlockedInRawD2s(
@@ -214,12 +201,13 @@ export class LocalKernelD2gsAdapter113c implements GameServerAdapter {
             : 0
     this.charClass = resolveCharClassId113c(rawClass)
 
-    const diff: 0 | 1 | 2 =
+    const diff: 0 | 1 | 2 = requireValidDifficulty113c(
       options.difficulty !== undefined
         ? options.difficulty
         : parsedD2s !== null
           ? parsedD2s.activeDifficulty
-          : 0
+          : 0,
+    )
     this.difficulty = diff
 
     const rawSeed =
@@ -239,7 +227,7 @@ export class LocalKernelD2gsAdapter113c implements GameServerAdapter {
     this.playersXValue = initialPlayersX
 
     const defaultAct = parsedD2s !== null ? parsedD2s.activeAct : 0
-    const defaultTownArea = ACT_TOWN_AREA_113C[defaultAct] !== undefined ? ACT_TOWN_AREA_113C[defaultAct]! : 1
+    const defaultTownArea = requireTownAreaForAct113c(defaultAct)
     const targetAreaId = options.areaId !== undefined ? options.areaId : defaultTownArea
     const actIdx = areaIdToActIdx113c(targetAreaId)
     this.activeAct = actIdx
@@ -352,7 +340,7 @@ export class LocalKernelD2gsAdapter113c implements GameServerAdapter {
 
     let initialSkillLevels: Record<number, number> | undefined
     if (parsedD2s !== null) {
-      const classBase = CLASS_SKILL_BASE_113C[this.charClass] ?? 6
+      const classBase = requireClassSkillBase113c(this.charClass)
       initialSkillLevels = {}
       const count = Math.min(30, parsedD2s.skillLevels.length)
       for (let i = 0; i < count; i++) {
@@ -603,10 +591,7 @@ export class LocalKernelD2gsAdapter113c implements GameServerAdapter {
     const pPlayer = this.handle.getPlayerPtr()
     const pClient = this.handle.pClient >>> 0
     const m = this.bridge.m
-    const classCode =
-      CLASS_ID_TO_CODE_113C[this.charClass] !== undefined
-        ? CLASS_ID_TO_CODE_113C[this.charClass]!
-        : 'ama'
+    const classCode = requireCharClassCode113c(this.charClass)
     const fallbackBase = CANONICAL_CHARSTATS[classCode]
 
     const readStat = (statId: number, fallback: number): number =>
@@ -632,7 +617,7 @@ export class LocalKernelD2gsAdapter113c implements GameServerAdapter {
       }
     }
 
-    const classSkillBase = CLASS_SKILL_BASE_113C[this.charClass] ?? 6
+    const classSkillBase = requireClassSkillBase113c(this.charClass)
     const liveSkills = new Uint8Array(30)
     for (let i = 0; i < 30; i++) {
       if (pPlayer !== 0) {
@@ -800,14 +785,13 @@ export class LocalKernelD2gsAdapter113c implements GameServerAdapter {
       if (this.onAutoSave !== undefined) {
         this.onAutoSave(saved)
       }
-    } catch {
-      // Ignore save export errors if arena was already disposed
+    } finally {
+      this.closed = true
+      this.accumMs = 0
+      this.d2gsAdapter.leave()
+      this.handle.close()
+      this.closeEmitter.emit({ kind: 'local' })
     }
-    this.closed = true
-    this.accumMs = 0
-    this.d2gsAdapter.leave()
-    this.handle.close()
-    this.closeEmitter.emit({ kind: 'local' })
   }
 
   close(): void {

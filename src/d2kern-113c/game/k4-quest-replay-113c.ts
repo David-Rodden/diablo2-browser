@@ -78,6 +78,8 @@ import {
 } from './a1c-post150-f150-f276-113c.ts'
 import { AI_FallenShamanCorpseFilter113c } from './ai-fallen-113c.ts'
 import { D2GAME_ARENA_FindPlayerSlotByUnit113c } from './boot-init-gap-b-113c.ts'
+import { dispatchC2SHandlerByVa113c } from './c2s-dispatch-113c.ts'
+import { C2S_PACKET_TABLE_6FD1A078_113C } from './c2s-packet-113c.ts'
 import {
   SUNIT_GetServerUnit113c,
   SUNIT_HASH_OFFSET_BY_TYPE_113C,
@@ -126,24 +128,12 @@ import {
   ACT5Q4_InitQuestData_6FC7D5C0_113c,
   MONSTER_AssignAuraEnchantedSkill_6FC44CD0_113c,
   MONSTER_AssignTeleportSkill_6FC441B0_113c,
-  PACKETS_SrvMercItemAction_6FCF0BC0_113c,
   QUESTS_OnBossMonsterSpawnedCheckAct3GoldenBird_6FC56140_113c,
 } from './k2-w10b1-113c.ts'
-import {
-  ACT5Q5_InitQuestData_6FC7FB50_113c,
-  C2S_Packet35_NpcRepair_6FCEF0A0_113c,
-  C2S_Packet3B_SpendSkillPoint_6FCEDA20_113c,
-} from './k2-w11b1-113c.ts'
-import {
-  C2S_ExecuteEntityInteractionOrRunToTarget_6FCF01D0_113c,
-  C2S_Packet23_MercReviveHandler_6FCEFB90_113c,
-} from './k2-w12b1-113c.ts'
+import { ACT5Q5_InitQuestData_6FC7FB50_113c } from './k2-w11b1-113c.ts'
+import { C2S_ExecuteEntityInteractionOrRunToTarget_6FCF01D0_113c } from './k2-w12b1-113c.ts'
 import {
   D2Game_6FCCA4D0_113c,
-  D2Game_6FCEF0E0_113c,
-  D2Game_6FCF08B0_113c,
-  D2Game_6FCF0910_113c,
-  D2Game_6FCF12E0_113c,
   D2Game_6FD08F30_113c,
 } from './k2-w13b1-113c.ts'
 import {
@@ -154,12 +144,6 @@ import {
   ACT3Q3_OnScrollMessageOrmusGidbinn_6FCDAA50_113c,
   ACT5Q2_OnQualKehkScrollCallback_6FC7C9E0_113c,
   ACT5Q3_OnMalahOrAnyaScrollCallback_6FC7F5E0_113c,
-  C2S_Packet1A_EquipCursorItem_6FCEF2F0_113c,
-  C2S_Packet1D_SwapCursorWithBodyItem_6FCF1200_113c,
-  C2S_Packet1F_SwapCursorWithContainerItem_6FCF1010_113c,
-  C2S_Packet32_NpcBuyItem_6FCEF570_113c,
-  C2S_Packet49_WaypointInteract_6FCF0D30_113c,
-  C2S_Packet_PlaceCursorItemIntoContainer_6FCEF270_113c,
   dispatchQuestSeqFilterF0_113c,
 } from './k2-w14b1-113c.ts'
 import {
@@ -175,9 +159,6 @@ import {
   ACT4Q2_InitQuestData_6FCDAD40_113c,
   ACT5Q2_InitQuestData_6FC7CC70_113c,
   ACT5Q3_InitQuestData_6FC7FC20_113c,
-  C2S_Packet_DropCursorItem_6FCEF380_113c,
-  C2S_Packet_HireMercenary_6FCF0060_113c,
-  C2S_Packet_NpcBuyItem_6FCEF220_113c,
 } from './k2-w15b1-113c.ts'
 import {
   ACT2Q2_InitQuestTableRecord_6FCE7ED0_113c,
@@ -189,25 +170,7 @@ import {
   ACT4Q3_InitQuestTableRecord_6FCDC5F0_113c,
   ACT4Q3_TimerCallback_CheckDiabloSpawnAndEndgame_6FCDBDC0_113c,
   ACT5Q6_InitQuestTableRecord_6FC80080_113c,
-  C2S_HandlePacket1C_ShrineOrOrificeItemAction_6FCF0E90_113c,
-  C2S_HandlePacket27_IdentifyOrUseCursorItem_6FCEF400_113c,
-  C2S_HandlePacket38_NpcMenuRequest_6FCEFB30_113c,
-  C2S_HandlePacket41_ResurrectPlayer_6FCF14B0_113c,
-  C2S_HandlePacket4F_TradeButton_6FCF1470_113c,
 } from './k2-w16b1-113c.ts'
-import {
-  PACKET_C2S2C_Reject3_113c,
-  PACKET_C2S2D_Reject3_113c,
-  PACKET_C2S2E_PlaySoundNoop113c,
-  PACKET_C2S39_Reject3_113c,
-  PACKET_C2S42_ClearCursorNoop113c,
-  PACKET_C2S43_QuestInitNoop113c,
-  PACKET_C2S45_Reject3_113c,
-  PACKET_C2S4B_RequestUnitRefresh113c,
-  PACKET_C2S52_Reject3_113c,
-  PACKET_C2S58_MarkQuestIntroSeen113c,
-  PACKET_C2S66_WardenResponseNoop113c,
-} from './k2-combat-core-w1-113c.ts'
 import {
   ACT1_IntroStatusFilter_6FC80800_113c,
   ACT4_EndgameStatusFilter_6FC80810_113c,
@@ -244,15 +207,10 @@ import {
   ACT2Q7_Callback_SetQuest31State0_6FCE2720_113c,
   ACT2Q8_ActiveFilter_6FCE25D0_113c,
   ACT2Q8_StatusFilter_6FCE25E0_113c,
-  PACKET_Srv48_ClearPlayerIntro_6FCEB4E0_113c,
-  PACKET_Srv53_TurnOnWalkToRun_6FCEB450_113c,
-  PACKET_Srv54_TurnOffRunToWalk_6FCEB420_113c,
 } from './k2-w2b7-113c.ts'
 import {
   ACT3Q4_CheckAlkorQuestAlert_6FD053F0_113c,
   ACT3Q4_OnAlkorInteractPlayVoice_6FD051C0_113c,
-  PACKET_Recv12_ClearGfxState0C_6FCEB590_113c,
-  PACKET_Recv3F_PlayVoicePhrase_6FCEBD50_113c,
 } from './k2-w2b8-113c.ts'
 import {
   ITEMS_SaveItemToNodeAndFree_6FC403D0_113c,
@@ -394,25 +352,15 @@ import {
   ACT2Q7_Callback_NpcActivateGuardDialog_6FCE4900_113c,
   ACT2Q7_Callback_ScrollMessageSetState_6FCE4A40_113c,
   MONREG_UpdateMonsterRegionTransferCounts_6FCEA410_113c,
-  PACKET_Srv2F_NpcQuestMessage_6FCEC9D0_113c,
-  PACKET_Srv3B_ClearNpcIntroFlag_6FCEB4A0_113c,
-  PACKET_Srv3C_SetSkillHotkey_6FCEBC70_113c,
-  PACKET_Srv40_RequestQuestLog_6FCEBD30_113c,
 } from './k2-w5b5-113c.ts'
 import {
   A5Q4_OpenTemplePortalObject_6FCE94E0_113c,
-  C2S_Packet50_DropPlayerGold_6FCEEF40_113c,
-  C2S_SyncObjectCollisionByGuid_6FCED440_113c,
   ITEMS_UseFlatOrBuffPotion_6FCCEA40_113c,
   ITEMS_UseHealingOrManaPotion_6FCCEDC0_113c,
   ITEMS_UsePercentagePotion_6FCCE6D0_113c,
   NPCS_InitGameNpcControl_6FCAFBE0_113c,
 } from './k2-w5b6-113c.ts'
-import {
-  PACKET_C2S14_SetUnitOverheadChat_6FCF00A0_113c,
-  PACKET_C2S59_MoveTownNpcToCoords_6FCEFF30_113c,
-  SUNIT_FindFirstLivingPlayerOrMonsterMatching_6FCFFCC0_113c,
-} from './k2-w5b7-113c.ts'
+import { SUNIT_FindFirstLivingPlayerOrMonsterMatching_6FCFFCC0_113c } from './k2-w5b7-113c.ts'
 import {
   ACT3Q0_AddHratliIntroDialogNodes_6FD054C0_113c,
   ACT3Q0_OnHratliIntroSpeechDone_6FD05540_113c,
@@ -456,8 +404,6 @@ import {
 import {
   ACT3Q0_InitQuestData_6FD05920_113c,
   AI_ThinkCommand14TriggeredSkill_6FC9D670_113c,
-  PACKET_SrvMercMoveToCoord_6FCED360_113c,
-  PACKET_SrvMercMoveToUnit_6FCED3D0_113c,
 } from './k2-w6b3-113c.ts'
 import {
   ACT1Q1_Callback00_NpcActivateAkara_6FC83C40_113c,
@@ -488,9 +434,6 @@ import {
   ACT4Q1_TimerSpawnIzualSpirit_6FCDA960_113c,
   ACT4Q2_OnQuestTarget0F6Callback_6FCD9DE0_113c,
   ACT4Q3_OnTyraelTalkOpenHarrogathPortal_6FCDB1B0_113c,
-  C2S_HandlePacket5D_PartyRelationAction_6FCEC860_113c,
-  C2S_HandlePacket5E_PartyRelationToggle_6FCEC8E0_113c,
-  C2S_ValidatePacket5ByteItem_6FCED4F0_113c,
   ITEMS_SpellCastFireballAtCoords_6FCCDEE0_113c,
   ITEMS_SpellCastFireballAtTargetOrPath_6FCCDF20_113c,
   ITEMS_SpellIdentifyInventoryItem_6FCCDAC0_113c,
@@ -503,11 +446,7 @@ import {
   ACT3Q2_OnNpcActivatedSendGidbinnAlert_6FD06CF0_113c,
   ACT3Q7_SendMephistoQuestState4Timer_6FD068B0_113c,
   ACT3_InitKurastNpcIntroQuestTable_6FD06700_113c,
-  C2S_Packet23_PlaceCursorItemIntoBelt_6FCEEC70_113c,
-  C2S_Packet25_SwapCursorItemWithBeltItem_6FCEEDE0_113c,
-  C2S_Packet63_ShiftMoveInventoryItemToBelt_6FCF0950_113c,
 } from './k2-w6b6-113c.ts'
-import { PACKET_ProcessChatOrWhisperMessage_6FCEDBB0_113c } from './k2-w6b7-113c.ts'
 import { QUESTS_Act2RadamentSetStateAndDebugPrint_6FC55EB0_113c } from './k2-w7b1-113c.ts'
 import { ACT1Q4_SpawnTristramPortalAtCairnStones_6FC87A90_113c } from './k2-w7b2-113c.ts'
 import {
@@ -518,13 +457,6 @@ import {
 import {
   ACT3Q4_OnLamEsensTomeDropped_6FD07A40_113c,
   ACT3Q4_OnLamEsensTomePickedUp_6FD07AF0_113c,
-  C2S_Packet24_RemoveBeltItemToCursor_6FCF0F80_113c,
-  C2S_Packet27_IdentifyItemWithScroll_6FCEEFE0_113c,
-  C2S_Packet28_SocketItem_6FCEEBD0_113c,
-  C2S_Packet29_InsertScrollIntoTome_6FCEDB30_113c,
-  C2S_Packet30_CancelNpcInteract_6FCED480_113c,
-  C2S_Packet34_CainIdentifyItems_6FCEF070_113c,
-  C2S_Packet3A_AddStatPoint_6FCEC960_113c,
 } from './k2-w7b4-113c.ts'
 import {
   ACT1Q1_NpcIntroAndRewardAkaraDenOfEvil_6FC85260_113c,
@@ -547,14 +479,6 @@ import {
   ACT2Q4_Callback01_NpcDeactivate_6FCE85A0_113c,
   ACT2Q5_InitQuestData_6FCE7080_113c,
   ACT3Q7_Callback00_NpcActivate_6FD07080_113c,
-  C2S_Packet19_PickupBufferOrStorageItemToCursor_6FCF1370_113c,
-  C2S_Packet1A_EquipCursorItemToBodyLoc_6FCEEE60_113c,
-  C2S_Packet1B_SwapTwoHandedOrDualWeaponBodyLoc_6FCF1140_113c,
-  C2S_Packet20_UseInventoryItem_6FCEF730_113c,
-  C2S_Packet21_MergeStackableItems_6FCEE4B0_113c,
-  C2S_Packet26_UseBeltItem_6FCEF5B0_113c,
-  C2S_Packet27_IdentifyItem_6FCEF6B0_113c,
-  C2S_Packet60_SwapWeapons_6FCEF510_113c,
   NPCS_RepairAndRechargeUnitItem_6FCDD9B0_113c,
 } from './k2-w8b3-113c.ts'
 import {
@@ -575,8 +499,6 @@ import {
   ACT2Q4_InitQuestData_6FCE9400_113c,
   ACT3Q3_InitQuestData_6FD07CE0_113c,
   ACT3Q6_InitQuestData_6FD0A080_113c,
-  C2S_PacketTriggerMonsterSpawnNode_6FCEE440_113c,
-  C2S_PacketUseQuestScrollItem_6FCED8D0_113c,
 } from './k2-w9b2-113c.ts'
 import {
   MON_EVENT_AI_THINK,
@@ -606,7 +528,7 @@ import {
 
 const K4_AI_TICK_PARAM_SCRATCH_VA = 0x7ff67b00
 const K4_PACKET_SCRATCH_VA = 0x7f000800
-const K4_QUEST_ARG_SCRATCH_VA = 0x7f000840
+const K4_QUEST_ARG_SCRATCH_VA = 0x7f000c00
 
 const ACT_TOWN_LEVEL_IDS_113C = [1, 40, 75, 103, 109] as const
 
@@ -2537,14 +2459,15 @@ export function tryApplyQuestAndNpcC2SPacketK4_113c(
   pPlayer: number,
   packetBytes: Uint8Array,
   syncWorld: () => void,
-): boolean {
-  if (packetBytes.length === 0) return false
-  const op = packetBytes[0]!
-  if (op < 0x12 || op === 0x2b || op === 0x3c || op === 0x4a || op === 0x4e || op === 0x5f) {
-    return false
+): number | null {
+  if (packetBytes.length === 0) return null
+  const op = packetBytes[0]! & 0xff
+  if (op < 0x12 || op === 0x3c || op === 0x5f || op >= 0x67) {
+    return null
   }
-  if ((op >= 0x55 && op <= 0x57) || (op >= 0x5a && op <= 0x5c) || op === 0x64 || op === 0x65 || op > 0x66) {
-    return false
+  const entry = C2S_PACKET_TABLE_6FD1A078_113C[op]
+  if (entry === undefined || entry.handlerVa === 0) {
+    return null
   }
   const pPkt = K4_PACKET_SCRATCH_VA
   m.fill(pPkt, Math.max(64, packetBytes.length + 16), 0)
@@ -2553,65 +2476,8 @@ export function tryApplyQuestAndNpcC2SPacketK4_113c(
   }
   const sm = m as SparseMemory113c
   const nLen = packetBytes.length
-  if (op === 0x12) {
-    PACKET_Recv12_ClearGfxState0C_6FCEB590_113c(m, pPlayer, pPkt, nLen)
-  } else if (op === 0x13) {
-    D2Game_6FCF0910_113c(sm, pGame, pPlayer, pPkt, nLen)
-  } else if (op === 0x14) {
-    PACKET_C2S14_SetUnitOverheadChat_6FCF00A0_113c(sm, pGame, pPlayer, pPkt, nLen)
-  } else if (op === 0x15) {
-    PACKET_ProcessChatOrWhisperMessage_6FCEDBB0_113c(sm, pGame, pPlayer, pPkt, nLen)
-  } else if (op === 0x16) {
-    D2Game_6FCF08B0_113c(sm, pGame, pPlayer, pPkt, nLen)
-  } else if (op === 0x17) {
-    C2S_Packet_DropCursorItem_6FCEF380_113c(sm, pGame, pPlayer, pPkt, nLen)
-  } else if (op === 0x18) {
-    D2Game_6FCEF0E0_113c(sm, pGame, pPlayer, pPkt, nLen)
-  } else if (op === 0x19) {
-    C2S_Packet19_PickupBufferOrStorageItemToCursor_6FCF1370_113c(sm, pGame, pPlayer, pPkt, nLen)
-  } else if (op === 0x1a) {
-    C2S_Packet1A_EquipCursorItemToBodyLoc_6FCEEE60_113c(sm, pGame, pPlayer, pPkt, nLen)
-  } else if (op === 0x1b) {
-    C2S_Packet1A_EquipCursorItem_6FCEF2F0_113c(sm, pGame, pPlayer, pPkt, nLen)
-  } else if (op === 0x1c) {
-    D2Game_6FCF12E0_113c(sm, pGame, pPlayer, pPkt, nLen)
-  } else if (op === 0x1d) {
-    C2S_Packet1D_SwapCursorWithBodyItem_6FCF1200_113c(sm, pGame, pPlayer, pPkt, nLen)
-  } else if (op === 0x1e) {
-    C2S_Packet1B_SwapTwoHandedOrDualWeaponBodyLoc_6FCF1140_113c(sm, pGame, pPlayer, pPkt, nLen)
-  } else if (op === 0x1f) {
-    C2S_Packet1F_SwapCursorWithContainerItem_6FCF1010_113c(sm, pGame, pPlayer, pPkt, nLen)
-  } else if (op === 0x20) {
-    C2S_Packet20_UseInventoryItem_6FCEF730_113c(sm, pGame, pPlayer, pPkt, nLen)
-  } else if (op === 0x21) {
-    C2S_Packet21_MergeStackableItems_6FCEE4B0_113c(sm, pGame, pPlayer, pPkt, nLen)
-  } else if (op === 0x22) {
-    C2S_ValidatePacket5ByteItem_6FCED4F0_113c(sm, pGame, pPlayer, pPkt, nLen)
-  } else if (op === 0x23) {
-    C2S_Packet23_PlaceCursorItemIntoBelt_6FCEEC70_113c(sm, pGame, pPlayer, pPkt, nLen)
-  } else if (op === 0x24) {
-    C2S_Packet24_RemoveBeltItemToCursor_6FCF0F80_113c(sm, pGame, pPlayer, pPkt, nLen)
-  } else if (op === 0x25) {
-    C2S_Packet25_SwapCursorItemWithBeltItem_6FCEEDE0_113c(sm, pGame, pPlayer, pPkt, nLen)
-  } else if (op === 0x26) {
-    C2S_Packet26_UseBeltItem_6FCEF5B0_113c(sm, pGame, pPlayer, pPkt, nLen)
-  } else if (op === 0x27) {
-    C2S_Packet27_IdentifyItem_6FCEF6B0_113c(sm, pGame, pPlayer, pPkt, nLen)
-  } else if (op === 0x28) {
-    C2S_Packet28_SocketItem_6FCEEBD0_113c(sm, pGame, pPlayer, pPkt, nLen)
-  } else if (op === 0x29) {
-    C2S_Packet29_InsertScrollIntoTome_6FCEDB30_113c(sm, pGame, pPlayer, pPkt, nLen)
-  } else if (op === 0x2a) {
-    C2S_Packet_PlaceCursorItemIntoContainer_6FCEF270_113c(sm, pGame, pPlayer, pPkt, nLen)
-  } else if (op === 0x2c) {
-    PACKET_C2S2C_Reject3_113c(m, pGame, pPlayer, pPkt, nLen)
-  } else if (op === 0x2d) {
-    PACKET_C2S2D_Reject3_113c(m, pGame, pPlayer, pPkt, nLen)
-  } else if (op === 0x2e) {
-    PACKET_C2S2E_PlaySoundNoop113c(m, pGame, pPlayer, pPkt, nLen)
-  } else if (op === 0x2f) {
-    C2S_PacketTriggerMonsterSpawnNode_6FCEE440_113c(sm, pGame, pPlayer, pPkt, nLen)
-  } else if (op === 0x30) {
+  let rc = 0
+  if (op === 0x30) {
     let pCancelNpc = 0
     let npcInteractRec = 0
     let hadTradeState = false
@@ -2631,12 +2497,10 @@ export function tryApplyQuestAndNpcC2SPacketK4_113c(
         }
       }
     }
-    C2S_Packet30_CancelNpcInteract_6FCED480_113c(sm, pGame, pPlayer, pPkt, nLen)
+    rc = dispatchC2SHandlerByVa113c(entry.handlerVa, m, pGame, pPlayer, pPkt, nLen)
     if (hadTradeState && pCancelNpc !== 0 && npcInteractRec !== 0 && m.u32(npcInteractRec) === 0) {
       NPCS_FreePlayerGambleInventoryForNpc_6FCAF620_113c(sm, pCancelNpc, pPlayer, pGame)
     }
-  } else if (op === 0x31) {
-    PACKET_Srv2F_NpcQuestMessage_6FCEC9D0_113c(sm, pGame, pPlayer, pPkt, nLen)
   } else if (op === 0x32) {
     let bookDeltaDeducted = 0
     const origGoldInv = pPlayer !== 0 ? (STATLIST_GetUnitStat113c(m, pPlayer, 0x0e, 0) | 0) : 0
@@ -2665,7 +2529,7 @@ export function tryApplyQuestAndNpcC2SPacketK4_113c(
         }
       }
     }
-    C2S_Packet_NpcBuyItem_6FCEF220_113c(sm, pGame, pPlayer, pPkt, nLen)
+    rc = dispatchC2SHandlerByVa113c(entry.handlerVa, m, pGame, pPlayer, pPkt, nLen)
     if (bookDeltaDeducted > 0) {
       const newBoughtGuid = pPlrData !== 0 ? (m.u32((pPlrData + 0x6c) >>> 0) >>> 0) : 0
       if (newBoughtGuid === prevBoughtGuid) {
@@ -2673,16 +2537,6 @@ export function tryApplyQuestAndNpcC2SPacketK4_113c(
         STATLIST_SetUnitStat113c(m, pPlayer, 0x0f, origGoldStash, 0)
       }
     }
-  } else if (op === 0x33) {
-    C2S_Packet32_NpcBuyItem_6FCEF570_113c(sm, pGame, pPlayer, pPkt, nLen)
-  } else if (op === 0x34) {
-    C2S_Packet34_CainIdentifyItems_6FCEF070_113c(sm, pGame, pPlayer, pPkt, nLen)
-  } else if (op === 0x35) {
-    C2S_Packet35_NpcRepair_6FCEF0A0_113c(sm, pGame, pPlayer, pPkt, nLen)
-  } else if (op === 0x36) {
-    C2S_Packet_HireMercenary_6FCF0060_113c(sm, pGame, pPlayer, pPkt, nLen)
-  } else if (op === 0x37) {
-    C2S_Packet27_IdentifyItemWithScroll_6FCEEFE0_113c(sm, pGame, pPlayer, pPkt, nLen)
   } else if (op === 0x38) {
     let pPlrInv38 = 0
     let savedFirstNode38 = 0
@@ -2700,9 +2554,9 @@ export function tryApplyQuestAndNpcC2SPacketK4_113c(
         }
       }
     }
-    withTmpArenaIfMissingK4_113c(m, pGame, () => {
-      C2S_HandlePacket38_NpcMenuRequest_6FCEFB30_113c(sm, pGame, pPlayer, pPkt, nLen)
-    })
+    rc = withTmpArenaIfMissingK4_113c(m, pGame, () =>
+      dispatchC2SHandlerByVa113c(entry.handlerVa, m, pGame, pPlayer, pPkt, nLen),
+    )
     if (pPlrInv38 !== 0 && (nMenuOpt38 === 1 || nMenuOpt38 === 2)) {
       if (m.u32((pPlrInv38 + 0x30) >>> 0) >>> 0 !== savedLastNode38) {
         m.setU32((pPlrInv38 + 0x2c) >>> 0, savedFirstNode38)
@@ -2732,81 +2586,15 @@ export function tryApplyQuestAndNpcC2SPacketK4_113c(
         }
       }
     }
-  } else if (op === 0x39) {
-    PACKET_C2S39_Reject3_113c(m, pGame, pPlayer, pPkt, nLen)
-  } else if (op === 0x3a) {
-    C2S_Packet3A_AddStatPoint_6FCEC960_113c(sm, pGame, pPlayer, pPkt, nLen)
-  } else if (op === 0x3b) {
-    C2S_Packet3B_SpendSkillPoint_6FCEDA20_113c(sm, pGame, pPlayer, pPkt, nLen)
-  } else if (op === 0x3d) {
-    C2S_SyncObjectCollisionByGuid_6FCED440_113c(sm, pGame, pPlayer, pPkt, nLen)
-  } else if (op === 0x3e) {
-    C2S_PacketUseQuestScrollItem_6FCED8D0_113c(sm, pGame, pPlayer, pPkt, nLen)
-  } else if (op === 0x3f) {
-    PACKET_Recv3F_PlayVoicePhrase_6FCEBD50_113c(m, pPlayer, pPkt, nLen)
-  } else if (op === 0x40) {
-    PACKET_Srv40_RequestQuestLog_6FCEBD30_113c(sm, pGame, pPlayer, pPkt, nLen)
-  } else if (op === 0x41) {
-    C2S_HandlePacket41_ResurrectPlayer_6FCF14B0_113c(sm, pGame, pPlayer, pPkt, nLen)
-  } else if (op === 0x42) {
-    PACKET_C2S42_ClearCursorNoop113c(m, pGame, pPlayer, pPkt, nLen)
-  } else if (op === 0x43) {
-    PACKET_C2S43_QuestInitNoop113c(m, pGame, pPlayer, pPkt, nLen)
-  } else if (op === 0x44) {
-    C2S_HandlePacket1C_ShrineOrOrificeItemAction_6FCF0E90_113c(sm, pGame, pPlayer, pPkt, nLen)
-  } else if (op === 0x45) {
-    PACKET_C2S45_Reject3_113c(m, pGame, pPlayer, pPkt, nLen)
-  } else if (op === 0x46) {
-    PACKET_SrvMercMoveToUnit_6FCED3D0_113c(sm, pGame, pPlayer, pPkt, nLen)
-  } else if (op === 0x47) {
-    PACKET_SrvMercMoveToCoord_6FCED360_113c(sm, pGame, pPlayer, pPkt, nLen)
-  } else if (op === 0x48) {
-    PACKET_Srv48_ClearPlayerIntro_6FCEB4E0_113c(m, pGame, pPlayer, pPkt, nLen)
   } else if (op === 0x49) {
-    withTmpArenaIfMissingK4_113c(m, pGame, () => {
-      C2S_Packet49_WaypointInteract_6FCF0D30_113c(sm, pGame, pPlayer, pPkt, nLen)
-    })
-  } else if (op === 0x4b) {
-    PACKET_C2S4B_RequestUnitRefresh113c(m, pGame, pPlayer, pPkt, nLen)
-  } else if (op === 0x4c) {
-    C2S_HandlePacket27_IdentifyOrUseCursorItem_6FCEF400_113c(sm, pGame, pPlayer, pPkt, nLen)
-  } else if (op === 0x4d) {
-    PACKET_Srv3B_ClearNpcIntroFlag_6FCEB4A0_113c(sm, pGame, pPlayer, pPkt, nLen)
-  } else if (op === 0x4f) {
-    C2S_HandlePacket4F_TradeButton_6FCF1470_113c(sm, pGame, pPlayer, pPkt, nLen)
-  } else if (op === 0x50) {
-    C2S_Packet50_DropPlayerGold_6FCEEF40_113c(sm, pGame, pPlayer, pPkt, nLen)
-  } else if (op === 0x51) {
-    PACKET_Srv3C_SetSkillHotkey_6FCEBC70_113c(sm, pGame, pPlayer, pPkt, nLen)
-  } else if (op === 0x52) {
-    PACKET_C2S52_Reject3_113c(m, pGame, pPlayer, pPkt, nLen)
-  } else if (op === 0x53) {
-    PACKET_Srv53_TurnOnWalkToRun_6FCEB450_113c(m, pGame, pPlayer, pPkt, nLen)
-  } else if (op === 0x54) {
-    PACKET_Srv54_TurnOffRunToWalk_6FCEB420_113c(m, pGame, pPlayer, pPkt, nLen)
-  } else if (op === 0x58) {
-    PACKET_C2S58_MarkQuestIntroSeen113c(m, pGame, pPlayer, pPkt, nLen)
-  } else if (op === 0x59) {
-    PACKET_C2S59_MoveTownNpcToCoords_6FCEFF30_113c(sm, pGame, pPlayer, pPkt, nLen)
-  } else if (op === 0x5d) {
-    C2S_HandlePacket5E_PartyRelationToggle_6FCEC8E0_113c(sm, pGame, pPlayer, pPkt, nLen)
-  } else if (op === 0x5e) {
-    C2S_HandlePacket5D_PartyRelationAction_6FCEC860_113c(sm, pGame, pPlayer, pPkt, nLen)
-  } else if (op === 0x60) {
-    C2S_Packet60_SwapWeapons_6FCEF510_113c(sm, pGame, pPlayer, pPkt, nLen)
-  } else if (op === 0x61) {
-    PACKETS_SrvMercItemAction_6FCF0BC0_113c(sm, pGame, pPlayer, pPkt, nLen)
-  } else if (op === 0x62) {
-    C2S_Packet23_MercReviveHandler_6FCEFB90_113c(sm, pGame, pPlayer, pPkt, nLen)
-  } else if (op === 0x63) {
-    C2S_Packet63_ShiftMoveInventoryItemToBelt_6FCF0950_113c(sm, pGame, pPlayer, pPkt, nLen)
-  } else if (op === 0x66) {
-    PACKET_C2S66_WardenResponseNoop113c(m, pGame, pPlayer, pPkt, nLen)
+    rc = withTmpArenaIfMissingK4_113c(m, pGame, () =>
+      dispatchC2SHandlerByVa113c(entry.handlerVa, m, pGame, pPlayer, pPkt, nLen),
+    )
   } else {
-    return false
+    rc = dispatchC2SHandlerByVa113c(entry.handlerVa, m, pGame, pPlayer, pPkt, nLen)
   }
   syncWorld()
-  return true
+  return rc | 0
 }
 
 const K4_TMP_ARENA_SCRATCH_VA_113C = 0x7e1ff000

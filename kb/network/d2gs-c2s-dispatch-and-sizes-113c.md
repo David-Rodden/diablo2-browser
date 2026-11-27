@@ -47,28 +47,181 @@ Each case first demands a minimum number of buffered bytes, then computes the si
 
 `0x39` is a plain fixed entry: **5 bytes**.
 
-## 4. D2Game C→S dispatch
+## 4. D2Game C→S dispatch (`0x6FCEC550` & `0x6FD1A078`)
 
-Dispatcher `0x6FCEC550`: rejects opcode `0` and `≥ 0x67` (returns 3), then calls
-`[op*8 + 0x6FD1A078]` as `handler(ecx=pGame, edx=pUnit, push pPacket, push nSize)`; a NULL slot returns 3.
-Rows are 8 bytes `{pfnHandler, dword}` (the second dword's meaning was not confirmed).
-`0x67..0x70` (game logon, ping, …) are handled outside this table.
+### 4.1 PE32 Ground Truth & Table Layout (`0x6FD1A078..0x6FD1A3B0`)
 
-Every handler checks `nSize` itself (`cmp [esp+8], N` → `mov eax,3; ret 8` on mismatch). The checks
-agree with the D2Net C→S table for every opcode that has one.
+- **`samples/d2/D2Game.dll`** (v1.13c, `1,138,688` bytes):
+  - `SHA-1`: `b452c203b00f48bbb95cb5cda6419e4f2466cdea`
+  - `SHA-256`: `24b293b86f95bea0228826c502ea4737ba21b91ca9832e52aac4b11fef14f53`
+  - `TimeDateStamp`: `0x4B95C6B2`, `ImageBase`: `0x6FC20000`, `SizeOfImage`: `0x122000`
+  - `.text` `0x6FC21000..0x6FD18000` (`RVA == FileOffset`), `.rdata` `0x6FD18000..0x6FD1F000` (`RVA == FileOffset`), `.data` `0x6FD1F000..0x6FD3B35C`, `.reloc` `0x6FD3C000..0x6FD42000`.
+- **Table `0x6FD1A078`** (`.rdata`, file offset `0x0FA078..0x0FA3AF`):
+  - **`103` (`0x67`) entries (`0x00..0x66`) × `8` bytes = `824` (`0x338`) bytes**:
+    - `+0x00`: `handlerVa: uint32` (`0x00000000` for the 12 NULL slots; `.text` VA in `0x6FCEB190..0x6FCF14B0` for the 91 non-null handlers).
+    - `+0x04`: `flag: uint32` — strictly `0` (`49` entries) or `1` (`54` entries).
+  - **`.reloc` proof**: scanning `IMAGE_REL_BASED_HIGHLOW` across `0x6FD1A078..0x6FD1A3AF` finds exactly **`91`** relocations, all at `(va - 0x6FD1A078) % 8 == 0` (exact 1:1 match with the 91 non-null `handlerVa` slots) and **`0`** relocations at `+0x04` (proving `+0x04` is an integer, never a second function pointer).
+  - **Adjacent `.rdata` bounds proof**:
+    - Immediately preceding `0x6FD1A078`: EXP level-diff tables `0x6FD1A01C..0x6FD1A073` (referenced at `0x6FCFAA50`, `0x6FCFAA6E`) followed by 4-byte zero alignment padding `0x6FD1A074..0x6FD1A077`.
+    - Immediately following `0x6FD1A3B0` (`0x6FD1A078 + 103 * 8`): unrelated 10-entry × 4-byte function pointer table `0x6FD1A3B0..0x6FD1A3D7` (indexed via `[ebx*4 + 0x6FD1A3B0]` at `0x6FD10AC6`, `0x6FD10AF7`), then `PLAYER_StartModeAtCoords` table at `0x6FD1A3F8`.
+  - There is **no** C→S packet-size table in `D2Game.dll`; framing sizes live exclusively in `D2Net.dll:0x6FBFABD8` (Section 1).
+- **Proof that `+0x04` (`flag`) is unreferenced in `D2Game.dll` 1.13c**:
+  - Exhaustive scan of `.text`/`.rdata`/`.data` for any reference in `[0x6FD1A000, 0x6FD1A3B8]` yields only **3** instructions, all inside `0x6FCEC550` and all reading `+0x00`: `0x6FCEC56B` (`mov eax, [edi*8+0x6FD1A078]`), `0x6FCEC623` (`mov eax, [edi*8+0x6FD1A078]`), and `0x6FCEC65E` (`call [edi*8+0x6FD1A078]`).
+  - Zero instructions in `D2Game.dll` reference `0x6FD1A07C` or load `+0x04`, and `0x6FD1A078` is not exported (verified across all 61 exports `D2Game#10000..#10060`).
+  - Cross-checking `flag` against `0x6FCEC550`'s jump table confirms independence: `0x01..0x11` have `flag=0` yet are alive-gated; `0x43` has `flag=1` yet bypasses the gate (`case 0`); `0x41` has `flag=1` yet requires dead mode `0x11` (`case 2`); 8 NULL slots (`0x4A, 0x4E, 0x55..0x57, 0x5A..0x5C`) have `handlerVa=0` with `flag=1`.
 
-NULL slots: `0x00, 0x2B, 0x4A, 0x4E, 0x55, 0x56, 0x57, 0x5A, 0x5B, 0x5C, 0x64, 0x65`.
+### 4.2 End-to-End Call Chain & Packet-Size Validation Boundary (`D2Net.dll` → `D2Game.dll`)
 
-Handlers that always reject (`mov eax,3; ret 8`): `0x2C` (`0x6FCEB1E0`), `0x2D` (`0x6FCEBDA0`),
-**`0x39` (`0x6FCEB560`)**, `0x45` (`0x6FCEB550`), `0x52` (`0x6FCEB490`).
+1. **`D2Net.dll:0x6FBF6300`** (C→S wire framing): calls `D2Net#10006` (`0x6FBF65D0`), indexing `D2Net.dll:0x6FBFABD8[opcode]` (113 × `int32` for `0x00..0x70`; `0xFF` = 16; `-1` variable resolved for `0x14`/`0x15`/`0x66`/`0x6C`; `0` invalid). Rejects `pktLen > 0x204` (`516`) or `pktLen > nAvail`. Routes `0x00..0x66` to **Queue 1**, `0x67..0x70` to **Queue 0**, and `0xFF` to **Queue 2**.
+2. **`D2Game.dll:0x6FC4E460` (`D2Game#10040`, `GAME_ProcessNetworkMessages`)**:
+   - Drains Queue 0 (`D2Net#10035`) → `0x6FCEAF30` (`0x67..0x70`, game logon/ping/save handled outside `0x6FD1A078`).
+   - Drains Queue 1 (`D2Net#10016`) → `0x6FCEAE80(eax=buf, push nSize)` where `buf[0..3] = dwClientId`, `buf[4..] = pPacket`, and `nSize` is the C→S payload length excluding `dwClientId`.
+   - Drains Queue 2 (`D2Net#10014`) → `0x6FC49CB0` (`0xFF` disconnect).
+3. **`D2Game.dll:0x6FCEAE80` (sole caller of `0x6FCEC550` in `D2Game.dll`)**:
+   - Locks `pGame = GAME_GetGameById(D2Net#10015(dwClientId))`, resolves `pClient = CLIENTS_GetClientById(0x6FC69FE0)`, stamps `pClient->dwLastPacketTick (+0x3D8) = GetTickCount()`, resolves `pPlayer = CLIENTS_GetPlayerFromClient(pClient, 0)` (`0x6FC6AD10`), checks `pPlayer != NULL && pPlayer->dwUnitType == 0`, invokes **`0x6FCEC550` at `0x6FCEAF15`**, and unlocks `pGame` (`0x6FC49BA0`) while discarding `0x6FCEC550`'s return value.
 
-Handlers that accept and do nothing (`xor eax,eax; ret 8`): `0x2E` (`0x6FCEB1D0`), `0x42` (`0x6FCEB1C0`),
-`0x43` (`0x6FCEB1B0`), `0x66` (`0x6FCEB190`).
+### 4.3 `D2Game.dll:0x6FCEC550` Disassembly, 4-Case Jump Table & Return-Code Contract
 
-Spot-checked layouts:
-- `0x3A` (`0x6FCEC960`): size 3; `u8 stat @1` (`0..15`), `u8 count−1 @2` (count `1..100`); loops `0x6FD0AEE0`.
-- `0x3B` (`0x6FCEDA20`): size 3; `u16 skill @1`.
-- `0x4F` (`0x6FCF1470`): size 7; `u16 button @1`, `amount = (u16 @3 << 16) | u16 @5`.
+- **Calling convention (`__usercall`, 298 bytes `0x6FCEC550..0x6FCEC679`, `ret 8`)**:
+  - `ebx = const uint8_t* pPacket`, `esi = D2UnitStrc* pPlayer`, `[esp+0x04] = D2GameStrc* pGame`, `[esp+0x08] = int32_t nSize`.
+- **Control flow**:
+  1. `0x6FCEC550..0x6FCEC566`: reads `op = pPacket[0]`; if `op == 0 || op >= 0x67`, jumps to `0x6FCEC671` and returns **`3`**.
+  2. `0x6FCEC568..0x6FCEC57D`: loads `pfn = [op*8 + 0x6FD1A078]`; if `pfn == 0` (12 NULL slots), returns **`3`**.
+  3. `0x6FCEC580..0x6FCEC60E`: switches on `op - 0x14` (`cmp eax, 0x52; ja 0x6FCEC5DD`) via the **83-byte index table `0x6FCEC68C..0x6FCEC6DE`** (`op = 0x14..0x66`) into the **4-entry jump table `0x6FCEC67C..0x6FCEC68B`**:
+     - **`case 0` → `0x6FCEC60F` (unrestricted bypass — 5 opcodes)**: `0x14, 0x15, 0x3C, 0x43, 0x66`. Skips the alive/`STATE_UNINTERRUPTABLE` check completely.
+     - **`case 1` → `0x6FCEC5A4` (alive & `!STATE_UNINTERRUPTABLE` — 2 opcodes)**: `0x20, 0x26`. Identical runtime predicate to `case 3`: calls `D2Common.#10494` (`STATES_CheckState(pPlayer, 0x36)`); if non-zero, or `pPlayer == NULL`, or `pPlayer->dwAnimMode (+0x10)` is `0` (`PLRMODE_DEATH`) or `0x11` (`PLRMODE_DEAD`), jumps to `0x6FCEC66A` and returns **`0`**.
+     - **`case 2` → `0x6FCEC596` (dead only — 1 opcode)**: `0x41` (Resurrect). Requires `pPlayer != NULL && pPlayer->dwAnimMode (+0x10) == 0x11` (`PLRMODE_DEAD`); otherwise jumps to `0x6FCEC66A` and returns **`0`**.
+     - **`case 3` / default → `0x6FCEC5DD` (alive & `!STATE_UNINTERRUPTABLE` — `0x01..0x13` + 75 opcodes in `0x14..0x66`)**: exact same check as `case 1`; returns **`0`** if blocked.
+  4. `0x6FCEC60F..0x6FCEC622`: if `*(uint32_t*)(pGame + 0x1DC4) > 1`, calls `Fog.#10055` (`FOG_GetCurrentTime`, Unix epoch seconds) via `0x6FC2A2F2` and stores it back to `[pGame + 0x1DC4]` (idle-game watchdog; omitted in deterministic replay).
+  5. `0x6FCEC623..0x6FCEC653`: calls `KERNEL32!IsBadCodePtr(pfn)` (`0x6FD18D14`); if non-zero, asserts via `Fog.#10265(0x18FB)` + `Fog.#10024` and calls `exit(-1)`.
+  6. `0x6FCEC654..0x6FCEC667`: invokes `pfn(ecx=pGame, edx=pPlayer, push pPacket, push nSize)` (`__fastcall`, `ret 8`) and returns its `eax` verbatim.
+- **Return-code contract**:
+  - `0`: accepted/handled by handler, OR silently dropped by the `0x6FCEC67C` dead/`STATE_UNINTERRUPTABLE`/`0x41`-not-dead gate (`0x6FCEC66A`), OR always-noop stub (`0x2E, 0x42, 0x43, 0x66`).
+  - `1`: non-fatal handler rejection (e.g., target unit missing or >50 subtiles out of range in `0x6FCEBF50` / `0x6FCED630`).
+  - `2`: invalid player/client/room/game or variable-length framing state inside handler (e.g., `0x6FCEDBB0` when `msgLen >= 0x100 || msgLen + 4 >= nSize`; `0x6FCEBF50` when `pPlayerData == NULL`).
+  - `3`: invalid opcode (`0` or `>= 0x67`), NULL table slot (12 slots), per-handler `nSize` mismatch, always-reject stub (`0x2C, 0x2D, 0x39, 0x45, 0x52`), or invalid skill/sub-param inside handler.
+- **Per-handler size validation**:
+  - `0x6FCEC550` performs **zero** `nSize` checks itself.
+  - Every fixed-size functional handler validates `nSize` at entry (`cmp [esp+8], N` → `mov eax, 3; ret 8`, or via `0x6FCEBF50` (`== 5`) / `0x6FCED630` (`== 9`), and `0x0B` via `dec eax; neg eax; sbb eax, eax; and eax, 3` (`== 1`)). Every functional handler's checked size agrees 100% with `D2Net.dll:0x6FBFABD8`.
+  - Variable-length handlers: `0x14` (`0x6FCF00A0`) checks `4 <= nSize <= 275 (0x113)`; `0x15` (`0x6FCEDBB0`) checks `msgLen < 0x100 && msgLen + 4 < nSize` (else returns `2`); `0x66` (`0x6FCEB190`) is an unconditional noop (`xor eax, eax; ret 8`).
+  - Special pre-check: `0x62` (`0x6FCEFB90`) checks `pGame+0x70` (`bExpansion != 0`, else returns `3`) before `cmp [esp+8], 5`.
+  - NULL slots (`12`): `0x00, 0x2B, 0x4A, 0x4E, 0x55, 0x56, 0x57, 0x5A, 0x5B, 0x5C, 0x64, 0x65`.
+  - Always-reject stubs (`mov eax, 3; ret 8`, 5 opcodes): `0x2C` (`0x6FCEB1E0`), `0x2D` (`0x6FCEBDA0`), **`0x39` (`0x6FCEB560`)**, `0x45` (`0x6FCEB550`), `0x52` (`0x6FCEB490`).
+  - Always-noop stubs (`xor eax, eax; ret 8`, 4 opcodes): `0x2E` (`0x6FCEB1D0`), `0x42` (`0x6FCEB1C0`), `0x43` (`0x6FCEB1B0`), `0x66` (`0x6FCEB190`).
+  - Spot-checked layouts:
+    - `0x3A` (`0x6FCEC960`): size 3; `u8 stat @1` (`0..15`), `u8 count−1 @2` (count `1..100`); loops `0x6FD0AEE0`.
+    - `0x3B` (`0x6FCEDA20`): size 3; `u16 skill @1`.
+    - `0x4F` (`0x6FCF1470`): size 7; `u16 button @1`, `amount = (u16 @3 << 16) | u16 @5`.
+
+### 4.4 Complete Verified 103-Entry Table (`D2Game.dll:0x6FD1A078`, `0x00..0x66`)
+
+Note: 13 ported TS identifiers in `src/d2kern-113c/game/` carry legacy names referencing a different opcode (`*` below); their bodies match their exact DLL VA disassembly and `c2s-dispatch-113c.ts` binds strictly by exact `handlerVa`.
+
+| Op | DLL `handlerVa` | `flag` (+4) | `0x6FCEC550` Gate | D2Net `0x6FBFABD8` | D2Game Handler Size Check | Ported TS Symbol (`src/d2kern-113c/game/`) |
+|---|---|---:|---|---:|---|---|
+| `0x00` | `0x00000000` | `0` | NULL → ret 3 | `0` | — | — |
+| `0x01` | `0x6FCEE0D0` | `0` | pre-sw: alive & !st36 | `5` | `==5` (via `0x6FCEBF50`) | `C2S_Packet01_WalkToLocation113c` (`c2s-packet-113c.ts`) |
+| `0x02` | `0x6FCEE090` | `0` | pre-sw: alive & !st36 | `9` | `==9` (via `0x6FCED630`) | `C2S_Packet02_WalkToUnit113c` (`c2s-packet-113c.ts`) |
+| `0x03` | `0x6FCEE040` | `0` | pre-sw: alive & !st36 | `5` | `==5` (via `0x6FCEBF50`) | `C2S_Packet03_RunToLocation113c` (`c2s-packet-113c.ts`) |
+| `0x04` | `0x6FCEE000` | `0` | pre-sw: alive & !st36 | `9` | `==9` (via `0x6FCED630`) | `C2S_Packet04_RunToUnit113c` (`c2s-packet-113c.ts`) |
+| `0x05` | `0x6FCEE5A0` | `0` | pre-sw: alive & !st36 | `5` | `==5` (via `0x6FCEBF50`) | `C2S_Packet05_LeftSkillOnLocation113c` (`c2s-packet-113c.ts`) |
+| `0x06` | `0x6FCEE9D0` | `0` | pre-sw: alive & !st36 | `9` | `==9` (via `0x6FCED630`) | `C2S_Packet06_LeftSkillOnUnit113c` (`c2s-packet-113c.ts`) |
+| `0x07` | `0x6FCEE950` | `0` | pre-sw: alive & !st36 | `9` | `==9` (via `0x6FCED630`) | `C2S_Packet07_ShiftLeftSkillOnUnit113c` (`c2s-packet-113c.ts`) |
+| `0x08` | `0x6FCEE8F0` | `0` | pre-sw: alive & !st36 | `5` | `==5` (via `0x6FCEBF50`) | `C2S_Packet08_RepeatLeftSkillOnLocation113c` (`c2s-packet-113c.ts`) |
+| `0x09` | `0x6FCEEB70` | `0` | pre-sw: alive & !st36 | `9` | `==9` (via `0x6FCED630`) | `C2S_Packet09_RepeatLeftSkillOnUnit113c` (`c2s-packet-113c.ts`) |
+| `0x0A` | `0x6FCEEB10` | `0` | pre-sw: alive & !st36 | `9` | `==9` (via `0x6FCED630`) | `C2S_Packet0A_RepeatShiftLeftSkillOnUnit113c` (`c2s-packet-113c.ts`) |
+| `0x0B` | `0x6FCEB5B0` | `0` | pre-sw: alive & !st36 | `1` | `==1` (else 3) | `C2S_Packet0B_Noop1Byte113c` (`c2s-packet-113c.ts`) |
+| `0x0C` | `0x6FCEE520` | `0` | pre-sw: alive & !st36 | `5` | `==5` (via `0x6FCEBF50`) | `C2S_Packet0C_RightSkillOnLocation113c` (`c2s-packet-113c.ts`) |
+| `0x0D` | `0x6FCEE870` | `0` | pre-sw: alive & !st36 | `9` | `==9` (via `0x6FCED630`) | `C2S_Packet0D_RightSkillOnUnit113c` (`c2s-packet-113c.ts`) |
+| `0x0E` | `0x6FCEE7F0` | `0` | pre-sw: alive & !st36 | `9` | `==9` (via `0x6FCED630`) | `C2S_Packet0E_ShiftRightSkillOnUnit113c` (`c2s-packet-113c.ts`) |
+| `0x0F` | `0x6FCEE790` | `0` | pre-sw: alive & !st36 | `5` | `==5` (via `0x6FCEBF50`) | `C2S_Packet0F_RepeatRightSkillOnLocation113c` (`c2s-packet-113c.ts`) |
+| `0x10` | `0x6FCEEAB0` | `0` | pre-sw: alive & !st36 | `9` | `==9` (via `0x6FCED630`) | `C2S_Packet10_RepeatRightSkillOnUnit113c` (`c2s-packet-113c.ts`) |
+| `0x11` | `0x6FCEEA50` | `0` | pre-sw: alive & !st36 | `9` | `==9` (via `0x6FCED630`) | `C2S_Packet11_RepeatShiftRightSkillOnUnit113c` (`c2s-packet-113c.ts`) |
+| `0x12` | `0x6FCEB590` | `0` | pre-sw: alive & !st36 | `1` | `==1` (else 3) | `PACKET_Recv12_ClearGfxState0C_6FCEB590_113c` (`k2-w2b8-113c.ts`, 4-arg) |
+| `0x13` | `0x6FCF0910` | `1` | pre-sw: alive & !st36 | `9` | `==9` (else 3) | `D2Game_6FCF0910_113c` (`k2-w13b1-113c.ts`) |
+| `0x14` | `0x6FCF00A0` | `0` | case 0: unrestricted | `-1` | `4..275` (`0x04..0x113`) | `PACKET_C2S14_SetUnitOverheadChat_6FCF00A0_113c` (`k2-w5b7-113c.ts`) |
+| `0x15` | `0x6FCEDBB0` | `0` | case 0: unrestricted | `-1` | var (`msgLen < 256 && msgLen+4 < nSize` else 2) | `PACKET_ProcessChatOrWhisperMessage_6FCEDBB0_113c` (`k2-w6b7-113c.ts`) |
+| `0x16` | `0x6FCF08B0` | `1` | case 3: alive & !st36 | `13` | `==13` (else 3) | `D2Game_6FCF08B0_113c` (`k2-w13b1-113c.ts`) |
+| `0x17` | `0x6FCEF380` | `1` | case 3: alive & !st36 | `5` | `==5` (else 3) | `C2S_Packet_DropCursorItem_6FCEF380_113c` (`k2-w15b1-113c.ts`) |
+| `0x18` | `0x6FCEF0E0` | `1` | case 3: alive & !st36 | `17` | `==17` (else 3) | `D2Game_6FCEF0E0_113c` (`k2-w13b1-113c.ts`) |
+| `0x19` | `0x6FCF1370` | `1` | case 3: alive & !st36 | `5` | `==5` (else 3) | `C2S_Packet19_PickupBufferOrStorageItemToCursor_6FCF1370_113c` (`k2-w8b3-113c.ts`) |
+| `0x1A` | `0x6FCEEE60` | `1` | case 3: alive & !st36 | `9` | `==9` (else 3) | `C2S_Packet1A_EquipCursorItemToBodyLoc_6FCEEE60_113c` (`k2-w8b3-113c.ts`) |
+| `0x1B` | `0x6FCEF2F0` | `1` | case 3: alive & !st36 | `9` | `==9` (else 3) | `C2S_Packet1A_EquipCursorItem_6FCEF2F0_113c`\* (`k2-w14b1-113c.ts`, DLL slot `0x1B`) |
+| `0x1C` | `0x6FCF12E0` | `1` | case 3: alive & !st36 | `3` | `==3` (else 3) | `D2Game_6FCF12E0_113c` (`k2-w13b1-113c.ts`) |
+| `0x1D` | `0x6FCF1200` | `1` | case 3: alive & !st36 | `9` | `==9` (else 3) | `C2S_Packet1D_SwapCursorWithBodyItem_6FCF1200_113c` (`k2-w14b1-113c.ts`) |
+| `0x1E` | `0x6FCF1140` | `1` | case 3: alive & !st36 | `9` | `==9` (else 3) | `C2S_Packet1B_SwapTwoHandedOrDualWeaponBodyLoc_6FCF1140_113c`\* (`k2-w8b3-113c.ts`, DLL slot `0x1E`) |
+| `0x1F` | `0x6FCF1010` | `1` | case 3: alive & !st36 | `17` | `==17` (else 3) | `C2S_Packet1F_SwapCursorWithContainerItem_6FCF1010_113c` (`k2-w14b1-113c.ts`) |
+| `0x20` | `0x6FCEF730` | `1` | case 1: alive & !st36 | `13` | `==13` (else 3) | `C2S_Packet20_UseInventoryItem_6FCEF730_113c` (`k2-w8b3-113c.ts`) |
+| `0x21` | `0x6FCEE4B0` | `1` | case 3: alive & !st36 | `9` | `==9` (else 3) | `C2S_Packet21_MergeStackableItems_6FCEE4B0_113c` (`k2-w8b3-113c.ts`) |
+| `0x22` | `0x6FCED4F0` | `1` | case 3: alive & !st36 | `5` | `==5` (else 3) | `C2S_ValidatePacket5ByteItem_6FCED4F0_113c` (`k2-w6b5-113c.ts`) |
+| `0x23` | `0x6FCEEC70` | `1` | case 3: alive & !st36 | `9` | `==9` (else 3) | `C2S_Packet23_PlaceCursorItemIntoBelt_6FCEEC70_113c` (`k2-w6b6-113c.ts`) |
+| `0x24` | `0x6FCF0F80` | `1` | case 3: alive & !st36 | `5` | `==5` (else 3) | `C2S_Packet24_RemoveBeltItemToCursor_6FCF0F80_113c` (`k2-w7b4-113c.ts`) |
+| `0x25` | `0x6FCEEDE0` | `1` | case 3: alive & !st36 | `9` | `==9` (else 3) | `C2S_Packet25_SwapCursorItemWithBeltItem_6FCEEDE0_113c` (`k2-w6b6-113c.ts`) |
+| `0x26` | `0x6FCEF5B0` | `1` | case 1: alive & !st36 | `13` | `==13` (else 3) | `C2S_Packet26_UseBeltItem_6FCEF5B0_113c` (`k2-w8b3-113c.ts`) |
+| `0x27` | `0x6FCEF6B0` | `1` | case 3: alive & !st36 | `9` | `==9` (else 3) | `C2S_Packet27_IdentifyItem_6FCEF6B0_113c` (`k2-w8b3-113c.ts`) |
+| `0x28` | `0x6FCEEBD0` | `1` | case 3: alive & !st36 | `9` | `==9` (else 3) | `C2S_Packet28_SocketItem_6FCEEBD0_113c` (`k2-w7b4-113c.ts`) |
+| `0x29` | `0x6FCEDB30` | `1` | case 3: alive & !st36 | `9` | `==9` (else 3) | `C2S_Packet29_InsertScrollIntoTome_6FCEDB30_113c` (`k2-w7b4-113c.ts`) |
+| `0x2A` | `0x6FCEF270` | `1` | case 3: alive & !st36 | `9` | `==9` (else 3) | `C2S_Packet_PlaceCursorItemIntoContainer_6FCEF270_113c` (`k2-w14b1-113c.ts`) |
+| `0x2B` | `0x00000000` | `0` | NULL → ret 3 | `0` | — | — |
+| `0x2C` | `0x6FCEB1E0` | `0` | case 3: alive & !st36 | `0` | always-reject (`3`) | `PACKET_C2S2C_Reject3_113c` (`k2-combat-core-w1-113c.ts`) |
+| `0x2D` | `0x6FCEBDA0` | `0` | case 3: alive & !st36 | `1` | always-reject (`3`) | `PACKET_C2S2D_Reject3_113c` (`k2-combat-core-w1-113c.ts`) |
+| `0x2E` | `0x6FCEB1D0` | `1` | case 3: alive & !st36 | `3` | always-noop (`0`) | `PACKET_C2S2E_PlaySoundNoop113c` (`k2-combat-core-w1-113c.ts`) |
+| `0x2F` | `0x6FCEE440` | `1` | case 3: alive & !st36 | `9` | `==9` (else 3) | `C2S_PacketTriggerMonsterSpawnNode_6FCEE440_113c`\* (`k2-w9b2-113c.ts`, DLL slot `0x2F` NPC interact) |
+| `0x30` | `0x6FCED480` | `0` | case 3: alive & !st36 | `9` | `==9` (else 3) | `C2S_Packet30_CancelNpcInteract_6FCED480_113c` (`k2-w7b4-113c.ts`) |
+| `0x31` | `0x6FCEC9D0` | `0` | case 3: alive & !st36 | `9` | `==9` (else 3) | `PACKET_Srv2F_NpcQuestMessage_6FCEC9D0_113c`\* (`k2-w5b5-113c.ts`, DLL slot `0x31`) |
+| `0x32` | `0x6FCEF220` | `1` | case 3: alive & !st36 | `17` | `==17` (else 3) | `C2S_Packet_NpcBuyItem_6FCEF220_113c` (`k2-w15b1-113c.ts`) |
+| `0x33` | `0x6FCEF570` | `1` | case 3: alive & !st36 | `17` | `==17` (else 3) | `C2S_Packet32_NpcBuyItem_6FCEF570_113c`\* (`k2-w14b1-113c.ts`, DLL slot `0x33` NPC sell) |
+| `0x34` | `0x6FCEF070` | `1` | case 3: alive & !st36 | `5` | `==5` (else 3) | `C2S_Packet34_CainIdentifyItems_6FCEF070_113c` (`k2-w7b4-113c.ts`) |
+| `0x35` | `0x6FCEF0A0` | `1` | case 3: alive & !st36 | `17` | `==17` (else 3) | `C2S_Packet35_NpcRepair_6FCEF0A0_113c` (`k2-w11b1-113c.ts`) |
+| `0x36` | `0x6FCF0060` | `1` | case 3: alive & !st36 | `9` | `==9` (else 3) | `C2S_Packet_HireMercenary_6FCF0060_113c` (`k2-w15b1-113c.ts`) |
+| `0x37` | `0x6FCEEFE0` | `1` | case 3: alive & !st36 | `5` | `==5` (else 3) | `C2S_Packet27_IdentifyItemWithScroll_6FCEEFE0_113c`\* (`k2-w7b4-113c.ts`, DLL slot `0x37`) |
+| `0x38` | `0x6FCEFB30` | `1` | case 3: alive & !st36 | `13` | `==13` (else 3) | `C2S_HandlePacket38_NpcMenuRequest_6FCEFB30_113c` (`k2-w16b1-113c.ts`) |
+| `0x39` | `0x6FCEB560` | `0` | case 3: alive & !st36 | `5` | always-reject (`3`) | `PACKET_C2S39_Reject3_113c` (`k2-combat-core-w1-113c.ts`) |
+| `0x3A` | `0x6FCEC960` | `0` | case 3: alive & !st36 | `3` | `==3` (else 3) | `C2S_Packet3A_AddStatPoint_6FCEC960_113c` (`k2-w7b4-113c.ts`) |
+| `0x3B` | `0x6FCEDA20` | `0` | case 3: alive & !st36 | `3` | `==3` (else 3) | `C2S_Packet3B_SpendSkillPoint_6FCEDA20_113c` (`k2-w11b1-113c.ts`) |
+| `0x3C` | `0x6FCEF480` | `0` | case 0: unrestricted | `9` | `==9` (else 3) | `C2S_Packet3C_SelectSkill113c` (`c2s-packet-113c.ts`) |
+| `0x3D` | `0x6FCED440` | `1` | case 3: alive & !st36 | `5` | `==5` (else 3) | `C2S_SyncObjectCollisionByGuid_6FCED440_113c` (`k2-w5b6-113c.ts`) |
+| `0x3E` | `0x6FCED8D0` | `0` | case 3: alive & !st36 | `5` | `==5` (else 3) | `C2S_PacketUseQuestScrollItem_6FCED8D0_113c` (`k2-w9b2-113c.ts`) |
+| `0x3F` | `0x6FCEBD50` | `0` | case 3: alive & !st36 | `3` | `==3` (else 3) | `PACKET_Recv3F_PlayVoicePhrase_6FCEBD50_113c` (`k2-w2b8-113c.ts`, 4-arg) |
+| `0x40` | `0x6FCEBD30` | `0` | case 3: alive & !st36 | `1` | `==1` (else 3) | `PACKET_Srv40_RequestQuestLog_6FCEBD30_113c` (`k2-w5b5-113c.ts`) |
+| `0x41` | `0x6FCF14B0` | `1` | case 2: dead only (`m==17`) | `1` | `==1` (else 3) | `C2S_HandlePacket41_ResurrectPlayer_6FCF14B0_113c` (`k2-w16b1-113c.ts`) |
+| `0x42` | `0x6FCEB1C0` | `1` | case 3: alive & !st36 | `1` | always-noop (`0`) | `PACKET_C2S42_ClearCursorNoop113c` (`k2-combat-core-w1-113c.ts`) |
+| `0x43` | `0x6FCEB1B0` | `1` | case 0: unrestricted | `1` | always-noop (`0`) | `PACKET_C2S43_QuestInitNoop113c` (`k2-combat-core-w1-113c.ts`) |
+| `0x44` | `0x6FCF0E90` | `1` | case 3: alive & !st36 | `17` | `==17` (else 3) | `C2S_HandlePacket1C_ShrineOrOrificeItemAction_6FCF0E90_113c`\* (`k2-w16b1-113c.ts`, DLL slot `0x44`) |
+| `0x45` | `0x6FCEB550` | `1` | case 3: alive & !st36 | `9` | always-reject (`3`) | `PACKET_C2S45_Reject3_113c` (`k2-combat-core-w1-113c.ts`) |
+| `0x46` | `0x6FCED3D0` | `0` | case 3: alive & !st36 | `13` | `==13` (else 3) | `PACKET_SrvMercMoveToUnit_6FCED3D0_113c` (`k2-w6b3-113c.ts`) |
+| `0x47` | `0x6FCED360` | `0` | case 3: alive & !st36 | `13` | `==13` (else 3) | `PACKET_SrvMercMoveToCoord_6FCED360_113c` (`k2-w6b3-113c.ts`) |
+| `0x48` | `0x6FCEB4E0` | `1` | case 3: alive & !st36 | `1` | `==1` (else 3) | `PACKET_Srv48_ClearPlayerIntro_6FCEB4E0_113c` (`k2-w2b7-113c.ts`) |
+| `0x49` | `0x6FCF0D30` | `0` | case 3: alive & !st36 | `9` | `==9` (else 3) | `C2S_Packet49_WaypointInteract_6FCF0D30_113c` (`k2-w14b1-113c.ts`) |
+| `0x4A` | `0x00000000` | `1` | NULL → ret 3 | `0` | — | — |
+| `0x4B` | `0x6FCEC6E0` | `0` | case 3: alive & !st36 | `9` | `==9` (else 3) | `PACKET_C2S4B_RequestUnitRefresh113c` (`k2-combat-core-w1-113c.ts`) |
+| `0x4C` | `0x6FCEF400` | `1` | case 3: alive & !st36 | `5` | `==5` (else 3) | `C2S_HandlePacket27_IdentifyOrUseCursorItem_6FCEF400_113c`\* (`k2-w16b1-113c.ts`, DLL slot `0x4C`) |
+| `0x4D` | `0x6FCEB4A0` | `0` | case 3: alive & !st36 | `3` | `==3` (else 3) | `PACKET_Srv3B_ClearNpcIntroFlag_6FCEB4A0_113c`\* (`k2-w5b5-113c.ts`, DLL slot `0x4D`) |
+| `0x4E` | `0x00000000` | `1` | NULL → ret 3 | `0` | — | — |
+| `0x4F` | `0x6FCF1470` | `1` | case 3: alive & !st36 | `7` | `==7` (else 3) | `C2S_HandlePacket4F_TradeButton_6FCF1470_113c` (`k2-w16b1-113c.ts`) |
+| `0x50` | `0x6FCEEF40` | `1` | case 3: alive & !st36 | `9` | `==9` (else 3) | `C2S_Packet50_DropPlayerGold_6FCEEF40_113c` (`k2-w5b6-113c.ts`) |
+| `0x51` | `0x6FCEBC70` | `0` | case 3: alive & !st36 | `9` | `==9` (else 3) | `PACKET_Srv3C_SetSkillHotkey_6FCEBC70_113c`\* (`k2-w5b5-113c.ts`, DLL slot `0x51`) |
+| `0x52` | `0x6FCEB490` | `1` | case 3: alive & !st36 | `5` | always-reject (`3`) | `PACKET_C2S52_Reject3_113c` (`k2-combat-core-w1-113c.ts`) |
+| `0x53` | `0x6FCEB450` | `0` | case 3: alive & !st36 | `1` | `==1` (else 3) | `PACKET_Srv53_TurnOnWalkToRun_6FCEB450_113c` (`k2-w2b7-113c.ts`) |
+| `0x54` | `0x6FCEB420` | `0` | case 3: alive & !st36 | `1` | `==1` (else 3) | `PACKET_Srv54_TurnOffRunToWalk_6FCEB420_113c` (`k2-w2b7-113c.ts`) |
+| `0x55` | `0x00000000` | `1` | NULL → ret 3 | `0` | — | — |
+| `0x56` | `0x00000000` | `1` | NULL → ret 3 | `0` | — | — |
+| `0x57` | `0x00000000` | `1` | NULL → ret 3 | `0` | — | — |
+| `0x58` | `0x6FCEB3D0` | `0` | case 3: alive & !st36 | `3` | `==3` (else 3) | `PACKET_C2S58_MarkQuestIntroSeen113c` (`k2-combat-core-w1-113c.ts`) |
+| `0x59` | `0x6FCEFF30` | `0` | case 3: alive & !st36 | `17` | `==17` (else 3) | `PACKET_C2S59_MoveTownNpcToCoords_6FCEFF30_113c` (`k2-w5b7-113c.ts`) |
+| `0x5A` | `0x00000000` | `1` | NULL → ret 3 | `0` | — | — |
+| `0x5B` | `0x00000000` | `1` | NULL → ret 3 | `0` | — | — |
+| `0x5C` | `0x00000000` | `1` | NULL → ret 3 | `0` | — | — |
+| `0x5D` | `0x6FCEC8E0` | `0` | case 3: alive & !st36 | `7` | `==7` (else 3) | `C2S_HandlePacket5E_PartyRelationToggle_6FCEC8E0_113c`\* (`k2-w6b5-113c.ts`, DLL slot `0x5D`) |
+| `0x5E` | `0x6FCEC860` | `0` | case 3: alive & !st36 | `6` | `==6` (else 3) | `C2S_HandlePacket5D_PartyRelationAction_6FCEC860_113c`\* (`k2-w6b5-113c.ts`, DLL slot `0x5E`) |
+| `0x5F` | `0x6FCF0790` | `0` | case 3: alive & !st36 | `5` | `==5` (else 3) | `C2S_Packet5F_UpdatePlayerPos113c` (`c2s-packet-113c.ts`) |
+| `0x60` | `0x6FCEF510` | `1` | case 3: alive & !st36 | `1` | `==1` (else 3) | `C2S_Packet60_SwapWeapons_6FCEF510_113c` (`k2-w8b3-113c.ts`) |
+| `0x61` | `0x6FCF0BC0` | `1` | case 3: alive & !st36 | `3` | `==3` (else 3) | `PACKETS_SrvMercItemAction_6FCF0BC0_113c` (`k2-w10b1-113c.ts`) |
+| `0x62` | `0x6FCEFB90` | `1` | case 3: alive & !st36 | `5` | `==5` (after `pGame+0x70` exp check, else 3) | `C2S_Packet23_MercReviveHandler_6FCEFB90_113c`\* (`k2-w12b1-113c.ts`, DLL slot `0x62`) |
+| `0x63` | `0x6FCF0950` | `1` | case 3: alive & !st36 | `5` | `==5` (else 3) | `C2S_Packet63_ShiftMoveInventoryItemToBelt_6FCF0950_113c` (`k2-w6b6-113c.ts`) |
+| `0x64` | `0x00000000` | `0` | NULL → ret 3 | `0` | — | — |
+| `0x65` | `0x00000000` | `0` | NULL → ret 3 | `0` | — | — |
+| `0x66` | `0x6FCEB190` | `0` | case 0: unrestricted | `-1` | always-noop (`0`) | `PACKET_C2S66_WardenResponseNoop113c` (`k2-combat-core-w1-113c.ts`) |
 
 ## 5. S→C notes found during the audit
 

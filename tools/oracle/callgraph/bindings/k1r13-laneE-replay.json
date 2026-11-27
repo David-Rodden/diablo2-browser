@@ -129,7 +129,7 @@
     "module": "D2Game",
     "va": "0x6FCEC550",
     "name": "C2S_Dispatch",
-    "kernFile": "src/d2kern-113c/game/replay-kernel-113c.ts",
+    "kernFile": "src/d2kern-113c/game/c2s-dispatch-113c.ts",
     "tsSymbol": "C2S_Dispatch113c",
     "status": "diff-verified",
     "diffEvidence": "Wave 22 1:1 PE32 indirect-call audit (static_table; tools/oracle/callgraph/indirect-audit-batchD.json) verified in tests/oracle/k2/k2-disasm-verified-wave22-indD.test.ts"

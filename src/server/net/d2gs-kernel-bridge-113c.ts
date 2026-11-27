@@ -115,8 +115,8 @@ import {
   D2GAME_PACKET_SendUnitStop113c,
   type BootInitGapBCallees113c,
 } from '../../d2kern-113c/game/boot-init-gap-b-113c.ts'
+import { C2S_DispatchPacketMem113c } from '../../d2kern-113c/game/c2s-dispatch-113c.ts'
 import {
-  C2S_DispatchPacketMem113c,
   D2ClientStrcOffsets,
   PLRMODE_NEUTRAL,
   type C2SPacketCallees113c,
@@ -151,6 +151,9 @@ import { PACKET_Srv3C_SetSkillHotkey_6FCEBC70_113c } from '../../d2kern-113c/gam
 import {
   DUNGEON_CheckRoomIsTown113c,
   applyPlayerPacket113c,
+  buildSliceC2SCallees113c,
+  ensureSliceWorldPathMemory113c,
+  getOrHydrateSliceWorld113c,
   stepFallenSliceFrame113c,
   type FallenSliceWorld113c,
   type MutablePathRoom113c,
@@ -239,9 +242,19 @@ const D2GAME_IAT_GDW_BITMASKS_VA = 0x6fd18be0
 const D2GAME_GDW_DIFFICULTY_PLAYERS_VA_113C = 0x6fd31c1c
 const D2COMMON_SGPT_EXPERIENCE_TXT_VA_113C = 0x6fdf0b50
 const D2CLIENT_STRC_SIZE_113C = 0x510
+// Disjoint scratch region above replay/K4/C2S staging (`0x7F000000..0x7F00FFFF`) used when
+// adopting a pre-hydrated snapshot so `SparseMemory113c.allocTop` stays bit-identical to replay.
+const BRIDGE_SNAPSHOT_RECV_SCRATCH_VA_113C = 0x7f010000
+const BRIDGE_SNAPSHOT_SEND_SCRATCH_VA_113C = 0x7f010600
+const BRIDGE_SNAPSHOT_SMALL_SCRATCH_VA_113C = 0x7f010820
 const D2PACKET_DATA_MAX_BATCH_113C = 0x200
 const SKILLS_TXT_COUNT_113C = 357
 const SKILLDESC_TXT_STRIDE_113C = 0x120
+
+/** Non-class 0-mana basic player skills in `Skills.txt` (`Attack..Left Hand Swing`, scrolls/books). */
+const ZERO_MANA_BASIC_PLAYER_SKILLS_113C: ReadonlySet<number> = new Set([
+  0, 1, 2, 3, 4, 5, 217, 218, 219, 220,
+])
 
 const CLASS_CODE_TO_INDEX_113C: Readonly<Record<CharacterClassCode, number>> = {
   ama: 0,
@@ -263,6 +276,68 @@ export const CLASS_SKILL_BASE_113C: Readonly<Record<number, number>> = {
   6: 251,
 }
 
+export function requireValidCharClassId113c(rawClass: number): CharClassId {
+  if (!Number.isInteger(rawClass) || rawClass < 0 || rawClass > 6) {
+    throw new RangeError(`Invalid 1.13c character class ID: ${rawClass} (expected integer 0..6)`)
+  }
+  return rawClass as CharClassId
+}
+
+export function requireCharClassCode113c(charClass: number): CharacterClassCode {
+  const validId = requireValidCharClassId113c(charClass)
+  const code = CHARACTER_CLASS_CODES[validId]
+  if (code === undefined) {
+    throw new RangeError(`Missing 1.13c character class code for class ID: ${validId}`)
+  }
+  return code
+}
+
+export function requireCharClassName113c(charClass: number): (typeof CHARACTER_CLASS_NAMES)[number] {
+  const validId = requireValidCharClassId113c(charClass)
+  const name = CHARACTER_CLASS_NAMES[validId]
+  if (name === undefined) {
+    throw new RangeError(`Missing 1.13c character class name for class ID: ${validId}`)
+  }
+  return name
+}
+
+export function requireClassSkillBase113c(charClass: number): number {
+  const validId = requireValidCharClassId113c(charClass)
+  const base = CLASS_SKILL_BASE_113C[validId]
+  if (base === undefined) {
+    throw new RangeError(`Missing 1.13c skill base for class ID: ${validId}`)
+  }
+  return base
+}
+
+export function requireValidActIdx113c(actIdx: number): 0 | 1 | 2 | 3 | 4 {
+  if (!Number.isInteger(actIdx) || actIdx < 0 || actIdx > 4) {
+    throw new RangeError(`Invalid 1.13c Act index: ${actIdx} (expected integer 0..4)`)
+  }
+  return actIdx as 0 | 1 | 2 | 3 | 4
+}
+
+export function requireTownAreaForAct113c(actIdx: number): number {
+  const valid = requireValidActIdx113c(actIdx)
+  return ACT_TOWN_AREA_BY_INDEX_113C[valid]
+}
+
+export function requireValidDifficulty113c(difficulty: number): 0 | 1 | 2 {
+  if (!Number.isInteger(difficulty) || difficulty < 0 || difficulty > 2) {
+    throw new RangeError(`Invalid 1.13c difficulty: ${difficulty} (expected integer 0..2)`)
+  }
+  return difficulty as 0 | 1 | 2
+}
+
+function requireValidSkillId113c(skillId: number, label: string): number {
+  if (!Number.isInteger(skillId) || skillId < 0 || skillId >= SKILLS_TXT_COUNT_113C) {
+    throw new RangeError(
+      `Invalid 1.13c ${label}=${skillId} (expected integer 0..${SKILLS_TXT_COUNT_113C - 1})`,
+    )
+  }
+  return skillId
+}
+
 const STAT_STRENGTH = 0
 const STAT_ENERGY = 1
 const STAT_DEXTERITY = 2
@@ -279,6 +354,8 @@ const STAT_LEVEL = 12
 const STAT_EXPERIENCE = 13
 const STAT_GOLD = 14
 const STAT_GOLDBANK = 15
+const STAT_MINDAMAGE = 21
+const STAT_MAXDAMAGE = 22
 const STAT_VELOCITYPERCENT = 67
 const STAT_ATTACKRATE = 68
 const STAT_ARMORCLASS = 31
@@ -356,6 +433,9 @@ export const SERVER_ONLY_NPC_SPAWNER_OBJECT_IDS_113C: ReadonlySet<number> = new 
 ])
 
 export function areaIdToActIdx113c(areaId: number): 0 | 1 | 2 | 3 | 4 {
+  if (!Number.isInteger(areaId) || areaId < 1 || areaId > 136) {
+    throw new RangeError(`Invalid 1.13c areaId=${areaId} (expected integer 1..136)`)
+  }
   if (areaId >= 109) return 4
   if (areaId >= 103) return 3
   if (areaId >= 75) return 2
@@ -459,6 +539,14 @@ export interface D2gsKernelBridgeOptions113c {
   readonly memory?: SparseMemory113c
   /** Pre-allocated `D2GameStrc*` in `memory` (initializes a fresh 1.13c game world if omitted). */
   readonly pGame?: number
+  /**
+   * Adopt a pre-hydrated 1.13c kernel snapshot (`memory` + `pGame` booted via `bootFromSnapshot113c`):
+   * preserves snapshot memory & `SLICE_WORLD_BY_MEM` `FallenSliceWorld113c` untouched, registers
+   * existing in-game `D2ClientStrc`/`D2UnitStrc` player entries without allocating new units, and
+   * omits standalone synthetic local-sync shims (`0x0F`/`0x0D`/`0x95`/`0x96`) while keeping all
+   * gameplay C2S dispatch paths active.
+   */
+  readonly adoptSnapshot?: boolean
   /** Deterministic `dwInitSeed` (`pGame + 0x7C`, default `0x12345678`). */
   readonly initSeed?: number
   /** Deterministic `dwObjectSeed` (`pGame + 0x80`, default `0x9ABCDEF0`). */
@@ -610,6 +698,7 @@ export interface SpawnBridgeMonsterOptions113c {
   readonly animMode?: number | undefined
   readonly hp?: number | undefined
   readonly maxHp?: number | undefined
+  readonly tcName?: string | undefined
 }
 
 export interface SpawnBridgeObjectOptions113c {
@@ -653,7 +742,7 @@ interface MonsterCombatMeta113c {
   readonly ac: number
   readonly maxHp: number
   readonly isNpc: boolean
-  readonly tcName: string
+  readonly tcName: string | null
 }
 
 interface PortalTargetRecord113c {
@@ -780,6 +869,7 @@ export class D2gsKernelBridge113c {
   private readonly pRecvScratch: number
   private readonly pSendScratch: number
   private readonly pSmallScratch: number
+  private readonly adoptedSnapshot: boolean
 
   private nextClientId = 1
   private nextUnitId = 1
@@ -802,25 +892,152 @@ export class D2gsKernelBridge113c {
   private readonly gapBCallees: BootInitGapBCallees113c
 
   constructor(options: D2gsKernelBridgeOptions113c = {}) {
+    this.adoptedSnapshot = options.adoptSnapshot === true
+    if (this.adoptedSnapshot) {
+      if (options.memory === undefined) {
+        throw new Error('D2gsKernelBridge113c adoptSnapshot requires pre-hydrated options.memory')
+      }
+      if (options.pGame === undefined || (options.pGame >>> 0) === 0) {
+        throw new Error('D2gsKernelBridge113c adoptSnapshot requires non-zero options.pGame')
+      }
+    }
+
     this.m = options.memory !== undefined ? options.memory : new SparseMemory113c()
     this.tables = options.tables !== undefined ? options.tables : getDefault113cItemDataTables()
     this.autoProcessSystemPackets = options.autoProcessSystemPackets !== false
-    this.difficultyValue = options.difficulty !== undefined ? options.difficulty : 0
-    this.initSeedValue = options.initSeed !== undefined ? options.initSeed >>> 0 : 0x12345678
-    this.actIdx =
-      options.act !== undefined
-        ? options.act
-        : options.areaId !== undefined
-          ? areaIdToActIdx113c(options.areaId)
-          : 0
-    this.areaId = options.areaId !== undefined ? options.areaId : 1
     this.extraRevealedRooms =
       options.extraRevealedRooms !== undefined ? options.extraRevealedRooms : []
     this.activeRevealedRooms = []
     this.initialPlayerStats = options.initialPlayerStats
+    if (options.initialSkillLevels !== undefined) {
+      for (const rawKey of Object.keys(options.initialSkillLevels)) {
+        if (!/^[1-9]\d*$/.test(rawKey)) {
+          throw new RangeError(
+            `Invalid 1.13c initialSkillLevels skillId=${rawKey} (expected decimal integer 1..${SKILLS_TXT_COUNT_113C - 1})`,
+          )
+        }
+        const skillId = Number(rawKey)
+        if (!Number.isInteger(skillId) || skillId <= 0 || skillId >= SKILLS_TXT_COUNT_113C) {
+          throw new RangeError(
+            `Invalid 1.13c initialSkillLevels skillId=${rawKey} (expected decimal integer 1..${SKILLS_TXT_COUNT_113C - 1})`,
+          )
+        }
+      }
+    }
     this.initialSkillLevels = options.initialSkillLevels
     this.initialHotkeys = options.initialHotkeys
     this.initialItems = options.initialItems
+    this.resolveAreaBootstrap = options.resolveAreaBootstrap
+    this.onAreaChange = options.onAreaChange
+    this.onPlayersXChange = options.onPlayersXChange
+    this.initialLeftSkill =
+      options.initialLeftSkill !== undefined
+        ? requireValidSkillId113c(options.initialLeftSkill, 'initialLeftSkill')
+        : 0
+    this.initialRightSkill =
+      options.initialRightSkill !== undefined
+        ? requireValidSkillId113c(options.initialRightSkill, 'initialRightSkill')
+        : 0
+    this.initialWeaponSet = options.initialWeaponSet === 1 ? 1 : 0
+    this.initialAltLeftSkill =
+      options.initialAltLeftSkill !== undefined
+        ? requireValidSkillId113c(options.initialAltLeftSkill, 'initialAltLeftSkill')
+        : 0
+    this.initialAltRightSkill =
+      options.initialAltRightSkill !== undefined
+        ? requireValidSkillId113c(options.initialAltRightSkill, 'initialAltRightSkill')
+        : 0
+    this.playersXValue =
+      options.initialPlayersX !== undefined
+        ? Math.max(1, Math.min(8, Math.floor(Number(options.initialPlayersX) || 1)))
+        : 1
+
+    this.packetSink = new D2NetPacketSink113c({ netMode: D2NET_MODE_SERVER_113C })
+    this.gapBCallees = {
+      sendPacketToClient: (mem, pClient, packet) => {
+        this.queueBytesToClientBuffer(mem, pClient, packet)
+      },
+    }
+
+    if (this.adoptedSnapshot) {
+      this.pGame = options.pGame! >>> 0
+      this.wGameId = this.m.u16((this.pGame + 0x28) >>> 0) || 1
+      this.difficultyValue = requireValidDifficulty113c(this.m.u8((this.pGame + 0x6d) >>> 0))
+      this.initSeedValue = this.m.u32((this.pGame + 0x7c) >>> 0) >>> 0
+      this.rng = new D2Rng(((this.initSeedValue ^ 0xa5a5a5a5) >>> 0) || 1)
+      this.initialQuestBuffers = normalizeInitialQuestBuffers113c(
+        options.initialQuestData,
+        this.difficultyValue,
+      )
+      this.initialWaypointBuffers = normalizeInitialWaypointBuffers113c(
+        options.initialWaypointData,
+        this.difficultyValue,
+      )
+
+      let foundAct: number = 0
+      let foundDefaultRoom = 0
+      for (let act = 0; act < 5; act++) {
+        const pAct = this.m.u32((this.pGame + 0xbc + act * 4) >>> 0) >>> 0
+        if (pAct !== 0) {
+          foundAct = act
+          foundDefaultRoom = this.m.u32((pAct + 0x10) >>> 0) >>> 0
+          break
+        }
+      }
+      this.actIdx = requireValidActIdx113c(foundAct)
+      this.defaultRoomPtr = foundDefaultRoom >>> 0
+      if (options.areaId !== undefined) {
+        areaIdToActIdx113c(options.areaId)
+        this.areaId = options.areaId
+      } else {
+        this.areaId = requireTownAreaForAct113c(this.actIdx)
+      }
+      this.spawnX = options.spawnX !== undefined ? options.spawnX : 5560
+      this.spawnY = options.spawnY !== undefined ? options.spawnY : 5920
+
+      this.sliceWorld = getOrHydrateSliceWorld113c(this.m, this.pGame)
+      this.activeRevealedRooms = []
+      this.pRecvScratch = BRIDGE_SNAPSHOT_RECV_SCRATCH_VA_113C
+      this.pSendScratch = BRIDGE_SNAPSHOT_SEND_SCRATCH_VA_113C
+      this.pSmallScratch = BRIDGE_SNAPSHOT_SMALL_SCRATCH_VA_113C
+      this.virtualTickMs = (this.frame * D2GS_KERNEL_FRAME_MS_113C) >>> 0
+
+      this.adoptSnapshotClients()
+      for (const entry of this.clients.values()) {
+        if (entry.pPlayer !== 0) {
+          const pPlrRoom = UNITS_GetRoom113c(this.m, entry.pPlayer) >>> 0
+          if (pPlrRoom !== 0) {
+            this.defaultRoomPtr = pPlrRoom
+            const lvlId = DUNGEON_GetLevelIdFromRoom113c(this.m, pPlrRoom) | 0
+            if (lvlId > 0) {
+              this.areaId = lvlId
+              this.actIdx = areaIdToActIdx113c(lvlId)
+            }
+          }
+          break
+        }
+      }
+      return
+    }
+
+    this.difficultyValue = requireValidDifficulty113c(
+      options.difficulty !== undefined ? options.difficulty : 0,
+    )
+    this.initSeedValue = options.initSeed !== undefined ? options.initSeed >>> 0 : 0x12345678
+    const resolvedAreaId = options.areaId !== undefined ? options.areaId : 1
+    const areaActIdx = areaIdToActIdx113c(resolvedAreaId)
+    if (options.act !== undefined) {
+      const validAct = requireValidActIdx113c(options.act)
+      if (options.areaId !== undefined && areaActIdx !== validAct) {
+        throw new RangeError(
+          `Inconsistent 1.13c bridge options: act=${validAct} does not match areaId=${resolvedAreaId} (act=${areaActIdx})`,
+        )
+      }
+      this.actIdx = validAct
+    } else {
+      this.actIdx = areaActIdx
+    }
+    this.areaId = resolvedAreaId
     this.initialQuestBuffers = normalizeInitialQuestBuffers113c(
       options.initialQuestData,
       this.difficultyValue,
@@ -829,23 +1046,7 @@ export class D2gsKernelBridge113c {
       options.initialWaypointData,
       this.difficultyValue,
     )
-    this.resolveAreaBootstrap = options.resolveAreaBootstrap
-    this.onAreaChange = options.onAreaChange
-    this.onPlayersXChange = options.onPlayersXChange
-    this.initialLeftSkill = options.initialLeftSkill !== undefined ? options.initialLeftSkill : 0
-    this.initialRightSkill = options.initialRightSkill !== undefined ? options.initialRightSkill : 0
-    this.initialWeaponSet = options.initialWeaponSet === 1 ? 1 : 0
-    this.initialAltLeftSkill =
-      options.initialAltLeftSkill !== undefined ? options.initialAltLeftSkill : 0
-    this.initialAltRightSkill =
-      options.initialAltRightSkill !== undefined ? options.initialAltRightSkill : 0
-    this.playersXValue =
-      options.initialPlayersX !== undefined
-        ? Math.max(1, Math.min(8, Math.floor(Number(options.initialPlayersX) || 1)))
-        : 1
     this.rng = new D2Rng(((this.initSeedValue ^ 0xa5a5a5a5) >>> 0) || 1)
-
-    this.packetSink = new D2NetPacketSink113c({ netMode: D2NET_MODE_SERVER_113C })
 
     ensureD2CommonPathGlobals113c(this.m)
     ensureObjectsTxtTable113c(this.m)
@@ -867,7 +1068,7 @@ export class D2gsKernelBridge113c {
       const booted = this.initFreshKernelWorld({
         initSeed: options.initSeed !== undefined ? options.initSeed : 0x12345678,
         objectSeed: options.objectSeed !== undefined ? options.objectSeed : 0x9abcdef0,
-        difficulty: options.difficulty !== undefined ? options.difficulty : 0,
+        difficulty: this.difficultyValue,
         expansion: options.expansion !== false,
         hardcore: options.hardcore === true,
         ladder: options.ladder === true,
@@ -893,12 +1094,11 @@ export class D2gsKernelBridge113c {
     this.pSendScratch = this.m.alloc(0x210) >>> 0
     this.pSmallScratch = this.m.alloc(0x140) >>> 0
     this.virtualTickMs = (this.frame * D2GS_KERNEL_FRAME_MS_113C) >>> 0
+  }
 
-    this.gapBCallees = {
-      sendPacketToClient: (mem, pClient, packet) => {
-        this.queueBytesToClientBuffer(mem, pClient, packet)
-      },
-    }
+  /** Client IDs currently registered on this bridge (e.g. adopted snapshot clients). */
+  getAdoptedClientIds(): readonly number[] {
+    return [...this.clients.keys()]
   }
 
   /** Current deterministic 25fps `pGame->dwGameFrame` (`+0xA8`). */
@@ -1898,80 +2098,84 @@ export class D2gsKernelBridge113c {
       number,
       { mode: number; x: number; y: number; hp: number; mana: number; stamina: number }
     >()
-    for (const entry of this.clients.values()) {
-      if (entry.closed || entry.pPlayer === 0 || entry.pClient === 0) continue
-      if (this.m.u32((entry.pClient + D2ClientStrcOffsets.dwClientState) >>> 0) !== 4) continue
-      const pPlr = entry.pPlayer
-      preStateByClient.set(entry.clientId, {
-        mode: this.m.get(pPlr, D2UnitStrc.dwAnimMode) >>> 0,
-        x: UNITS_GetX113c(this.m, pPlr) & 0xffff,
-        y: UNITS_GetY113c(this.m, pPlr) & 0xffff,
-        hp: (STATLIST_GetUnitStat113c(this.m, pPlr, STAT_HITPOINTS, 0) >> 8) & 0x7fff,
-        mana: (STATLIST_GetUnitStat113c(this.m, pPlr, STAT_MANA, 0) >> 8) & 0x7fff,
-        stamina: (STATLIST_GetUnitStat113c(this.m, pPlr, STAT_STAMINA, 0) >> 8) & 0x7fff,
-      })
+    if (!this.adoptedSnapshot) {
+      for (const entry of this.clients.values()) {
+        if (entry.closed || entry.pPlayer === 0 || entry.pClient === 0) continue
+        if (this.m.u32((entry.pClient + D2ClientStrcOffsets.dwClientState) >>> 0) !== 4) continue
+        const pPlr = entry.pPlayer
+        preStateByClient.set(entry.clientId, {
+          mode: this.m.get(pPlr, D2UnitStrc.dwAnimMode) >>> 0,
+          x: UNITS_GetX113c(this.m, pPlr) & 0xffff,
+          y: UNITS_GetY113c(this.m, pPlr) & 0xffff,
+          hp: (STATLIST_GetUnitStat113c(this.m, pPlr, STAT_HITPOINTS, 0) >> 8) & 0x7fff,
+          mana: (STATLIST_GetUnitStat113c(this.m, pPlr, STAT_MANA, 0) >> 8) & 0x7fff,
+          stamina: (STATLIST_GetUnitStat113c(this.m, pPlr, STAT_STAMINA, 0) >> 8) & 0x7fff,
+        })
+      }
     }
 
     stepFallenSliceFrame113c(this.sliceWorld, [])
     this.virtualTickMs = (this.virtualTickMs + D2GS_KERNEL_FRAME_MS_113C) >>> 0
 
-    for (const entry of this.clients.values()) {
-      const pre = preStateByClient.get(entry.clientId)
-      if (pre === undefined || entry.pPlayer === 0 || entry.pClient === 0) continue
-      const pPlr = entry.pPlayer
-      const curMode = this.m.get(pPlr, D2UnitStrc.dwAnimMode) >>> 0
-      const curX = UNITS_GetX113c(this.m, pPlr) & 0xffff
-      const curY = UNITS_GetY113c(this.m, pPlr) & 0xffff
-      const curHp = (STATLIST_GetUnitStat113c(this.m, pPlr, STAT_HITPOINTS, 0) >> 8) & 0x7fff
-      const maxHp = Math.max(1, STATLIST_GetUnitStat113c(this.m, pPlr, STAT_MAXHP, 0) >> 8)
-      const curMana = (STATLIST_GetUnitStat113c(this.m, pPlr, STAT_MANA, 0) >> 8) & 0x7fff
-      const curStamina = (STATLIST_GetUnitStat113c(this.m, pPlr, STAT_STAMINA, 0) >> 8) & 0x7fff
+    if (!this.adoptedSnapshot) {
+      for (const entry of this.clients.values()) {
+        const pre = preStateByClient.get(entry.clientId)
+        if (pre === undefined || entry.pPlayer === 0 || entry.pClient === 0) continue
+        const pPlr = entry.pPlayer
+        const curMode = this.m.get(pPlr, D2UnitStrc.dwAnimMode) >>> 0
+        const curX = UNITS_GetX113c(this.m, pPlr) & 0xffff
+        const curY = UNITS_GetY113c(this.m, pPlr) & 0xffff
+        const curHp = (STATLIST_GetUnitStat113c(this.m, pPlr, STAT_HITPOINTS, 0) >> 8) & 0x7fff
+        const maxHp = Math.max(1, STATLIST_GetUnitStat113c(this.m, pPlr, STAT_MAXHP, 0) >> 8)
+        const curMana = (STATLIST_GetUnitStat113c(this.m, pPlr, STAT_MANA, 0) >> 8) & 0x7fff
+        const curStamina = (STATLIST_GetUnitStat113c(this.m, pPlr, STAT_STAMINA, 0) >> 8) & 0x7fff
 
-      const wasMoving =
-        pre.mode === PLRMODE_WALK || pre.mode === PLRMODE_RUN || pre.mode === PLRMODE_TOWN_WALK
-      const isNeutral = curMode === PLRMODE_NEUTRAL || curMode === PLRMODE_TOWN_NEUTRAL
-      if (wasMoving && isNeutral) {
-        const lifePct = Math.min(100, Math.max(0, Math.trunc((curHp * 100) / maxHp)))
-        for (const recipient of this.clients.values()) {
-          if (recipient.closed || recipient.pClient === 0) continue
-          if (this.m.u32((recipient.pClient + D2ClientStrcOffsets.dwClientState) >>> 0) !== 4) {
-            continue
+        const wasMoving =
+          pre.mode === PLRMODE_WALK || pre.mode === PLRMODE_RUN || pre.mode === PLRMODE_TOWN_WALK
+        const isNeutral = curMode === PLRMODE_NEUTRAL || curMode === PLRMODE_TOWN_NEUTRAL
+        if (wasMoving && isNeutral) {
+          const lifePct = Math.min(100, Math.max(0, Math.trunc((curHp * 100) / maxHp)))
+          for (const recipient of this.clients.values()) {
+            if (recipient.closed || recipient.pClient === 0) continue
+            if (this.m.u32((recipient.pClient + D2ClientStrcOffsets.dwClientState) >>> 0) !== 4) {
+              continue
+            }
+            D2GAME_PACKET_SendUnitStop113c(
+              this.m,
+              recipient.pClient,
+              entry.playerUnitId,
+              curX,
+              curY,
+              lifePct,
+              this.gapBCallees,
+            )
           }
-          D2GAME_PACKET_SendUnitStop113c(
+          NET_SendPacket96_WalkVerify_6FCAB750_113c(
             this.m,
-            recipient.pClient,
-            entry.playerUnitId,
+            entry.pClient,
+            curStamina,
             curX,
             curY,
-            lifePct,
-            this.gapBCallees,
+            (curX - pre.x) & 0xff,
+            (curY - pre.y) & 0xff,
+          )
+        } else if (curHp !== pre.hp || curMana !== pre.mana || curStamina !== pre.stamina) {
+          NET_SendPacket95_LifeManaStamina_6FCAB7F0_113c(
+            this.m,
+            entry.pClient,
+            curHp,
+            curMana,
+            curStamina,
+            curX,
+            curY,
+            (curX - pre.x) & 0xff,
+            (curY - pre.y) & 0xff,
           )
         }
-        NET_SendPacket96_WalkVerify_6FCAB750_113c(
-          this.m,
-          entry.pClient,
-          curStamina,
-          curX,
-          curY,
-          (curX - pre.x) & 0xff,
-          (curY - pre.y) & 0xff,
-        )
-      } else if (curHp !== pre.hp || curMana !== pre.mana || curStamina !== pre.stamina) {
-        NET_SendPacket95_LifeManaStamina_6FCAB7F0_113c(
-          this.m,
-          entry.pClient,
-          curHp,
-          curMana,
-          curStamina,
-          curX,
-          curY,
-          (curX - pre.x) & 0xff,
-          (curY - pre.y) & 0xff,
-        )
-      }
 
-      if (entry.pendingInteraction !== null) {
-        this.checkPendingInteractionArrival(entry, curX, curY, isNeutral)
+        if (entry.pendingInteraction !== null) {
+          this.checkPendingInteractionArrival(entry, curX, curY, isNeutral)
+        }
       }
     }
 
@@ -2004,42 +2208,95 @@ export class D2gsKernelBridge113c {
     readonly pMonster: number
     readonly unitId: number
   } {
+    if (!Number.isInteger(opts.classId) || opts.classId < 0 || opts.classId > 0xffffffff) {
+      throw new RangeError(`Invalid 1.13c monster classId=${opts.classId} in spawnMonsterInRoom`)
+    }
+    const classId = opts.classId
+    const monRow = MONSTATS_113C_ROWS[classId]
+    if (monRow === undefined) {
+      throw new Error(`Unknown 1.13c MonStats classId=${classId} in spawnMonsterInRoom`)
+    }
+    const pMonTxt = getMonStatsTxtPtrPure113c(this.m, classId)
+    if (pMonTxt === 0) {
+      throw new Error(
+        `Missing 1.13c MonStats.txt memory record for classId=${classId} in spawnMonsterInRoom`,
+      )
+    }
+
     const unitId = opts.unitId !== undefined ? opts.unitId >>> 0 : this.allocUnitId()
     const animMode = opts.animMode !== undefined ? opts.animMode >>> 0 : 1
     const diff = this.difficultyValue
-    const monRow = MONSTATS_113C_ROWS[opts.classId >>> 0]
-    const isNpc = isInteractiveNpcClassId113c(opts.classId >>> 0)
-    const mlvl = Math.max(1, Math.min(110, monRow !== undefined ? (monRow.level[diff] || 1) : 1))
+    const isNpc = isInteractiveNpcClassId113c(classId)
+    const rawLevel = monRow.level[diff]
+    if (rawLevel === undefined) {
+      throw new Error(`Missing 1.13c MonStats level for classId=${classId}, difficulty=${diff}`)
+    }
+    const mlvl = rawLevel
     const monLvlRow = MONLVL_113C_ROWS[mlvl]
-    let computedMaxHp = 128
-    let computedAc = 0
-    let computedBaseExp = 18
-    if (!isNpc && monRow !== undefined && monLvlRow !== undefined) {
-      const scaledMinHp = Math.max(1, Math.floor((monRow.minHP[diff] * monLvlRow.hp[diff]) / 100))
-      const scaledMaxHp = Math.max(
-        scaledMinHp,
-        Math.floor((monRow.maxHP[diff] * monLvlRow.hp[diff]) / 100),
+    if (monLvlRow === undefined) {
+      throw new Error(
+        `Missing 1.13c MonLvl.txt row for mlvl=${mlvl} (classId=${classId}, difficulty=${diff})`,
       )
-      const baseRolled =
-        scaledMinHp < scaledMaxHp ? this.rng.randRange(scaledMinHp, scaledMaxHp) : scaledMaxHp
-      computedMaxHp = Math.max(1, Math.floor((baseRolled * (this.playersXValue + 1)) / 2))
-      computedAc = Math.max(0, Math.floor((monRow.ac[diff] * monLvlRow.ac[diff]) / 100))
-      computedBaseExp = Math.max(1, Math.floor((monRow.exp[diff] * monLvlRow.xp[diff]) / 100))
+    }
+    let computedMaxHp: number
+    let computedAc: number
+    let computedBaseExp: number
+    if (isNpc) {
+      computedMaxHp = 0
+      computedAc = 0
+      computedBaseExp = 0
+    } else {
+      const minHpPct = monRow.minHP[diff]
+      const maxHpPct = monRow.maxHP[diff]
+      const acPct = monRow.ac[diff]
+      const expPct = monRow.exp[diff]
+      if (
+        minHpPct === undefined ||
+        maxHpPct === undefined ||
+        acPct === undefined ||
+        expPct === undefined
+      ) {
+        throw new Error(`Incomplete 1.13c MonStats stats for classId=${classId}, difficulty=${diff}`)
+      }
+      if (minHpPct === 0 && maxHpPct === 0) {
+        computedMaxHp = 0
+      } else {
+        const scaledMinHp = Math.max(1, Math.floor((minHpPct * monLvlRow.hp[diff]) / 100))
+        const scaledMaxHp = Math.max(
+          scaledMinHp,
+          Math.floor((maxHpPct * monLvlRow.hp[diff]) / 100),
+        )
+        const baseRolled =
+          scaledMinHp < scaledMaxHp ? this.rng.randRange(scaledMinHp, scaledMaxHp) : scaledMaxHp
+        computedMaxHp = Math.max(1, Math.floor((baseRolled * (this.playersXValue + 1)) / 2))
+      }
+      computedAc = Math.max(0, Math.floor((acPct * monLvlRow.ac[diff]) / 100))
+      computedBaseExp =
+        expPct > 0 ? Math.max(1, Math.floor((expPct * monLvlRow.xp[diff]) / 100)) : 0
     }
     const maxHp = opts.maxHp !== undefined ? Math.max(1, opts.maxHp | 0) : computedMaxHp
     const hp = opts.hp !== undefined ? Math.max(0, opts.hp | 0) : maxHp
     const tcIdx = diff * 4
-    const tcName = monRow !== undefined ? (monRow.tc[tcIdx] ?? monRow.tc[0] ?? '') : ''
+    let tcName: string | null
+    if (opts.tcName !== undefined) {
+      tcName = opts.tcName
+    } else {
+      const rawTc = monRow.tc[tcIdx]
+      if (rawTc === undefined) {
+        throw new Error(
+          `Missing 1.13c MonStats tc[${tcIdx}] for classId=${classId}, difficulty=${diff}`,
+        )
+      }
+      const trimmedTc = rawTc.trim()
+      tcName = trimmedTc === '' ? null : trimmedTc
+    }
 
-    const pMonster = UNITS_Create113c(this.m, UNIT_MONSTER, opts.classId >>> 0, unitId, this.pGame)
+    const pMonster = UNITS_Create113c(this.m, UNIT_MONSTER, classId, unitId, this.pGame)
     this.m.set(pMonster, D2UnitStrc.dwAnimMode, animMode)
     this.m.setU32((pMonster + 0x80) >>> 0, this.pGame)
 
     const pMonData = this.m.alloc(D2MonsterDataStrc_SIZE) >>> 0
-    const pMonTxt = getMonStatsTxtPtrPure113c(this.m, opts.classId >>> 0)
-    if (pMonTxt !== 0) {
-      this.m.set(pMonData, D2MonsterDataStrc.pMonStatsTxt, pMonTxt >>> 0)
-    }
+    this.m.set(pMonData, D2MonsterDataStrc.pMonStatsTxt, pMonTxt >>> 0)
     this.m.set(pMonster, D2UnitStrc.pUnitData, pMonData)
 
     this.initDynamicPathOnUnit(pMonster, opts.x, opts.y, this.defaultRoomPtr, false)
@@ -2054,7 +2311,7 @@ export class D2gsKernelBridge113c {
     STATLIST_SetUnitStat113c(this.m, pMonster, STAT_EXPERIENCE, computedBaseExp, 0)
 
     this.monsterMetaByUnitId.set(unitId, {
-      classId: opts.classId >>> 0,
+      classId,
       level: mlvl,
       baseExp: computedBaseExp,
       ac: computedAc,
@@ -2316,6 +2573,92 @@ export class D2gsKernelBridge113c {
     return pkt
   }
 
+  private adoptSnapshotClients(): void {
+    const m = this.m
+    const clientPtrs = new Set<number>()
+
+    let walk = m.u32((this.pGame + 0x88) >>> 0) >>> 0
+    let guard = 0
+    while (walk !== 0 && guard++ < 64 && !clientPtrs.has(walk)) {
+      clientPtrs.add(walk)
+      walk = m.u32((walk + 0x4a8) >>> 0) >>> 0
+    }
+
+    for (const pPlr of this.sliceWorld.playerById.values()) {
+      const pPlrData = m.get(pPlr, D2UnitStrc.pUnitData) >>> 0
+      if (pPlrData !== 0) {
+        const pPlrClient = m.u32((pPlrData + 0x9c) >>> 0) >>> 0
+        if (pPlrClient !== 0) {
+          clientPtrs.add(pPlrClient)
+        }
+      }
+    }
+
+    for (const pClient of clientPtrs) {
+      const clientId = m.u32((pClient + D2ClientStrcOffsets.dwClientId) >>> 0) >>> 0
+      let pPlayer = m.u32((pClient + D2ClientStrcOffsets.pPlayer) >>> 0) >>> 0
+      if (pPlayer === 0) {
+        for (const candPlr of this.sliceWorld.playerById.values()) {
+          const candData = m.get(candPlr, D2UnitStrc.pUnitData) >>> 0
+          if (candData !== 0 && (m.u32((candData + 0x9c) >>> 0) >>> 0) === pClient) {
+            pPlayer = candPlr >>> 0
+            break
+          }
+        }
+      }
+      if (pPlayer === 0) {
+        throw new Error(
+          `adoptSnapshotClients: snapshot client (pClient=0x${pClient.toString(16)}, clientId=${clientId}) has null pPlayer`,
+        )
+      }
+      const playerUnitId = m.get(pPlayer, D2UnitStrc.dwUnitId) >>> 0
+      const rawClass = m.get(pPlayer, D2UnitStrc.dwClassId) >>> 0
+      const charClass = requireValidCharClassId113c(rawClass)
+      const pPlrData = m.get(pPlayer, D2UnitStrc.pUnitData) >>> 0
+      const charName = readFixedAscii16(m, pPlrData !== 0 ? pPlrData : ((pClient + 0x0d) >>> 0))
+
+      this.packetSink.registerClient(clientId, '127.0.0.1', this.wGameId, 1)
+      const entry: InternalClientEntry113c = {
+        clientId,
+        pClient,
+        pPlayer,
+        playerUnitId,
+        charName,
+        charClass,
+        stream: null,
+        framer: new D2gsC2sFramer(),
+        wireFormat: 'uncompressed',
+        unsubs: [],
+        activeNpcUnitId: 0,
+        lastNpcHandshakeUnitId: 0,
+        activeWaypointUnitId: 0,
+        activeVendorNpcId: 0,
+        activeVendorMode: null,
+        stashOpen: false,
+        cubeOpen: false,
+        pendingIdentifyScrollId: 0,
+        weaponSet: this.initialWeaponSet,
+        altLeftSkill: this.initialAltLeftSkill,
+        altRightSkill: this.initialAltRightSkill,
+        ownedItems: [],
+        appliedEquipSkillBonuses: [],
+        pendingInteraction: null,
+        closed: false,
+      }
+      this.clients.set(clientId, entry)
+      if ((clientId + 1) >>> 0 > this.nextClientId) {
+        this.nextClientId = (clientId + 1) >>> 0
+      }
+      if ((playerUnitId + 1) >>> 0 > this.nextUnitId) {
+        this.nextUnitId = (playerUnitId + 1) >>> 0
+      }
+    }
+
+    if (this.clients.size === 0) {
+      throw new Error('adoptSnapshotClients: no client/player units found in snapshot')
+    }
+  }
+
   private ensureClientEntry(
     clientId: number,
     cfg: {
@@ -2329,15 +2672,16 @@ export class D2gsKernelBridge113c {
     const existing = this.clients.get(clientId)
     if (existing !== undefined) return existing
 
+    const validCharClass = requireValidCharClassId113c(cfg.defaultCharClass)
     this.packetSink.registerClient(clientId, cfg.address, this.wGameId, 1)
-    const pClient = this.allocD2ClientStrc(clientId, cfg.defaultCharName, cfg.defaultCharClass)
+    const pClient = this.allocD2ClientStrc(clientId, cfg.defaultCharName, validCharClass)
     const entry: InternalClientEntry113c = {
       clientId,
       pClient,
       pPlayer: 0,
       playerUnitId: 0,
       charName: cfg.defaultCharName,
-      charClass: cfg.defaultCharClass,
+      charClass: validCharClass,
       stream: cfg.stream,
       framer: new D2gsC2sFramer(),
       wireFormat: cfg.wireFormat,
@@ -2533,7 +2877,7 @@ export class D2gsKernelBridge113c {
         // `0x68 GameLogon` (37B, `0x6FCEAFC2` -> `0x6FC4A740` -> `0x6FC4AC60`)
         if (pktLen < 37) return
         const rawClass = this.m.u8((pPacket + 7) >>> 0)
-        const charClass = (rawClass <= 6 ? rawClass : 1) as CharClassId
+        const charClass = requireValidCharClassId113c(rawClass)
         const charName = readFixedAscii16(this.m, (pPacket + 21) >>> 0) || entry.charName
         entry.charClass = charClass
         entry.charName = charName
@@ -3157,12 +3501,22 @@ export class D2gsKernelBridge113c {
 
     STATLIST_CreateEx113c(m, pPlayer, 0x80000000, this.pGame)
     const charStats = getCharStatsPure113c(entry.charClass)
-    const str = charStats.str !== undefined ? charStats.str : 20
-    const dex = charStats.dex !== undefined ? charStats.dex : 20
-    const vit = charStats.vit !== undefined ? charStats.vit : 20
-    const ene = charStats.int !== undefined ? charStats.int : 25
-    const hpAdd = charStats.hpAdd !== undefined ? charStats.hpAdd : 20
-    const stamBase = charStats.stamina !== undefined ? charStats.stamina : 84
+    if (
+      charStats.str === undefined ||
+      charStats.dex === undefined ||
+      charStats.vit === undefined ||
+      charStats.int === undefined ||
+      charStats.hpAdd === undefined ||
+      charStats.stamina === undefined
+    ) {
+      throw new Error(`Incomplete 1.13c CharStats record for classId=${entry.charClass}`)
+    }
+    const str = charStats.str
+    const dex = charStats.dex
+    const vit = charStats.vit
+    const ene = charStats.int
+    const hpAdd = charStats.hpAdd
+    const stamBase = charStats.stamina
     const baseHp = (vit + hpAdd) << 8
     const baseMana = ene << 8
     const baseStam = stamBase << 8
@@ -3282,7 +3636,9 @@ export class D2gsKernelBridge113c {
     if (pktLen <= 0) return 3
     const entry = this.clients.get(clientId)
     if (entry === undefined || entry.closed || entry.pClient === 0) return 2
-    this.m.setU32((entry.pClient + 0x3d8) >>> 0, this.virtualTickMs >>> 0)
+    if (!this.adoptedSnapshot) {
+      this.m.setU32((entry.pClient + 0x3d8) >>> 0, this.virtualTickMs >>> 0)
+    }
 
     const rawBytes = new Uint8Array(pktLen)
     for (let i = 0; i < pktLen; i++) {
@@ -3304,43 +3660,35 @@ export class D2gsKernelBridge113c {
       return expectedLen
     }
 
+    if ((firstOp >= 0x01 && firstOp <= 0x04) || firstOp === 0x5f) {
+      ensureSliceWorldPathMemory113c(this.sliceWorld)
+    }
+
+    const sliceCallees = buildSliceC2SCallees113c(this.sliceWorld)
     const callees: C2SPacketCallees113c = {
-      startPlayerModeAtCoords: (mem, _pGame, pPlayer, _nPlrMode, _nX, _nY, _bRunOrShift) => {
+      ...(sliceCallees.findServerUnit !== undefined
+        ? { findServerUnit: sliceCallees.findServerUnit }
+        : {}),
+      ...(sliceCallees.onStartAttackOnUnit !== undefined
+        ? { onStartAttackOnUnit: sliceCallees.onStartAttackOnUnit }
+        : {}),
+      ...(sliceCallees.onAfterModeStarted !== undefined
+        ? { onAfterModeStarted: sliceCallees.onAfterModeStarted }
+        : {}),
+      onStartWalkOrRun: (mem, pg, plr, nPlrMode, nX, nY, pTargetUnit) => {
         entry.pendingInteraction = null
         entry.activeWaypointUnitId = 0
-        applyPlayerPacket113c(this.sliceWorld, pPlayer, rawBytes)
-        const activeMode = mem.get(pPlayer, D2UnitStrc.dwAnimMode) >>> 0
-        if (
-          activeMode === PLRMODE_WALK ||
-          activeMode === PLRMODE_RUN ||
-          activeMode === PLRMODE_TOWN_WALK
-        ) {
-          this.broadcastPlayerMove0F(pPlayer, activeMode)
+        sliceCallees.onStartWalkOrRun?.(mem, pg, plr, nPlrMode, nX, nY, pTargetUnit)
+        if (!this.adoptedSnapshot) {
+          const activeMode = mem.get(plr, D2UnitStrc.dwAnimMode) >>> 0
+          if (
+            activeMode === PLRMODE_WALK ||
+            activeMode === PLRMODE_RUN ||
+            activeMode === PLRMODE_TOWN_WALK
+          ) {
+            this.broadcastPlayerMove0F(plr, activeMode)
+          }
         }
-        return 1
-      },
-      startPlayerModeOnUnit: (
-        mem,
-        _pGame,
-        pPlayer,
-        _pTargetUnit,
-        _nPlrMode,
-        _nX,
-        _nY,
-        _bRunOrShift,
-      ) => {
-        entry.pendingInteraction = null
-        entry.activeWaypointUnitId = 0
-        applyPlayerPacket113c(this.sliceWorld, pPlayer, rawBytes)
-        const activeMode = mem.get(pPlayer, D2UnitStrc.dwAnimMode) >>> 0
-        if (
-          activeMode === PLRMODE_WALK ||
-          activeMode === PLRMODE_RUN ||
-          activeMode === PLRMODE_TOWN_WALK
-        ) {
-          this.broadcastPlayerMove0F(pPlayer, activeMode)
-        }
-        return 1
       },
       onUnhandledOpcode: (mem, _pGame, pPlayer, opcode, pktPtr, len) => {
         if (opcode === 0x13 && len >= 9) {
@@ -4553,10 +4901,12 @@ export class D2gsKernelBridge113c {
     readonly invWidth?: number | undefined
     readonly invHeight?: number | undefined
   }): { readonly width: number; readonly height: number } {
-    const base = getEmbeddedDropTables().getBase(item.code.trim())
-    const width = Math.max(1, base?.invWidth ?? item.invWidth ?? 1)
-    const height = Math.max(1, base?.invHeight ?? item.invHeight ?? 1)
-    return { width, height }
+    const code = item.code.trim()
+    const base = getEmbeddedDropTables().getBase(code)
+    if (base === undefined) {
+      throw new Error(`Unknown 1.13c item code "${code}" in getItemGridSize`)
+    }
+    return { width: base.invWidth, height: base.invHeight }
   }
 
   private getContainerGridDims(storePage: number): {
@@ -4792,7 +5142,10 @@ export class D2gsKernelBridge113c {
 
   private computeSkillManaCost256(skillId: number, slvl: number): number {
     const entry = SKILLS_BY_ID[skillId]
-    if (entry === undefined) return 0
+    if (entry === undefined) {
+      if (ZERO_MANA_BASIC_PLAYER_SKILLS_113C.has(skillId)) return 0
+      throw new Error(`Unknown 1.13c player skillId=${skillId} in computeSkillManaCost256`)
+    }
     const raw = (entry.mana + entry.lvlmana * Math.max(0, slvl - 1)) << entry.manashift
     const min256 = entry.minmana << 8
     return Math.max(0, Math.max(min256, raw))
@@ -5049,28 +5402,77 @@ export class D2gsKernelBridge113c {
     readonly max: number
   } {
     const tables = getEmbeddedDropTables()
+    let selectedWeaponDamage: { readonly min: number; readonly max: number } | null = null
     for (let i = 0; i < entry.ownedItems.length; i++) {
       const item = entry.ownedItems[i]!
       if (item.location !== 1) continue
       const slot = item.bodyLoc ?? item.equippedSlot ?? 0
       if (slot !== 4 && slot !== 5) continue
-      const wBase = tables.weapons.get(item.code.trim())
-      if (wBase === undefined) continue
-      const rawMin = Math.max(1, wBase.mindam || wBase.twoHandedMindam || 1)
-      const rawMax = Math.max(rawMin, wBase.maxdam || wBase.twoHandedMaxdam || rawMin)
-      let edPct = 0
-      let addMin = 0
-      let addMax = 0
-      for (const st of item.stats ?? []) {
-        if (st.statId === 17 || st.statId === 18) edPct += st.value | 0
-        else if (st.statId === 21 || st.statId === 23) addMin += st.value | 0
-        else if (st.statId === 22 || st.statId === 24) addMax += st.value | 0
+      const code = item.code.trim()
+      const base = tables.getBase(code)
+      if (base === undefined) {
+        throw new Error(`Unknown 1.13c item code "${code}" equipped in weapon hand slot ${slot}`)
       }
-      const scaledMin = Math.max(1, Math.floor((rawMin * (100 + edPct)) / 100) + addMin)
-      const scaledMax = Math.max(scaledMin, Math.floor((rawMax * (100 + edPct)) / 100) + addMax)
-      return { min: scaledMin, max: scaledMax }
+      if (base.kind !== 'weapon') {
+        const itemType =
+          base.type !== undefined ? tables.itemTypes.byCode.get(base.type) : undefined
+        const isValidHandNonWeapon =
+          itemType !== undefined &&
+          itemType.body &&
+          (itemType.bodyLoc1 === 'rarm' ||
+            itemType.bodyLoc1 === 'larm' ||
+            itemType.bodyLoc2 === 'rarm' ||
+            itemType.bodyLoc2 === 'larm')
+        if (isValidHandNonWeapon) continue
+        throw new Error(
+          `Non-weapon item code "${code}" (kind=${base.kind}, type=${base.type ?? 'unknown'}) cannot be equipped in weapon hand slot ${slot}`,
+        )
+      }
+      const wBase = tables.weapons.get(code)
+      if (wBase === undefined) {
+        throw new Error(
+          `Missing 1.13c Weapons.txt row for weapon code "${code}" in hand slot ${slot}`,
+        )
+      }
+      const twoHMin = wBase.twoHandedMindam ?? 0
+      const twoHMax = wBase.twoHandedMaxdam ?? 0
+      const has1H = wBase.mindam > 0 || wBase.maxdam > 0
+      const has2H = twoHMin > 0 || twoHMax > 0
+      if (!has1H && !has2H) {
+        throw new Error(
+          `Weapon "${code}" in hand slot ${slot} has zero 1H and 2H base damage in Weapons.txt`,
+        )
+      }
+      if (selectedWeaponDamage === null) {
+        const rawMin = Math.max(1, has1H ? wBase.mindam : twoHMin)
+        const rawMax = Math.max(rawMin, has1H ? wBase.maxdam : twoHMax)
+        let edPct = 0
+        let addMin = 0
+        let addMax = 0
+        for (const st of item.stats ?? []) {
+          if (st.statId === 17 || st.statId === 18) edPct += st.value | 0
+          else if (st.statId === 21 || st.statId === 23) addMin += st.value | 0
+          else if (st.statId === 22 || st.statId === 24) addMax += st.value | 0
+        }
+        const scaledMin = Math.max(1, Math.floor((rawMin * (100 + edPct)) / 100) + addMin)
+        const scaledMax = Math.max(scaledMin, Math.floor((rawMax * (100 + edPct)) / 100) + addMax)
+        selectedWeaponDamage = { min: scaledMin, max: scaledMax }
+      }
     }
-    return { min: 1, max: 2 }
+    if (selectedWeaponDamage !== null) {
+      return selectedWeaponDamage
+    }
+    // Unarmed / shield-or-quiver-only floor per `D2Game.dll:0x6FCFC5A2..0x6FCFC5C8` (`STAT_MINDAMAGE` / `STAT_MAXDAMAGE`).
+    const pPlayer = entry.pPlayer >>> 0
+    const statMin =
+      (pPlayer !== 0 ? STATLIST_GetUnitStat113c(this.m, pPlayer, STAT_MINDAMAGE, 0) | 0 : 0) +
+      this.getEffectiveEquippedStatSum(entry, STAT_MINDAMAGE)
+    const statMax =
+      (pPlayer !== 0 ? STATLIST_GetUnitStat113c(this.m, pPlayer, STAT_MAXDAMAGE, 0) | 0 : 0) +
+      this.getEffectiveEquippedStatSum(entry, STAT_MAXDAMAGE)
+    const unarmedMin = statMin > 0 ? statMin : 1
+    const unarmedMax = Math.max(unarmedMin, statMax > 1 ? statMax : 2)
+    return { min: unarmedMin, max: unarmedMax }
   }
 
   private applyPlayerSkillDamageToMonster(
@@ -5084,14 +5486,27 @@ export class D2gsKernelBridge113c {
     const monId = m.get(pMon, D2UnitStrc.dwUnitId) >>> 0
     const monClassId = m.get(pMon, D2UnitStrc.dwClassId) >>> 0
     const monRow = MONSTATS_113C_ROWS[monClassId]
+    if (monRow === undefined) {
+      throw new Error(
+        `Unknown 1.13c MonStats classId=${monClassId} for monster unitId=${monId} in applyPlayerSkillDamageToMonster`,
+      )
+    }
     const meta = this.monsterMetaByUnitId.get(monId)
+    if (meta === undefined) {
+      throw new Error(
+        `Missing 1.13c MonsterCombatMeta for monster unitId=${monId} (classId=${monClassId}) in applyPlayerSkillDamageToMonster`,
+      )
+    }
     const diff = this.difficultyValue
 
     const clvl = Math.max(1, STATLIST_GetUnitStat113c(m, pPlayer, STAT_LEVEL, 0) | 0)
-    const mlvl = Math.max(1, meta?.level ?? (STATLIST_GetUnitStat113c(m, pMon, STAT_LEVEL, 0) | 0))
-    const monAc = meta?.ac ?? (STATLIST_GetUnitStat113c(m, pMon, STAT_ARMORCLASS, 0) | 0)
+    const mlvl = Math.max(1, meta.level)
+    const monAc = meta.ac
 
     const catalog = SKILLS_BY_ID[skillId]
+    if (catalog === undefined && !ZERO_MANA_BASIC_PLAYER_SKILLS_113C.has(skillId)) {
+      throw new Error(`Unknown 1.13c player skillId=${skillId} in applyPlayerSkillDamageToMonster`)
+    }
     const isSpell =
       catalog !== undefined &&
       catalog.srcDamage === 0 &&
@@ -5099,7 +5514,7 @@ export class D2gsKernelBridge113c {
 
     // 1. 1.13c To-Hit check for physical attacks (spells auto-hit)
     if (!isSpell) {
-      const classCode = CHARACTER_CLASS_CODES[entry.charClass] ?? 'sor'
+      const classCode = requireCharClassCode113c(entry.charClass)
       const charStats = CANONICAL_CHARSTATS[classCode]
       const dex =
         (STATLIST_GetUnitStat113c(m, pPlayer, STAT_DEXTERITY, 0) | 0) +
@@ -5200,21 +5615,19 @@ export class D2gsKernelBridge113c {
           : elemMax
         : 0
 
-    const resPhys = monRow !== undefined ? (monRow.resDm[diff] ?? 0) : 0
+    const resPhys = monRow.resDm[diff]
     const resElem =
-      monRow === undefined
-        ? 0
-        : eType === 'fire'
-          ? (monRow.resFi[diff] ?? 0)
-          : eType === 'ltng'
-            ? (monRow.resLi[diff] ?? 0)
-            : eType === 'cold'
-              ? (monRow.resCo[diff] ?? 0)
-              : eType === 'pois'
-                ? (monRow.resPo[diff] ?? 0)
-                : eType === 'mag'
-                  ? (monRow.resMa[diff] ?? 0)
-                  : 0
+      eType === 'fire'
+        ? monRow.resFi[diff]
+        : eType === 'ltng'
+          ? monRow.resLi[diff]
+          : eType === 'cold'
+            ? monRow.resCo[diff]
+            : eType === 'pois'
+              ? monRow.resPo[diff]
+              : eType === 'mag'
+                ? monRow.resMa[diff]
+                : 0
 
     const netPhys =
       rollPhys > 0 && resPhys < 100
@@ -5262,22 +5675,27 @@ export class D2gsKernelBridge113c {
     })
 
     // 4. Grant 1.13c kill XP (`STAT_EXPERIENCE` + S2C `0x1A`/`0x1B`/`0x1C` + level-up)
-    const rawBaseExp =
-      meta?.baseExp ?? Math.max(1, STATLIST_GetUnitStat113c(m, pMon, STAT_EXPERIENCE, 0) | 0)
-    const scaledBaseExp = Math.max(1, Math.floor((rawBaseExp * (this.playersXValue + 1)) / 2))
+    const rawBaseExp = meta.baseExp
+    const scaledBaseExp =
+      rawBaseExp > 0 ? Math.max(1, Math.floor((rawBaseExp * (this.playersXValue + 1)) / 2)) : 0
     const addExpPct = this.getEffectiveEquippedStatSum(entry, 85)
-    const expGain = calculateKillExperienceGain113c({
-      rawExp: scaledBaseExp,
-      clvl,
-      mlvl,
-      addExpPct,
-    })
+    const expGain =
+      scaledBaseExp > 0
+        ? calculateKillExperienceGain113c({
+            rawExp: scaledBaseExp,
+            clvl,
+            mlvl,
+            addExpPct,
+          })
+        : 0
     if (expGain > 0) {
       this.grantPlayerExperience113c(entry, expGain)
     }
 
     // 5. Roll 1.13c monster TreasureClass drop and spawn ground gold/items (`S2C 0x9C` action `0x00`)
-    this.rollAndSpawnMonsterDrops113c(monX, monY, mlvl, meta?.tcName ?? '')
+    if (meta.tcName !== null) {
+      this.rollAndSpawnMonsterDrops113c(monX, monY, mlvl, meta.tcName)
+    }
   }
 
   private grantPlayerExperience113c(entry: InternalClientEntry113c, expGain: number): void {
@@ -5305,8 +5723,8 @@ export class D2gsKernelBridge113c {
       })
     }
 
-    const className = CHARACTER_CLASS_NAMES[entry.charClass] ?? 'Sorceress'
-    const classCode = CHARACTER_CLASS_CODES[entry.charClass] ?? 'sor'
+    const className = requireCharClassName113c(entry.charClass)
+    const classCode = requireCharClassCode113c(entry.charClass)
     const charStats = CANONICAL_CHARSTATS[classCode]
 
     let level = curLevel
@@ -5369,9 +5787,23 @@ export class D2gsKernelBridge113c {
     const tables = getEmbeddedDropTables()
     const diffName =
       this.difficultyValue === 2 ? 'hell' : this.difficultyValue === 1 ? 'nightmare' : 'normal'
-    const effectiveTc = tcName.trim() !== '' ? tcName.trim() : 'Act 1 H2H A'
+    const trimmedTc = tcName.trim()
+    if (trimmedTc === '') {
+      throw new Error(
+        `Missing/empty 1.13c TreasureClass name in rollAndSpawnMonsterDrops113c (mlvl=${mlvl}, difficulty=${diffName})`,
+      )
+    }
+    if (
+      tables.tcTable.get(trimmedTc) === undefined &&
+      !tables.autoTcTable.has(trimmedTc) &&
+      tables.getBase(trimmedTc) === undefined
+    ) {
+      throw new Error(
+        `Unknown 1.13c TreasureClass "${trimmedTc}" in rollAndSpawnMonsterDrops113c (mlvl=${mlvl}, difficulty=${diffName})`,
+      )
+    }
     const dropped = executeDropPipeline(tables, {
-      tcName: effectiveTc,
+      tcName: trimmedTc,
       nLevel: mlvl,
       difficulty: diffName,
       gamePlayers: this.playersXValue,
@@ -5394,6 +5826,8 @@ export class D2gsKernelBridge113c {
       spawnedCount++
     }
 
+    // Legacy gold-on-NoDrop fallback for valid non-empty TCs; scheduled for deletion in Phase 2C
+    // when kernel `ITEMS_DropMonsterTreasure_6FC32D60_113c` replaces `rollAndSpawnMonsterDrops113c`.
     if (spawnedCount === 0) {
       const goldAmount = Math.max(1, mlvl * 5 + this.rng.rand(Math.max(5, mlvl * 10)))
       const pos = this.findWalkableDropCoord(monX, monY)
@@ -5725,7 +6159,7 @@ export class D2gsKernelBridge113c {
     const baseDex = STATLIST_GetUnitStat113c(m, pPlayer, STAT_DEXTERITY, 0) | 0
     const bonusStr = this.getEffectiveEquippedStatSum(entry, STAT_STRENGTH)
     const bonusDex = this.getEffectiveEquippedStatSum(entry, STAT_DEXTERITY)
-    const classCode = CHARACTER_CLASS_CODES[entry.charClass] ?? 'sor'
+    const classCode = requireCharClassCode113c(entry.charClass)
     const equippedCandidates: EquipCandidateItem113c[] = []
     for (let i = 0; i < entry.ownedItems.length; i++) {
       const it = entry.ownedItems[i]!
@@ -6207,7 +6641,7 @@ export class D2gsKernelBridge113c {
       y: pos.y,
       mode: 2,
     })
-    const townAreaId = ACT_TOWN_AREA_BY_INDEX_113C[this.actIdx] ?? 1
+    const townAreaId = requireTownAreaForAct113c(this.actIdx)
     this.portalsByObjectId.set(spawned.unitId, { destAreaId: townAreaId })
     return true
   }
@@ -7443,16 +7877,11 @@ export class D2gsKernelBridge113c {
     const vEntry = pool[poolIdx]!
 
     const txCtx = this.buildTransactionCostContext(entry, npcClassId)
-    let cost = 0
-    try {
-      cost = computeTransactionCost113c(
-        this.itemDataToTransactionCostInput(entry, vEntry.item),
-        txCtx,
-        isGamble ? 2 : 0,
-      )
-    } catch {
-      return
-    }
+    const cost = computeTransactionCost113c(
+      this.itemDataToTransactionCostInput(entry, vEntry.item),
+      txCtx,
+      isGamble ? 2 : 0,
+    )
 
     const curGold = STATLIST_GetUnitStat113c(m, pPlayer, STAT_GOLD, 0) >>> 0
     const curBank = STATLIST_GetUnitStat113c(m, pPlayer, STAT_GOLDBANK, 0) >>> 0
@@ -7648,16 +8077,11 @@ export class D2gsKernelBridge113c {
     }
 
     const txCtx = this.buildTransactionCostContext(entry, npcClassId)
-    let sellValue = 0
-    try {
-      sellValue = computeTransactionCost113c(
-        this.itemDataToTransactionCostInput(entry, sold),
-        txCtx,
-        1,
-      )
-    } catch {
-      return
-    }
+    const sellValue = computeTransactionCost113c(
+      this.itemDataToTransactionCostInput(entry, sold),
+      txCtx,
+      1,
+    )
 
     if (!this.addPlayerGold(entry, sellValue)) {
       this.queueServerEventToClient(entry, {
@@ -7796,15 +8220,11 @@ export class D2gsKernelBridge113c {
       const it = entry.ownedItems[idx]!
       if (!this.doesItemNeedRepair113c(it)) return
       targetIndices.push(idx)
-      try {
-        totalCost = computeTransactionCost113c(
-          this.itemDataToTransactionCostInput(entry, it),
-          txCtx,
-          3,
-        )
-      } catch {
-        return
-      }
+      totalCost = computeTransactionCost113c(
+        this.itemDataToTransactionCostInput(entry, it),
+        txCtx,
+        3,
+      )
     }
 
     if (totalCost <= 0) return
@@ -7912,7 +8332,7 @@ export class D2gsKernelBridge113c {
       )
       if (cubeItems.length === 0) return
       const clvl = Math.max(1, STATLIST_GetUnitStat113c(m, pPlayer, STAT_LEVEL, 0) | 0)
-      const classCode = CHARACTER_CLASS_CODES[entry.charClass] ?? 'sor'
+      const classCode = requireCharClassCode113c(entry.charClass)
       const result = executeCubeTransmute113c({
         cubeItems,
         playerLevel: clvl,
@@ -7951,9 +8371,11 @@ export class D2gsKernelBridge113c {
         const createdEntry = result.createdItems[i]!
         const createdItem = createdEntry.item
         const sz = this.getItemGridSize(createdItem)
-        const slot = this.findFreeContainerSlot(entry, 4, sz.width, sz.height) ?? {
-          x: createdEntry.x,
-          y: createdEntry.y,
+        const slot = this.findFreeContainerSlot(entry, 4, sz.width, sz.height)
+        if (slot === null) {
+          throw new Error(
+            `Horadric Cube has no free slot for transmute output "${createdItem.code}" (${sz.width}x${sz.height})`,
+          )
         }
         const placed: ItemData = {
           ...createdItem,
@@ -8057,7 +8479,27 @@ export class D2gsKernelBridge113c {
     const discretePackets: Uint8Array[] = []
     let offset = 0
     while (offset < joined.byteLength) {
-      const pktSize = resolveS2cPacketSize(joined, offset)
+      let pktSize = resolveS2cPacketSize(joined, offset)
+      // D2Game.dll@0x6FCAB010 queues 0x22-byte zero-padded S2C 0x3E packets with valid byte count at +1
+      // (matches drainClientS2CPackets113c in src/d2kern-113c/net/packet-sink.ts).
+      if (
+        pktSize !== null &&
+        joined[offset] === 0x3e &&
+        pktSize > 0 &&
+        pktSize < 0x22 &&
+        offset + 0x22 <= joined.byteLength
+      ) {
+        let trailingZero = true
+        for (let z = pktSize; z < 0x22; z++) {
+          if (joined[offset + z] !== 0) {
+            trailingZero = false
+            break
+          }
+        }
+        if (trailingZero) {
+          pktSize = 0x22
+        }
+      }
       if (pktSize === null || pktSize <= 0 || offset + pktSize > joined.byteLength) {
         discretePackets.push(joined.slice(offset))
         break

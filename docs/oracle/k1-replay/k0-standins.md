@@ -11,8 +11,10 @@ the real port listed below. Once the real port is wired, delete the stand-in and
 | `AI_TownNpc113c` | `0x6FC3DB40` | AI state (home position, node-4/node-7 waypoints, retry counters) is kept in the JS map `TOWN_NPC_AI_BY_UNIT`, not in `pMonsterData->pAiControl` / `D2MapAIStrc` memory. Waypoints come from the hard-coded DS1 preset `mapAi` table. | 1:1 port of `0x6FC3DB40` that reads and writes the in-memory AI control and map-AI structs. |
 | `AI_FollowDs1NpcPath113c` | `0x6FC3BBC0` | Uses the same JS-side `TownNpcUnitState113c` (`mapAi` copied from the DS1 preset table at spawn/hydrate time by nearest-preset matching) instead of `pPresetUnit->pSaveChain` / `D2MapAIStrc` in memory. | 1:1 port of `0x6FC3BBC0` on the map-AI chain that `ROOM_SpawnPresetUnit113c` (`0x6FD013B0`) hands to `pMonsterData->pAi + 0x38`. |
 | `AI_WarrivGreet113c` | `0x6FC39C20` | Thin wrapper over the stand-in town NPC state above. | 1:1 port of `0x6FC39C20`. |
-| `C2S_Dispatch113c` / `C2S_DispatchFromMem113c` | `0x6FCEC550` | Calls `applyPlayerPacket113c`, which decodes only C2S 0x01/0x03 (walk/run to location), 0x02/0x04 (walk/run to unit) and 0x06 (skill on unit) in TS; every other opcode is ignored. It is not the D2Game packet table dispatch: there is no client lookup, no packet-size table, and no per-opcode handler VAs. It is required by `KERNEL_REGISTRY_113C` (purity test), so it stays bound until replaced. | 1:1 port of `0x6FCEC550` and its per-opcode handlers. |
 | `GAME_UpdateGameFrame113c` → `stepFallenSliceFrame113c` | `0x6FC4E050` (registry) | K0 slice frame driver: `SLICE_UpdateAllRooms113c`, `EVENT_UpdateTimers113c` with TS-side event routing, and an end-of-frame flag sweep. Most of the real `0x6FC4E050` body is missing, including the act room loop `0x6FC4CBE0`. | 1:1 port of `0x6FC4E050` once its callees are ported. |
+
+Retired stand-ins:
+- `C2S_Dispatch113c` / `C2S_DispatchFromMem113c` (`0x6FCEC550`) — retired in favor of the table-driven 103-entry `0x6FD1A078` dispatcher (`src/d2kern-113c/game/c2s-dispatch-113c.ts`), dispatching all 91 non-null handlers by exact `D2Game.dll` VA with exact `0x6FCEC67C` jump-table gates and return-code propagation.
 
 ## Act room population: status
 

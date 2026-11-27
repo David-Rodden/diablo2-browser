@@ -24,8 +24,8 @@ import '../../../src/d2kern-113c/common/items.ts'
 import { STATLIST_GetUnitStat113c } from '../../../src/d2kern-113c/common/statlist.ts'
 import { UNITS_GetRoom113c } from '../../../src/d2kern-113c/common/unit.ts'
 import { DUNGEON_GetLevelIdFromRoom113c } from '../../../src/d2kern-113c/common/dungeon.ts'
+import { C2S_DispatchFromMem113c } from '../../../src/d2kern-113c/game/c2s-dispatch-113c.ts'
 import {
-  C2S_DispatchFromMem113c,
   configureReplayHydrationAssets113c,
   GAME_UpdateGameFrame113c,
   hydrateSnapshotKernelTables113c,
@@ -248,9 +248,10 @@ export function loadManifest113c(): Map<string, ManifestFn> {
  * its manifest status is `ported`/`diff-verified` and its module's import graph never reaches
  * `src/common` or `src/server` (both enforced by tests/oracle/k1/replay-purity.test.ts).
  *
- * Empty today: the frame root `GAME_UpdateGameFrame` (`0x6FC4E050`) is only implemented by the K0
- * Fallen slice driver (`stepFallenSliceFrame113c`), whose module imports the legacy `src/common`
- * path/monstats/treasure code, and the C2S dispatcher `0x6FCEC550` is unported.
+ * - `D2Game:0x6FCEC550` routes through the real 103-entry `0x6FD1A078` table-driven dispatcher
+ *   (`C2S_DispatchFromMem113c` in `src/d2kern-113c/game/c2s-dispatch-113c.ts`).
+ * - `D2Game:0x6FC4E050` currently routes to the pure K0/K1 slice frame driver
+ *   (`GAME_UpdateGameFrame113c` -> `stepFallenSliceFrame113c`) pending full `0x6FC4E050` cutover.
  */
 export const KERNEL_REGISTRY_113C: ReadonlyMap<string, KernelEntry113c> = new Map<string, KernelEntry113c>([
   ['D2Game:0x6FC4E050', (world, args) => GAME_UpdateGameFrame113c(world.m, args[0]!)],

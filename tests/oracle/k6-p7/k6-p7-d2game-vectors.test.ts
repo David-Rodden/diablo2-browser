@@ -220,7 +220,7 @@ import {
 } from '../../../src/d2kern-113c/game/regpop-spawn-113c'
 import {
   C2S_Dispatch113c,
-} from '../../../src/d2kern-113c/game/replay-kernel-113c'
+} from '../../../src/d2kern-113c/game/c2s-dispatch-113c'
 import {
   MONSTER_RefreshAiEvent113c,
 } from '../../../src/d2kern-113c/game/timer-wheel'

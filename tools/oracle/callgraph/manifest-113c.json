@@ -116712,14 +116712,14 @@
         "fog.dll:10265",
         "kernel32.dll:IsBadCodePtr"
       ],
-      "kernFile": "src/d2kern-113c/game/replay-kernel-113c.ts",
+      "kernFile": "src/d2kern-113c/game/c2s-dispatch-113c.ts",
       "module": "D2Game",
       "name": "C2S_Dispatch",
       "sccId": 4284,
       "size": 298,
       "status": "diff-verified",
       "topoLevel": 31,
-      "tsReference": "C2S_Dispatch113c (src/d2kern-113c/game/replay-kernel-113c.ts)",
+      "tsReference": "C2S_Dispatch113c (src/d2kern-113c/game/c2s-dispatch-113c.ts)",
       "tsSymbol": "C2S_Dispatch113c",
       "va": "0x6FCEC550"
     },
